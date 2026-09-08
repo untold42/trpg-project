@@ -1,0 +1,9 @@
+trpg-client/dist
+trpg-client/node_modules
+trpg-client/src/assets
+trpg-client/public/tiles
+
+.env
+
+trpg-map/扬州.pbf
+trpg-map/draw_tiles/tiles

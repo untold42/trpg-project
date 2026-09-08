@@ -1,0 +1,19 @@
+.logo_position {
+    position: absolute;
+    bottom: 150px;
+    left: 150px;
+    width: 550px;
+    animation: logo_move 2s ease-out forwards;
+}
+
+@keyframes logo_move {
+    from {
+        transform: translateY(0);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(-250px);
+        opacity: 1;
+    }
+}

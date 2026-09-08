@@ -1,0 +1,64 @@
+html,
+body,
+#root {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* ===== 地图点击弹窗（水墨风） ===== */
+.ink-popup .leaflet-popup-content-wrapper {
+    background: #f2e9d0;
+    border: 1px solid #8a7650;
+    border-radius: 4px;
+    box-shadow: 2px 2px 8px rgba(83, 72, 57, 0.35);
+    color: #534839;
+    font-family: "Source Han Serif TC", "Songti SC", serif;
+}
+.ink-popup .leaflet-popup-tip {
+    background: #f2e9d0;
+    border: 1px solid #8a7650;
+}
+.ink-popup .leaflet-popup-content {
+    margin: 14px 18px;
+    min-width: 230px;
+    line-height: 1.6;
+}
+.ink-popup .ink-title {
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+}
+.ink-popup .ink-badges {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 2px 0 6px;
+}
+.ink-popup .ink-badge {
+    background: #c9b68a;
+    color: #4a3c2a;
+    border-radius: 3px;
+    padding: 1px 10px;
+    font-size: 13px;
+}
+.ink-popup .ink-badge-sub {
+    background: #d8cdb0;
+}
+.ink-popup .ink-modern {
+    font-size: 13px;
+    color: #8a7650;
+    margin-top: 3px;
+}
+
+/* ===== 地图图标（美术未就位时的兜底圆点） ===== */
+.ink-icon {
+    background: transparent;
+    border: none;
+}
+.ink-icon-missing {
+    background: rgba(150, 120, 80, 0.85);
+    border: 1px solid #534839;
+    border-radius: 50%;
+}

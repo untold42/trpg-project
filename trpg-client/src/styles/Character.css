@@ -1,0 +1,45 @@
+.character {
+  position: absolute;
+  right: 10%;
+  bottom: 0;
+  height: 90%;
+}
+
+.character_for_bigger {
+  position: absolute;
+  right: 4%;
+  bottom: 0;
+  height: 65%;
+}
+
+.character-fade-layer {
+  pointer-events: none;
+}
+
+.character-fade-in {
+  animation: character-fade-in 100ms ease-out forwards;
+}
+
+.character-fade-out {
+  animation: character-fade-out 100ms ease-out forwards;
+}
+
+@keyframes character-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes character-fade-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}

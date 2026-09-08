@@ -1,0 +1,202 @@
+/* 返回主菜单 */
+.back-button {
+    position: absolute;
+    right: 0px;
+    bottom: 175px;
+    z-index: 100;
+
+    width: 120px;
+    height: 50px;
+
+    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-position: center;
+
+    border: none;
+    background-color: transparent;
+
+    cursor: pointer;
+    color: white;
+    font-family: "Source Han Serif TC";
+}
+
+/* 地图 */
+.map-button {
+    position: absolute;
+    right: 0px;
+    bottom: 225px;
+    z-index: 100;
+
+    width: 120px;
+    height: 50px;
+
+    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-position: center;
+
+    border: none;
+    background-color: transparent;
+
+    cursor: pointer;
+    color: white;
+    font-family: "Source Han Serif TC";
+}
+
+.game-map {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+}
+
+/* 历史记录按钮 */
+.history-button {
+    position: absolute;
+    right: 0px;
+    bottom: 125px;
+    z-index: 100;
+
+    width: 120px;
+    height: 50px;
+
+    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-position: center;
+
+    border: none;
+    background-color: transparent;
+
+    cursor: pointer;
+    color: white;
+    font-family: "Source Han Serif TC";
+}
+
+
+.history-box {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+
+    position: absolute;
+    bottom: 0;
+    z-index: 200;
+
+    background-image: url("../assets/ui/历史记录框.png");
+    background-size: 110% 110%;
+    background-repeat: no-repeat;
+    background-position: center;
+
+    border: none;
+    background-color: transparent;
+    color: black;
+}
+
+.history-log-content {
+    position: absolute;
+
+    top: 10%;
+    left: 7%;
+    right: 7%;
+    bottom: 15%;
+
+    overflow-y: auto;
+    overflow-x: hidden;
+
+    color: white;
+    line-height: 1.5;
+    font-family: "Source Han Serif TC", "思源宋体", serif;
+    font-size: 22px;
+    z-index: 200;
+
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: break-word;
+
+    box-sizing: border-box;
+}
+
+.log-name {
+    font-family: "STXingkai", "KaiTi", "楷体", cursive;
+    font-size: 40px;
+
+    color: transparent;
+    background: linear-gradient(to right, #d8b45a, #fff8d6);
+    background-clip: text;
+    -webkit-background-clip: text;
+}
+
+
+/* 行动按钮 */
+.act-button {
+    position: absolute;
+    right: 0px;
+    bottom: 75px;
+    z-index: 100;
+
+    width: 120px;
+    height: 50px;
+
+    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-position: center;
+
+    border: none;
+    background-color: transparent;
+
+    cursor: pointer;
+    color: white;
+    font-family: "Source Han Serif TC";
+}
+
+/* 语言按钮 */
+.chat-button {
+    position: absolute;
+    right: 0px;
+    bottom: 25px;
+    z-index: 100;
+
+    width: 120px;
+    height: 50px;
+
+    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-position: center;
+
+    border: none;
+    background-color: transparent;
+
+    cursor: pointer;
+    color: white;
+    font-family: "Source Han Serif TC";
+}
+
+.dialog-box {
+    position: absolute;
+
+    left: 50%;
+    bottom: 260px;
+    transform: translateX(-50%);
+
+    width: 500px;
+    height: 200px;
+
+    padding: 20px 30px;
+    box-sizing: border-box;
+    text-align: left;
+
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-color: transparent;
+    background-image: url("../assets/ui/输入框.png");
+
+    outline: none;
+    border: none;
+    z-index: 100;
+    color: white;
+    font-size: 22px;
+}

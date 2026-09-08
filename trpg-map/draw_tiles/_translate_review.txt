@@ -1,0 +1,2336 @@
+== 已剔除的现代要素 ==
+  poi | {'amenity': 'parking'} | 1094938320
+  poi | {'amenity': 'parking'} | 1094939741
+  railway | {'railway': 'station'} | 江都
+  railway | {'railway': 'station'} | 仪征
+  poi | {'amenity': 'fuel'} | 1772789541
+  poi | {'amenity': 'fuel'} | 1772789662
+  poi | {'amenity': 'fuel'} | 1772789930
+  poi | {'amenity': 'fuel'} | 1772789970
+  poi | {'amenity': 'parking'} | 1846813676
+  poi | {'amenity': 'parking'} | 1846815296
+  railway | {'railway': 'station'} | 扬州
+  poi | {'amenity': 'university'} | 扬州大学医学院
+  poi | {'amenity': 'atm'} | 中国银行ATM
+  poi | {'amenity': 'atm'} | 工商银行ATM
+  poi | {'amenity': 'fuel'} | 2659019447
+  poi | {'amenity': 'fuel'} | 2687958031
+  poi | {'amenity': 'fuel'} | 2705192248
+  poi | {'amenity': 'fuel'} | 2708532685
+  poi | {'amenity': 'fuel'} | 2716420816
+  poi | {'amenity': 'fuel'} | 2716420822
+  poi | {'amenity': 'fuel'} | 2883348622
+  railway | {'railway': 'station'} | 扬州东
+  man_made | {'man_made': 'chimney'} | 3168088729
+  man_made | {'man_made': 'chimney'} | 3168088730
+  man_made | {'man_made': 'chimney'} | 3274337865
+  man_made | {'man_made': 'chimney'} | 3274337882
+  man_made | {'man_made': 'chimney'} | 3274337883
+  man_made | {'man_made': 'chimney'} | 3504279492
+  man_made | {'man_made': 'chimney'} | 3504279497
+  man_made | {'man_made': 'chimney'} | 3504874011
+  man_made | {'man_made': 'chimney'} | 3504874017
+  man_made | {'man_made': 'tower'} | 3629212274
+  poi | {'amenity': 'fuel'} | 3806655399
+  man_made | {'man_made': 'chimney'} | 5126034588
+  man_made | {'man_made': 'chimney'} | 5126035379
+  man_made | {'man_made': 'wastewater_plant'} | 6992915051
+  railway | {'railway': 'station'} | 扬州北
+  railway | {'railway': 'station'} | 泰安镇
+  poi | {'amenity': 'veterinary'} | 扬州大学动物医院
+  man_made | {'man_made': 'antenna'} | 9245513872
+  man_made | {'man_made': 'antenna'} | 9245513888
+  man_made | {'man_made': 'antenna'} | 9245523934
+  man_made | {'man_made': 'antenna'} | 9245523944
+  man_made | {'man_made': 'antenna'} | 9245550445
+  man_made | {'man_made': 'antenna'} | 9317698803
+  man_made | {'man_made': 'antenna'} | 9317735273
+  man_made | {'man_made': 'antenna'} | 9317735285
+  man_made | {'man_made': 'antenna'} | 9317766499
+  man_made | {'man_made': 'antenna'} | 9317766565
+  man_made | {'man_made': 'antenna'} | 9317766577
+  man_made | {'man_made': 'antenna'} | 9317775652
+  man_made | {'man_made': 'antenna'} | 9317775653
+  man_made | {'man_made': 'antenna'} | 9317788898
+  man_made | {'man_made': 'antenna'} | 9317788906
+  man_made | {'man_made': 'antenna'} | 9317896694
+  man_made | {'man_made': 'antenna'} | 9317896701
+  man_made | {'man_made': 'antenna'} | 9320188925
+  man_made | {'man_made': 'chimney'} | 9320188929
+  man_made | {'man_made': 'chimney'} | 9320188930
+  man_made | {'man_made': 'antenna'} | 9320204306
+  man_made | {'man_made': 'antenna'} | 9320204307
+  man_made | {'man_made': 'antenna'} | 9320204308
+  man_made | {'man_made': 'antenna'} | 9320204309
+  man_made | {'man_made': 'antenna'} | 9320219088
+  man_made | {'man_made': 'antenna'} | 9320282653
+  man_made | {'man_made': 'antenna'} | 9320282663
+  man_made | {'man_made': 'antenna'} | 9320282694
+  man_made | {'man_made': 'antenna'} | 9320282696
+  man_made | {'man_made': 'antenna'} | 9320282721
+  man_made | {'man_made': 'antenna'} | 9320323583
+  man_made | {'man_made': 'antenna'} | 9320327226
+  man_made | {'man_made': 'antenna'} | 9320376724
+  man_made | {'man_made': 'antenna'} | 9320413870
+  man_made | {'man_made': 'antenna'} | 9320413873
+  man_made | {'man_made': 'antenna'} | 9320416721
+  man_made | {'man_made': 'antenna'} | 9320416727
+  man_made | {'man_made': 'antenna'} | 9320416751
+  man_made | {'man_made': 'antenna'} | 9320456219
+  man_made | {'man_made': 'antenna'} | 9320503106
+  man_made | {'man_made': 'antenna'} | 9320503107
+  man_made | {'man_made': 'antenna'} | 9320506592
+  man_made | {'man_made': 'antenna'} | 9320506601
+  man_made | {'man_made': 'antenna'} | 9320506602
+  man_made | {'man_made': 'chimney'} | 9320508817
+  man_made | {'man_made': 'antenna'} | 9320508860
+  man_made | {'man_made': 'antenna'} | 9320508861
+  man_made | {'man_made': 'antenna'} | 9320541121
+  man_made | {'man_made': 'antenna'} | 9320542077
+  man_made | {'man_made': 'antenna'} | 9320550302
+  man_made | {'man_made': 'antenna'} | 9320620657
+  man_made | {'man_made': 'antenna'} | 9320621781
+  man_made | {'man_made': 'antenna'} | 9322051884
+  man_made | {'man_made': 'antenna'} | 9322082130
+  man_made | {'man_made': 'antenna'} | 9322082134
+  man_made | {'man_made': 'antenna'} | 9323099285
+  man_made | {'man_made': 'antenna'} | 9323130527
+  man_made | {'man_made': 'antenna'} | 9323130540
+  man_made | {'man_made': 'antenna'} | 9323136595
+  man_made | {'man_made': 'chimney'} | 9323158043
+  man_made | {'man_made': 'chimney'} | 9323158044
+  man_made | {'man_made': 'antenna'} | 9323158046
+  man_made | {'man_made': 'antenna'} | 9323185550
+  man_made | {'man_made': 'antenna'} | 9323185563
+  man_made | {'man_made': 'antenna'} | 9323185577
+  man_made | {'man_made': 'antenna'} | 9323185580
+  man_made | {'man_made': 'antenna'} | 9323185598
+  man_made | {'man_made': 'antenna'} | 9323185599
+  man_made | {'man_made': 'antenna'} | 9323185603
+  man_made | {'man_made': 'antenna'} | 9323185604
+  man_made | {'man_made': 'antenna'} | 9323192480
+  man_made | {'man_made': 'antenna'} | 9323195733
+  man_made | {'man_made': 'antenna'} | 9323334780
+  poi | {'amenity': 'parking_entrance'} | 9516276192
+  poi | {'amenity': 'parking_entrance'} | 9516276201
+  poi | {'amenity': 'parking'} | 9516624505
+  poi | {'amenity': 'parking'} | 9516624506
+  poi | {'amenity': 'college'} | 扬州大学MBA教育中心
+  poi | {'amenity': 'post_office'} | 菜鸟驿站扬子津校区快递货物中心
+  poi | {'amenity': 'parking_entrance'} | 9516646212
+  poi | {'amenity': 'clinic'} | 扬州大学扬子津校区卫生所
+  tourism | {'tourism': 'attraction'} | 扬州大学校徽
+  shop | {'shop': 'computer'} | 目得数码
+  poi | {'amenity': 'parking_entrance'} | 9518315500
+  poi | {'amenity': 'parking_entrance'} | 9518315501
+  poi | {'amenity': 'parking_entrance'} | 9518315505
+  shop | {'shop': 'copyshop'} | 扬子津汇文文印
+  poi | {'amenity': 'post_office'} | 快递中心
+  poi | {'amenity': 'motorcycle_parking'} | 9518547788
+  poi | {'amenity': 'conference_centre'} | 会议室
+  poi | {'amenity': 'parking'} | 9519038092
+  poi | {'amenity': 'bicycle_parking'} | 9521049020
+  poi | {'amenity': 'bicycle_parking'} | 9521049021
+  poi | {'amenity': 'language_school'} | 扬州大学外国语学院海外（社会）考试中心
+  man_made | {'man_made': 'crane'} | 10130755166
+  man_made | {'man_made': 'crane'} | 10130755167
+  man_made | {'man_made': 'crane'} | 10130755223
+  man_made | {'man_made': 'crane'} | 10130755230
+  man_made | {'man_made': 'crane'} | 10130755338
+  man_made | {'man_made': 'crane'} | 10130755339
+  man_made | {'man_made': 'crane'} | 10130755340
+  man_made | {'man_made': 'crane'} | 10130755341
+  man_made | {'man_made': 'crane'} | 10130755342
+  man_made | {'man_made': 'crane'} | 10130755343
+  man_made | {'man_made': 'crane'} | 10130755344
+  man_made | {'man_made': 'crane'} | 10130755345
+  man_made | {'man_made': 'crane'} | 10130755346
+  man_made | {'man_made': 'crane'} | 10130755347
+  man_made | {'man_made': 'crane'} | 10130755348
+  man_made | {'man_made': 'crane'} | 10130755349
+  man_made | {'man_made': 'chimney'} | 10130755608
+  historic | {'historic': 'memorial'} | 张之睿先生纪念亭
+  man_made | {'man_made': 'chimney'} | 10240902636
+  man_made | {'man_made': 'chimney'} | 10240902637
+  man_made | {'man_made': 'chimney'} | 10240902638
+  poi | {'amenity': 'charging_station'} | 国家电网
+  poi | {'amenity': 'charging_station'} | 蔚来换电站
+  poi | {'amenity': 'charging_station'} | 蔚来换电站
+  shop | {'shop': 'tobacco'} | 德广商贸烟酒茶加盟店
+  shop | {'shop': 'agrarian'} | 红太阳蛋品专卖店
+  shop | {'shop': 'mobile_phone'} | 小米之家
+  poi | {'amenity': 'internet_cafe'} | 鲤鱼电竞
+  shop | {'shop': 'car_repair'} | 杰伟汽车服务会所
+  poi | {'amenity': 'bank'} | 中国邮政储蓄银行
+  man_made | {'man_made': 'tower'} | 11190927429
+  man_made | {'man_made': 'tower'} | 11190930866
+  railway | {'railway': 'station'} | 仪征北
+  shop | {'shop': 'pet'} | Lanmao宠物生活馆
+  shop | {'shop': 'garden_centre'} | 春风有信植物便利店
+  poi | {'amenity': 'bus_station'} | 瘦西湖公交首末站
+  poi | {'amenity': 'bus_station'} | 江都汽车客运站
+  poi | {'amenity': 'bus_station'} | 仪征客运枢纽
+  poi | {'amenity': 'research_institute'} | 江苏里下河地区农业科学研究所
+  man_made | {'man_made': 'antenna'} | 12736055694
+  man_made | {'man_made': 'antenna'} | 12736093414
+  man_made | {'man_made': 'lighthouse'} | 邵伯湖灯塔
+  tourism | {'tourism': 'museum'} | 朱自清故居
+  man_made | {'man_made': 'tower'} | 银岭塔
+  man_made | {'man_made': 'tower'} | 13028099082
+  man_made | {'man_made': 'tower'} | 13028109334
+  poi | {'amenity': 'parking'} | 13028181964
+  poi | {'amenity': 'parking_entrance'} | 13055571921
+  poi | {'amenity': 'parking_entrance'} | 13055571925
+  poi | {'amenity': 'parking'} | 13055571928
+  poi | {'amenity': 'parking'} | 13055571968
+  shop | {'shop': 'electronics'} | 尼康
+  shop | {'shop': 'electronics'} | DJI
+  poi | {'amenity': 'bank'} | 中国邮政储蓄银行
+  shop | {'shop': 'mobile_phone'} | 华为
+  poi | {'amenity': 'training'} | 黑马培训
+  shop | {'shop': 'second_hand;watches'} | 表随芯动
+  shop | {'shop': 'mobile_phone'} | 小米之家
+  shop | {'shop': 'mobile_phone'} | 华为
+  shop | {'shop': 'mobile_phone'} | 荣耀
+  poi | {'amenity': 'studio'} | 极地摄影
+  shop | {'shop': 'bicycle'} | Trek
+  poi | {'amenity': 'karaoke_box'} | S·KING KTV
+  shop | {'shop': 'copyshop'} | 扬州新画面广告图文
+  shop | {'shop': 'copyshop'} | 艾印图文
+  shop | {'shop': 'health_food'} | 如禾素食
+  shop | {'shop': 'sports'} | 佳好乐
+  poi | {'amenity': 'internet_cafe'} | 宜博电竞馆
+  poi | {'amenity': 'post_office'} | 中国邮政大学生邮局
+  shop | {'shop': 'tyres'} | 火补轮胎
+  shop | {'shop': 'mobile_phone'} | 荣耀
+  shop | {'shop': 'electronics'} | 京猫
+  shop | {'shop': 'electronics'} | 京猫
+  shop | {'shop': 'interior_decoration'} | 一冉装饰
+  shop | {'shop': 'kiosk'} | 邮政书报亭
+  shop | {'shop': 'mobile_phone'} | 小米之家
+  poi | {'amenity': 'charging_station'} | 开迈斯
+  shop | {'shop': 'car'} | 零跑汽车
+  poi | {'amenity': 'charging_station'} | 特来电
+  poi | {'amenity': 'charging_station'} | 特来电
+  shop | {'shop': 'telecommunication'} | 中国移动
+  shop | {'shop': 'massage'} | 纤手人生
+  shop | {'shop': 'telecommunication'} | 中国移动
+  poi | {'amenity': 'parking'} | 13769563903
+  poi | {'amenity': 'charging_station'} | 特来电汽车充电站
+  shop | {'shop': 'health_food'} | 辽参特卖 大连海参
+  poi | {'amenity': 'motorcycle_parking'} | 机车驿站
+  shop | {'shop': 'mobile_phone_accessories'} | 膜佰家
+  poi | {'amenity': 'charging_station'} | 国家电网
+  line | {} | 10280860
+  line | {} | 10281599
+  line | {} | 10281866
+  line | {} | 51824233
+  line | {} | 87899380
+  railway | {'railway': 'abandoned', 'bridge': 'yes'} | 94229411
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'abandoned'} | 94229433
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail'} | 江苏国信仪征热电有限责任公司专用线
+  railway | {'railway': 'rail'} | 153998409
+  railway | {'railway': 'rail'} | 153998413
+  railway | {'railway': 'abandoned', 'bridge': 'yes'} | 165745286
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'abandoned'} | 192325569
+  road | {'highway': 'secondary'} | 史可法路
+  road | {'highway': 'tertiary'} | 史可法东路
+  line | {} | 235406647
+  line | {} | 235623561
+  man_made | {'man_made': 'wastewater_plant'} | 248653901
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  line | {} | 252045047
+  man_made | {'man_made': 'wastewater_plant'} | 252045048
+  line | {} | 252045049
+  man_made | {'man_made': 'wastewater_plant'} | 260403343
+  line | {} | 265004247
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  line | {} | 287200215
+  line | {} | 287200241
+  line | {} | 287200244
+  line | {} | 287200251
+  line | {} | 287200253
+  line | {} | 287200254
+  line | {} | 287200256
+  line | {} | 287200258
+  line | {} | 287200259
+  line | {} | 319734320
+  railway | {'railway': 'rail'} | 320789787
+  railway | {'railway': 'rail'} | 320789789
+  railway | {'railway': 'rail'} | 320789793
+  railway | {'railway': 'rail'} | 320789795
+  railway | {'railway': 'rail'} | 320789797
+  railway | {'railway': 'disused'} | 320789801
+  line | {} | 339482890
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  line | {} | 339936386
+  line | {} | 339936388
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  line | {} | 342118780
+  line | {} | 342536201
+  line | {} | 343601368
+  line | {} | 343687543
+  line | {} | 343687551
+  line | {} | 343687552
+  line | {} | 343687553
+  line | {} | 343687554
+  man_made | {'man_made': 'wastewater_plant'} | 357797176
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail'} | 361714814
+  railway | {'railway': 'rail'} | 361714815
+  railway | {'railway': 'rail'} | 361714816
+  railway | {'railway': 'rail'} | 361716522
+  railway | {'railway': 'rail'} | 361716523
+  line | {} | 362004194
+  line | {} | 362004196
+  line | {} | 362004207
+  line | {} | 362004219
+  line | {} | 362004257
+  line | {} | 362004296
+  line | {} | 364516418
+  line | {} | 364516503
+  line | {} | 367819170
+  line | {} | 367819251
+  line | {} | 367819269
+  line | {} | 367819326
+  line | {} | 367819365
+  line | {} | 367819366
+  line | {} | 367819373
+  line | {} | 367819384
+  line | {} | 367819389
+  line | {} | 367819412
+  line | {} | 367819414
+  line | {} | 377245318
+  line | {} | 377284002
+  line | {} | 377293084
+  line | {} | 377293085
+  line | {} | 377293087
+  line | {} | 377469998
+  line | {} | 377484164
+  line | {} | 马集客运站
+  line | {} | 379744207
+  line | {} | 379756979
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  line | {} | 392716402
+  line | {} | 392716410
+  line | {} | 392716429
+  line | {} | 392716431
+  line | {} | 392716438
+  line | {} | 392716442
+  line | {} | 392716457
+  line | {} | 392716465
+  line | {} | 392716472
+  line | {} | 392716475
+  line | {} | 392716476
+  line | {} | 392716477
+  line | {} | 392716479
+  line | {} | 392716482
+  line | {} | 392716483
+  line | {} | 392716488
+  line | {} | 392716490
+  line | {} | 392716494
+  line | {} | 392716499
+  line | {} | 392716503
+  line | {} | 392716511
+  line | {} | 392716512
+  line | {} | 392716521
+  line | {} | 392716527
+  line | {} | 392716531
+  line | {} | 392716538
+  line | {} | 392716547
+  line | {} | 392716548
+  line | {} | 392716555
+  line | {} | 392716570
+  line | {} | 403309694
+  line | {} | 431106094
+  railway | {'railway': 'rail'} | 434976279
+  railway | {'railway': 'rail', 'bridge': 'viaduct'} | 连镇线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  line | {} | 491632668
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 连镇线
+  line | {} | 536540020
+  railway | {'railway': 'abandoned'} | 540870109
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'abandoned'} | 540870112
+  railway | {'railway': 'rail'} | 宁启线
+  man_made | {'man_made': 'water_works'} | 廖家沟水厂
+  man_made | {'man_made': 'wastewater_plant'} | 612017856
+  line | {} | 612030205
+  line | {} | 689912788
+  line | {} | 689958805
+  line | {} | 689965282
+  line | {} | 690149350
+  line | {} | 690150994
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  line | {} | 747346878
+  railway | {'railway': 'rail'} | 泰安镇联络线
+  railway | {'railway': 'rail', 'bridge': 'viaduct'} | 泰安镇联络线
+  railway | {'railway': 'rail', 'bridge': 'viaduct'} | 泰安镇联络线
+  railway | {'railway': 'rail'} | 泰安镇联络线
+  railway | {'railway': 'rail', 'bridge': 'viaduct'} | 泰安镇联络线
+  railway | {'railway': 'rail', 'bridge': 'viaduct'} | 江都联络线
+  railway | {'railway': 'rail'} | 江都联络线
+  railway | {'railway': 'rail', 'bridge': 'viaduct'} | 江都联络线
+  railway | {'railway': 'rail'} | 江都联络线
+  railway | {'railway': 'rail', 'bridge': 'viaduct'} | 江都联络线
+  road | {'highway': 'tertiary'} | 史可法北路
+  railway | {'railway': 'rail', 'bridge': 'viaduct'} | 连镇线
+  road | {'highway': 'tertiary'} | 史可法路
+  road | {'highway': 'secondary', 'bridge': 'yes'} | 史可法路
+  road | {'highway': 'secondary', 'bridge': 'yes'} | 史可法路
+  road | {'highway': 'secondary'} | 史可法路
+  road | {'highway': 'secondary', 'bridge': 'yes'} | 史可法路
+  road | {'highway': 'secondary'} | 史可法路
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'abandoned', 'bridge': 'yes'} | 837001358
+  railway | {'railway': 'abandoned'} | 837001359
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 江都联络线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 江都联络线
+  railway | {'railway': 'disused'} | 838793206
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 838793207
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'viaduct'} | 883663583
+  railway | {'railway': 'rail', 'bridge': 'viaduct'} | 883663584
+  line | {} | 911717959
+  line | {} | 911717960
+  line | {} | 939095320
+  line | {} | 939095321
+  line | {} | 939095322
+  line | {} | 939095323
+  line | {} | 939095324
+  line | {} | 939095325
+  line | {} | 939095326
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'construction', 'tunnel': 'yes'} | 南京地铁S5号线
+  railway | {'railway': 'construction'} | 扬州停车场出入场线
+  railway | {'railway': 'construction', 'tunnel': 'yes'} | 南京地铁S5号线
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 南京地铁S5号线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 981232720
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  line | {} | 981950411
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 991060112
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail'} | 991060114
+  railway | {'railway': 'rail'} | 991060115
+  railway | {'railway': 'rail'} | 991060116
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'viaduct'} | 连镇线
+  railway | {'railway': 'rail', 'bridge': 'viaduct'} | 泰安镇联络线
+  railway | {'railway': 'rail', 'bridge': 'viaduct'} | 泰安镇联络线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 991060133
+  railway | {'railway': 'rail'} | 991060134
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 991060135
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 991108864
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 991247213
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 991247214
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  line | {} | 1001665820
+  line | {} | 1001684259
+  line | {} | 1001684261
+  line | {} | 1001686363
+  line | {} | 1001686365
+  line | {} | 1001686366
+  line | {} | 1001686367
+  line | {} | 1001686368
+  line | {} | 1001686369
+  line | {} | 1001689740
+  line | {} | 1001693998
+  line | {} | 1001693999
+  line | {} | 1009876534
+  line | {} | 1009876535
+  line | {} | 1009876537
+  line | {} | 1009876539
+  line | {} | 1009876540
+  line | {} | 1009876542
+  line | {} | 1009876543
+  line | {} | 1009876544
+  line | {} | 1009876549
+  line | {} | 1009878194
+  line | {} | 1009878195
+  line | {} | 1009878196
+  line | {} | 1009881230
+  line | {} | 1009881231
+  line | {} | 1009881233
+  line | {} | 1009882308
+  line | {} | 1009883410
+  line | {} | 1009883412
+  line | {} | 1009883415
+  line | {} | 1009883416
+  line | {} | 1009884366
+  line | {} | 1009884367
+  line | {} | 1009884368
+  line | {} | 1009885650
+  line | {} | 1009885651
+  line | {} | 1009885652
+  line | {} | 1009886266
+  line | {} | 1009890199
+  line | {} | 1010140098
+  line | {} | 1010140100
+  line | {} | 1010140101
+  line | {} | 1010140102
+  line | {} | 1010140103
+  line | {} | 1010142917
+  line | {} | 1010142918
+  line | {} | 1010142919
+  line | {} | 1010142921
+  line | {} | 1010142922
+  line | {} | 1010149438
+  line | {} | 1010149439
+  line | {} | 1010149440
+  line | {} | 1010154158
+  line | {} | 1010154159
+  line | {} | 1010154161
+  line | {} | 1010154162
+  line | {} | 1010156362
+  line | {} | 1010156363
+  line | {} | 1010156364
+  line | {} | 1010156365
+  line | {} | 1010158960
+  line | {} | 1010158961
+  line | {} | 1010163299
+  line | {} | 1010163300
+  line | {} | 1010163302
+  line | {} | 1010163303
+  line | {} | 1010163304
+  line | {} | 1010166968
+  line | {} | 1010166969
+  line | {} | 1010166970
+  line | {} | 1010166971
+  line | {} | 1010166974
+  line | {} | 1010166975
+  line | {} | 1010166976
+  line | {} | 1010166982
+  line | {} | 1010169174
+  line | {} | 1010169175
+  line | {} | 1010169176
+  line | {} | 1010169177
+  line | {} | 1010169178
+  line | {} | 1010169180
+  line | {} | 1010173051
+  line | {} | 1010173055
+  line | {} | 1010173056
+  line | {} | 1010173058
+  line | {} | 1010174033
+  line | {} | 1010174034
+  line | {} | 1010174035
+  line | {} | 1010174036
+  line | {} | 1010175245
+  line | {} | 1010175246
+  line | {} | 1010175247
+  line | {} | 1010176609
+  line | {} | 1010184775
+  line | {} | 1010184776
+  line | {} | 1010184777
+  line | {} | 1010184781
+  line | {} | 1010184782
+  line | {} | 1010184783
+  line | {} | 1010184784
+  line | {} | 1010184785
+  line | {} | 1010184786
+  line | {} | 1010184788
+  line | {} | 1010184790
+  line | {} | 1010186641
+  line | {} | 1010186644
+  line | {} | 1010186645
+  line | {} | 1010186646
+  line | {} | 1010186927
+  line | {} | 1010337000
+  line | {} | 1010338891
+  line | {} | 1010340454
+  line | {} | 1010340456
+  line | {} | 1010340458
+  line | {} | 1010340459
+  line | {} | 1010342000
+  line | {} | 1010342004
+  line | {} | 1010342519
+  line | {} | 1010342520
+  line | {} | 1010342521
+  line | {} | 1010343551
+  line | {} | 1010343552
+  line | {} | 1010472071
+  line | {} | 1010472072
+  line | {} | 1010475582
+  line | {} | 1010475584
+  line | {} | 1010480356
+  line | {} | 1010480357
+  line | {} | 1010481728
+  line | {} | 1010496760
+  line | {} | 1010496761
+  railway | {'railway': 'rail'} | 宁启线
+  line | {} | 1030687102
+  line | {} | 1030687103
+  line | {} | 1030687104
+  line | {} | 1030687105
+  line | {} | 1030687106
+  line | {} | 1030687107
+  line | {} | 1030687108
+  line | {} | 1030687109
+  line | {} | 1030687111
+  line | {} | 1032897349
+  line | {} | 1032897350
+  line | {} | 1032897351
+  line | {} | 1032897370
+  line | {} | 1032897371
+  line | {} | 1032897372
+  line | {} | 1032897377
+  line | {} | 1032897378
+  line | {} | 1032897379
+  line | {} | 1032897380
+  line | {} | 1032897382
+  line | {} | 1032897436
+  line | {} | 1032897497
+  line | {} | 1032897498
+  line | {} | 1032897499
+  line | {} | 1032897500
+  line | {} | 1032897503
+  man_made | {'man_made': 'wastewater_plant'} | 污水处理站
+  line | {} | 1032915246
+  line | {} | 1032915247
+  line | {} | 1032944942
+  line | {} | 1032944943
+  line | {} | 1032944944
+  line | {} | 1032944945
+  line | {} | 1032944954
+  line | {} | 1033125793
+  line | {} | 1033125794
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 1057958597
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 1057958598
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 1057958602
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 1057958604
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 1057958608
+  railway | {'railway': 'rail'} | 1057965054
+  man_made | {'man_made': 'crane'} | 1107147954
+  man_made | {'man_made': 'crane'} | 1107147955
+  man_made | {'man_made': 'crane'} | 1107147956
+  man_made | {'man_made': 'crane'} | 1107147966
+  line | {} | 1107148028
+  line | {} | 1107148033
+  line | {} | 1107148034
+  line | {} | 1107148036
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  line | {} | 1175481044
+  line | {} | 1175481051
+  line | {} | 1175481052
+  line | {} | 1175497934
+  line | {} | 1175497936
+  line | {} | 1175497938
+  line | {} | 1175497939
+  line | {} | 1175497940
+  line | {} | 1175497942
+  line | {} | 1175497943
+  line | {} | 1175497944
+  line | {} | 1175497945
+  line | {} | 1175497946
+  line | {} | 1175497947
+  line | {} | 1175497948
+  line | {} | 1175497949
+  line | {} | 1175497950
+  line | {} | 1175497951
+  line | {} | 1175497952
+  line | {} | 1175497953
+  line | {} | 1175497954
+  line | {} | 1175497955
+  line | {} | 1175504130
+  line | {} | 1175504132
+  line | {} | 1175504133
+  line | {} | 1175504134
+  line | {} | 1175504135
+  line | {} | 1175504136
+  line | {} | 1175504139
+  line | {} | 1175504140
+  line | {} | 1175504141
+  line | {} | 1175504142
+  line | {} | 1175504143
+  line | {} | 1175504144
+  line | {} | 1175504145
+  line | {} | 1175504146
+  line | {} | 1175504147
+  line | {} | 1175504148
+  line | {} | 1175504149
+  line | {} | 1175504150
+  line | {} | 1175504151
+  line | {} | 1175504152
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  line | {} | 1176641094
+  line | {} | 1176641095
+  line | {} | 1176641096
+  line | {} | 1176641097
+  line | {} | 1176641098
+  line | {} | 1176641099
+  line | {} | 1176641100
+  line | {} | 1176641101
+  line | {} | 1176641102
+  line | {} | 1176641103
+  line | {} | 1176641104
+  line | {} | 1176641105
+  line | {} | 1176641106
+  line | {} | 1176641107
+  line | {} | 1176641108
+  line | {} | 1176641109
+  line | {} | 1176641110
+  line | {} | 1176641111
+  line | {} | 1176641112
+  line | {} | 1176641113
+  line | {} | 1176641114
+  line | {} | 1176641115
+  line | {} | 1176641116
+  line | {} | 1176641117
+  line | {} | 1176641118
+  line | {} | 1176641120
+  line | {} | 1176641121
+  line | {} | 1176641122
+  line | {} | 1176643394
+  line | {} | 1176643536
+  line | {} | 1176646299
+  line | {} | 1176646302
+  line | {} | 1176646305
+  line | {} | 1176646306
+  line | {} | 1176646307
+  line | {} | 1176646308
+  line | {} | 1176646309
+  line | {} | 1176646310
+  line | {} | 1176646311
+  line | {} | 1176646312
+  line | {} | 1176646313
+  line | {} | 1176646314
+  line | {} | 1176646315
+  line | {} | 1176646316
+  line | {} | 1176646317
+  line | {} | 1176646318
+  line | {} | 1176646319
+  line | {} | 1176646320
+  line | {} | 1176646321
+  line | {} | 1176646322
+  line | {} | 1176646323
+  line | {} | 1176646324
+  line | {} | 1176646325
+  line | {} | 1176646326
+  line | {} | 1176646327
+  line | {} | 1176646328
+  line | {} | 1176646329
+  line | {} | 1176646330
+  line | {} | 1176646605
+  line | {} | 1184309188
+  line | {} | 1184309189
+  line | {} | 1184309190
+  line | {} | 1184309191
+  line | {} | 1184309192
+  line | {} | 1184309193
+  line | {} | 1184313300
+  line | {} | 1184313301
+  line | {} | 1184313302
+  line | {} | 1184313303
+  line | {} | 1184313304
+  line | {} | 1184313305
+  line | {} | 1184313306
+  line | {} | 1184313307
+  line | {} | 1184313308
+  line | {} | 1184313309
+  line | {} | 1184313310
+  line | {} | 1184313311
+  line | {} | 1184313312
+  line | {} | 1184313313
+  line | {} | 1184313314
+  line | {} | 1184313315
+  line | {} | 1184313316
+  line | {} | 1184313317
+  line | {} | 1184313318
+  line | {} | 1184313319
+  line | {} | 1184313320
+  line | {} | 1184313321
+  line | {} | 1184313322
+  line | {} | 1184313323
+  line | {} | 1184313324
+  line | {} | 1184313325
+  line | {} | 1184313326
+  line | {} | 1184313327
+  line | {} | 1184313328
+  line | {} | 1184313329
+  line | {} | 1184313331
+  line | {} | 1184313332
+  railway | {'railway': 'rail', 'bridge': 'viaduct'} | 连镇线
+  railway | {'railway': 'rail', 'bridge': 'viaduct'} | 连镇线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  line | {} | 1192596044
+  line | {} | 1206410098
+  line | {} | 1206410100
+  line | {} | 1206410101
+  line | {} | 1206410103
+  line | {} | 1206410104
+  line | {} | 1206410105
+  line | {} | 1206410106
+  line | {} | 1206410107
+  line | {} | 1206410109
+  line | {} | 1206410110
+  line | {} | 1206410111
+  line | {} | 1206410113
+  line | {} | 1206410114
+  line | {} | 1206410115
+  line | {} | 1206410116
+  line | {} | 1206410117
+  line | {} | 1206410119
+  line | {} | 1206410120
+  line | {} | 1206646399
+  line | {} | 1206646400
+  line | {} | 1206646401
+  line | {} | 1206646402
+  line | {} | 1206646403
+  line | {} | 1206646404
+  line | {} | 1206646405
+  line | {} | 1206646408
+  line | {} | 1206646409
+  line | {} | 1206646410
+  line | {} | 1206646415
+  line | {} | 1206646416
+  line | {} | 1207791858
+  line | {} | 1207791859
+  line | {} | 1207791860
+  line | {} | 1207791861
+  line | {} | 1207791864
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 沪渝蓉高速线
+  line | {} | 1225529081
+  line | {} | 1225530634
+  man_made | {'man_made': 'lighthouse'} | 灯塔
+  railway | {'railway': 'construction'} | 沪渝蓉高速铁路
+  line | {} | 1278747182
+  line | {} | 1278747183
+  line | {} | 1278747204
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 1290606134
+  railway | {'railway': 'rail'} | 1290606135
+  railway | {'railway': 'rail'} | 1290606136
+  railway | {'railway': 'rail'} | 1290606137
+  railway | {'railway': 'rail'} | 1290606138
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 1299719786
+  railway | {'railway': 'rail'} | 1299719787
+  railway | {'railway': 'rail'} | 1299719788
+  railway | {'railway': 'rail'} | 1299719789
+  railway | {'railway': 'rail'} | 1299719790
+  railway | {'railway': 'rail'} | 1299719791
+  railway | {'railway': 'rail'} | 1299719792
+  railway | {'railway': 'rail'} | 1299719793
+  railway | {'railway': 'rail'} | 1299719794
+  railway | {'railway': 'rail'} | 1299719795
+  railway | {'railway': 'rail'} | 1299719796
+  railway | {'railway': 'rail'} | 1299719797
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 1299798125
+  railway | {'railway': 'rail'} | 1299798126
+  railway | {'railway': 'rail'} | 1299798127
+  railway | {'railway': 'rail'} | 1299798128
+  railway | {'railway': 'rail'} | 1299798129
+  railway | {'railway': 'rail'} | 1299798130
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 1299798131
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  railway | {'railway': 'rail'} | 宁启线
+  road | {'highway': 'secondary'} | 史可法路
+  road | {'highway': 'secondary'} | 史可法路
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 沪渝蓉高速铁路
+  line | {} | 1354037507
+  line | {} | 1354037508
+  line | {} | 1354037509
+  line | {} | 1354037510
+  line | {} | 1354037511
+  line | {} | 1354037512
+  line | {} | 1354037513
+  line | {} | 1354037861
+  line | {} | 1354037862
+  line | {} | 1354037863
+  line | {} | 1354037864
+  line | {} | 1354037865
+  line | {} | 1354037866
+  line | {} | 1354037867
+  line | {} | 1354037868
+  line | {} | 1359809683
+  line | {} | 1359809684
+  line | {} | 1359809685
+  line | {} | 1359809686
+  line | {} | 1359809687
+  railway | {'railway': 'rail', 'bridge': 'viaduct'} | 连镇线
+  railway | {'railway': 'rail'} | 1367828147
+  railway | {'railway': 'rail'} | 1367828148
+  railway | {'railway': 'rail'} | 1367828149
+  railway | {'railway': 'rail'} | 1367828150
+  railway | {'railway': 'rail'} | 1367828151
+  railway | {'railway': 'rail'} | 1367828152
+  railway | {'railway': 'rail'} | 1367828153
+  line | {} | 1375522612
+  line | {} | 1375522613
+  line | {} | 1375522614
+  line | {} | 1375524962
+  line | {} | 1375526281
+  line | {} | 1375526282
+  line | {} | 1375526787
+  line | {} | 1375785104
+  road | {'highway': 'secondary'} | 史可法路
+  road | {'highway': 'secondary'} | 史可法路
+  road | {'highway': 'secondary'} | 史可法路
+  road | {'highway': 'secondary', 'bridge': 'yes'} | 史可法路
+  road | {'highway': 'secondary'} | 史可法路
+  road | {'highway': 'secondary', 'bridge': 'yes'} | 史可法路
+  road | {'highway': 'secondary'} | 史可法路
+  road | {'highway': 'secondary'} | 史可法路
+  road | {'highway': 'secondary', 'bridge': 'yes'} | 史可法路
+  road | {'highway': 'secondary'} | 史可法路
+  line | {} | 1393413049
+  line | {} | 1393413450
+  line | {} | 1393413451
+  line | {} | 1422935717
+  line | {} | 1422935786
+  line | {} | 1457993137
+  line | {} | 1457993138
+  line | {} | 1457993139
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 沪渝蓉高速铁路
+  railway | {'railway': 'construction'} | 沪渝蓉高速铁路
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 沪渝蓉高速线
+  line | {} | 1465079555
+  line | {} | 1465079573
+  line | {} | 1465079574
+  line | {} | 1465079581
+  line | {} | 1465079583
+  line | {} | 1465079585
+  line | {} | 1465079587
+  line | {} | 1465079594
+  line | {} | 1465118373
+  line | {} | 1465118380
+  line | {} | 1507452271
+  line | {} | 1507452272
+  line | {} | 1507452273
+  line | {} | 1507452274
+  line | {} | 1507452275
+  line | {} | 1507452276
+  line | {} | 1512053510
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 1513610197
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 1513610198
+  railway | {'railway': 'rail', 'bridge': 'yes'} | 1513610199
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 沪渝蓉高速线
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 沪渝蓉高速线
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 沪渝蓉高速线
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 沪渝蓉高速线
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 1513634177
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 1513634178
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 1513634179
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 1513634180
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 1513634181
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 1513634182
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 1513634183
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 1513634184
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 1513634185
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 1513634186
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 1513634187
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 扬州东北东联络线
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 扬州东北东联络线
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 1513634190
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 扬州东存车场动车走行线
+  railway | {'railway': 'construction'} | 扬州东存车场动车走行线
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 扬州东存车场动车走行线
+  railway | {'railway': 'construction'} | 扬州东存车场动车走行线
+  railway | {'railway': 'rail'} | 1513995287
+  railway | {'railway': 'construction'} | 1513995288
+  railway | {'railway': 'construction'} | 1513995289
+  railway | {'railway': 'construction'} | 1513995290
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 1513995291
+  railway | {'railway': 'construction'} | 1513995292
+  railway | {'railway': 'construction'} | 扬州东北东联络线
+  railway | {'railway': 'construction'} | 扬州东北东联络线
+  railway | {'railway': 'proposed', 'bridge': 'yes'} | 扬马城际线
+  railway | {'railway': 'proposed', 'bridge': 'yes'} | 扬马城际线
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 扬州东北西联络线（预留）
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 扬州东北西联络线（预留）
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 1513995299
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 扬马城际线
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 扬马城际线
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 1513995302
+  line | {} | 1521335063
+  railway | {'railway': 'proposed'} | 南京地铁S5号线仪征高铁站支线规划
+  railway | {'railway': 'proposed'} | 南京地铁S10号线
+  line | {} | 1534537180
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 扬州东北东联络线
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 扬州东北东联络线
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 沪渝蓉高速线
+  railway | {'railway': 'construction', 'bridge': 'yes'} | 沪渝蓉高速线
+  poi_area | {'amenity': 'parking'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | 扬大附中田径场
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | 田径场
+  building | {'building': 'yes', 'amenity': 'conference_centre'} | 扬州国际展览中心
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  leisure | {'leisure': 'pitch'} | None
+  poi_area | {'amenity': 'college'} | 江海职业技术学院
+  poi_area | {'amenity': 'bus_station'} | 扬州汽车东站
+  poi_area | {'amenity': 'parking'} | None
+  landuse | {'landuse': 'observatory'} | 气象局
+  poi_area | {'amenity': 'university'} | 扬州大学江阳路北校区
+  poi_area | {'amenity': 'university'} | 扬州大学荷花池校区
+  poi_area | {'amenity': 'university'} | 扬州大学文汇路校区
+  poi_area | {'amenity': 'university'} | 扬州大学瘦西湖校区
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'bus_station'} | 扬州城北汽车客运站
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'school'} | 扬州中瑞酒店职业学院
+  poi_area | {'amenity': 'school'} | 奔马驾校训练基地
+  poi_area | {'amenity': 'school'} | 扬州市机动车驾驶员培训学校
+  poi_area | {'amenity': 'university'} | 扬州职业大学
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | 篮球场
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | 篮球场
+  building | {'building': 'school', 'leisure': 'sports_centre'} | 体育馆
+  leisure | {'leisure': 'pitch', 'sport': 'tennis'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  poi_area | {'amenity': 'university'} | 扬州大学江阳路南校区
+  leisure | {'leisure': 'pitch'} | None
+  poi_area | {'amenity': 'university'} | 扬州大学淮海路校区
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'sports_centre'} | 李宁体育公园
+  building | {'building': 'yes', 'amenity': 'fuel'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  poi_area | {'amenity': 'parking'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer;athletics'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  poi_area | {'amenity': 'parking'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch'} | None
+  poi_area | {'amenity': 'parking'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  building | {'historic': 'memorial', 'building': 'yes'} | 扬州革命烈士纪念馆
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'baseball'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'tennis'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  poi_area | {'amenity': 'fuel'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  poi_area | {'amenity': 'driver_training'} | 龙马驾校
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  poi_area | {'amenity': 'parking'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  poi_area | {'amenity': 'parking'} | None
+  leisure | {'leisure': 'pitch'} | None
+  poi_area | {'amenity': 'parking'} | None
+  leisure | {'leisure': 'swimming_pool'} | 仪化游泳馆
+  leisure | {'leisure': 'swimming_pool'} | 仪征游泳馆
+  poi_area | {'amenity': 'bus_station'} | 胥浦汽车站
+  poi_area | {'amenity': 'bus_station'} | 仪征汽车站
+  poi_area | {'amenity': 'parking'} | None
+  building | {'building': 'yes', 'man_made': 'tower'} | 栖灵塔
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  tourism | {'tourism': 'museum'} | 崔致远纪念馆
+  poi_area | {'amenity': 'fuel'} | 中国石油
+  poi_area | {'amenity': 'driver_training'} | 江都车管所
+  poi_area | {'amenity': 'fuel'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'tennis'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | 秘密地点
+  building | {'building': 'yes'} | 爱慕伊婚纱摄影工作室
+  leisure | {'leisure': 'sports_centre'} | 仪征综合体育馆
+  poi_area | {'amenity': 'parking'} | None
+  landuse | {'military': 'training_area', 'landuse': 'military'} | 江都国防园
+  poi_area | {'amenity': 'school'} | 华东师范大学广陵实验高级中学
+  poi_area | {'amenity': 'school'} | 华东师范大学广陵实验初级中学
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  poi_area | {'amenity': 'parking'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  building | {'historic': 'monument', 'building': 'yes'} | 鉴真纪念堂
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'baseball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'baseball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'tennis'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'tennis'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'tennis'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'tennis'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  leisure | {'leisure': 'pitch'} | None
+  poi_area | {'amenity': 'driver_training'} | 扬大驾校扬子津教学点
+  poi_area | {'amenity': 'university'} | 扬州大学扬子津校区
+  leisure | {'leisure': 'pitch', 'sport': 'baseball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'baseball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'tennis'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'tennis'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'tennis'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'tennis'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'volleyball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'volleyball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'volleyball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'volleyball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'volleyball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'volleyball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'volleyball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'volleyball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'volleyball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'volleyball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'volleyball'} | None
+  poi_area | {'amenity': 'college'} | 扬州大学广陵学院
+  poi_area | {'amenity': 'research_institute'} | 农水水文水生态试验场
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  area | {'railway': 'platform'} | None
+  area | {'railway': 'platform'} | None
+  poi_area | {'amenity': 'parking'} | None
+  building | {'building': 'yes', 'man_made': 'tower'} | None
+  leisure | {'leisure': 'park'} | 史可法纪念馆
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  poi_area | {'amenity': 'parking'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  poi_area | {'amenity': 'university'} | 南京邮电大学通达学院
+  poi_area | {'amenity': 'parking'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'tennis'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  poi_area | {'amenity': 'parking'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  poi_area | {'amenity': 'bicycle_parking'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'table_tennis'} | None
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'bicycle_parking'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch'} | None
+  poi_area | {'amenity': 'parking', 'surface': 'asphalt'} | None
+  poi_area | {'amenity': 'parking', 'surface': 'asphalt'} | None
+  leisure | {'leisure': 'swimming_pool'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'croquet'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'tennis'} | None
+  poi_area | {'amenity': 'fuel'} | 中国石化
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  leisure | {'leisure': 'sports_centre'} | None
+  poi_area | {'amenity': 'parking'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  building | {'building': 'transportation'} | 江都汽车客运站
+  area | {'highway': 'bus_stop'} | 杉湾花园公交首末站
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | 足球场
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | 足球场
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  leisure | {'leisure': 'pitch'} | None
+  poi_area | {'amenity': 'school'} | 扬州大学教科院附属竹西小学
+  poi_area | {'amenity': 'university'} | 江苏旅游职业学院
+  poi_area | {'amenity': 'research_institute'} | 西安交大扬州科技园
+  poi_area | {'amenity': 'school'} | 南京师范大学附属邗江实验小学
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'tennis'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'tennis'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  poi_area | {'amenity': 'bus_station'} | 丁沟客运站
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'tennis'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  area | {} | None
+  poi_area | {'amenity': 'driver_training'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'basketball'} | None
+  leisure | {'leisure': 'pitch', 'sport': 'running'} | None
+  poi_area | {'amenity': 'bicycle_parking'} | None
+  poi_area | {'amenity': 'parking'} | None
+  poi_area | {'amenity': 'fuel'} | 中化道达尔加油站(瓜洲站)
+  poi_area | {'amenity': 'fuel'} | 中国石化加油站(扬州朴席站)
+  poi_area | {'amenity': 'fuel'} | 中国石化
+  poi_area | {'amenity': 'bus_station'} | 大桥客运站
+  poi_area | {'amenity': 'bus_station'} | 瘦西湖公交首末站
+  leisure | {'leisure': 'pitch', 'sport': 'soccer'} | None
+  leisure | {'leisure': 'pitch'} | None
+（共剔除 1422 个）
+
+标记：改=已改名（原名 -> 新名）  留=保留原名  去名=原名置空(几何保留)
+保留对象: 13261，其中改名 724 个，去名(几何保留) 88 个
+
+== 已改名对象（原名 -> 新名 [类别]）==
+江都区  ->  江都   [州城]  place=city
+扬州市  ->     [州城]  place=city
+广陵区  ->  广陵   [州城]  place=city
+世纪联华  ->  杂货铺   [杂货铺]  shop=supermarket
+扬州个园国际青年旅舍  ->  个园客栈   [客栈]  tourism=hostel
+石塔宾馆  ->  石塔客栈   [客栈]  tourism=hotel
+镇扬汽渡镇江渡口  ->     [渡口]  amenity=ferry_terminal
+镇扬汽渡扬州渡口  ->     [渡口]  amenity=ferry_terminal
+梅岭中学  ->  梅岭书院   [书院]  amenity=school
+扬州市第一人民医院  ->  医馆   [医馆]  amenity=hospital
+瘦西湖公园南门  ->     [胜迹]  tourism=attraction
+瘦西湖公园西门  ->     [胜迹]  tourism=attraction
+扬州迎宾馆  ->  迎客栈   [客栈]  tourism=hotel
+秦朝瓦罐面  ->  秦朝面酒楼   [酒楼]  amenity=restaurant
+扬州市第一中学  ->  书院   [书院]  amenity=school
+机关三幼绿杨园  ->  蒙馆   [蒙馆]  amenity=school
+新世纪大酒店  ->  新世纪客栈   [客栈]  tourism=hotel
+花园国际大酒店  ->  花园客栈   [客栈]  tourism=hotel
+中国银行  ->  钱铺   [钱铺]  amenity=bank
+香格里拉大酒店  ->  客栈   [客栈]  tourism=hotel
+天山社区  ->  天山社   [村]  place=village
+中国工商银行  ->  钱铺   [钱铺]  amenity=bank
+扬州农村商业银行  ->  钱铺   [钱铺]  amenity=bank
+交通银行  ->  钱铺   [钱铺]  amenity=bank
+招商银行  ->  钱铺   [钱铺]  amenity=bank
+中国银行  ->  钱铺   [钱铺]  amenity=bank
+江苏银行  ->  钱铺   [钱铺]  amenity=bank
+中国光大银行  ->  钱铺   [钱铺]  amenity=bank
+中国银行  ->  钱铺   [钱铺]  amenity=bank
+乐天马特  ->  杂货铺   [杂货铺]  shop=supermarket
+中国农业银行  ->  钱铺   [钱铺]  amenity=bank
+凯德广场  ->  凯德大市铺   [大市铺]  shop=mall
+双桥集贸市场  ->  双桥市集   [市集]  amenity=marketplace
+海底捞火锅  ->  酒楼   [酒楼]  amenity=restaurant
+仪征市人文书店  ->  仪征人文书店书肆   [书肆]  shop=books
+仪征市鼓楼街  ->  仪征鼓楼街百货铺   [百货铺]  shop=department_store
+肯德基  ->  食铺   [食铺]  amenity=fast_food
+仪征市  ->  仪征   [州城]  place=city
+扬州中国雕版印刷博物馆  ->  雕版印刷藏馆   [藏馆]  tourism=museum
+杭集基督教堂  ->  杭集基督寺观   [寺观]  amenity=place_of_worship
+邗江区  ->  邗江   [州城]  place=city
+头桥社区  ->  头桥社   [村]  place=village
+中国大运河博物馆  ->  大运河藏馆   [藏馆]  tourism=museum
+扬子津招待所  ->  扬子津邸店   [邸店]  tourism=guest_house
+建筑科学与工程学院  ->  建筑科学与工程书院   [书院]  amenity=college
+信息工程学院  ->  信息工程书院   [书院]  amenity=college
+商学院  ->  书院   [书院]  amenity=college
+电气与能源动力工程学院  ->  电气与能源动力工程书院   [书院]  amenity=college
+机械工程学院  ->  机械工程书院   [书院]  amenity=college
+旅游烹饪食品学院  ->  旅游烹饪食品书院   [书院]  amenity=college
+外国语学院  ->  书院   [书院]  amenity=college
+体育学院  ->  体育书院   [书院]  amenity=college
+教育超市  ->  教育超杂货铺   [杂货铺]  shop=supermarket
+菜鸟驿站  ->  递铺   [递铺]  amenity=post_office
+环境科学与工程学院  ->  环境科学与工程书院   [书院]  amenity=college
+法学院  ->  书院   [书院]  amenity=college
+扬子津校区平面示意图  ->     [问讯处]  tourism=information
+文体馆小剧场  ->  文体馆小瓦舍   [瓦舍]  amenity=theatre
+昭文馆报告厅  ->  昭文馆瓦舍   [瓦舍]  amenity=theatre
+浴室  ->  浴堂   [浴堂]  amenity=public_bath
+感恩母校  ->     [碑]  historic=memorial
+母校情深  ->     [碑]  historic=memorial
+师恩永泽  ->     [碑]  historic=memorial
+Xu Xilong Sulpture  ->  碑刻   [碑刻]  tourism=artwork
+菜鸟驿站  ->  递铺   [递铺]  amenity=parcel_locker
+田园肥牛府(印象田园店)  ->  田园肥牛府印象田园店酒楼   [酒楼]  amenity=restaurant
+喜茶  ->  饮品铺   [饮品铺]  amenity=cafe
+7-Eleven  ->  杂货铺   [杂货铺]  shop=convenience
+文景宾馆  ->  文景邸店   [邸店]  tourism=guest_house
+福瑞堂大药房  ->  福瑞堂药铺   [药铺]  shop=chemist
+牛肉板面王  ->  牛肉酒楼   [酒楼]  amenity=restaurant
+美诺护肤造型  ->  美诺梳洗铺   [梳洗铺]  shop=hairdresser
+老鸭粉丝汤馆  ->  酒楼   [酒楼]  amenity=restaurant
+美琪大药房  ->  美琪药铺   [药铺]  shop=chemist
+吴辉群众烧烤地摊儿  ->  吴辉群众地摊儿酒楼   [酒楼]  amenity=restaurant
+客满堂重庆特色串串火锅  ->  客满堂重庆特色酒楼   [酒楼]  amenity=restaurant
+A.O.史密斯  ->  史密斯店铺   [店铺]  shop=bathroom_furnishing
+喜茶  ->  饮品铺   [饮品铺]  amenity=cafe
+蜜雪冰城  ->  饮品铺   [饮品铺]  amenity=cafe
+来易佳超市  ->  来易佳超杂货铺   [杂货铺]  shop=convenience
+果鲜优(雍华府店)  ->  果鲜优雍华府店菜铺   [菜铺]  shop=greengrocer
+扬大牛奶直销点(翠岗路店)  ->  扬大牛奶直销点翠岗路店店铺   [店铺]  shop=dairy
+比特易国际儿童早教中心  ->  比特易儿童蒙馆   [蒙馆]  amenity=kindergarten
+小玖窝窝宠物医院  ->  小玖窝窝兽医铺   [兽医铺]  amenity=veterinary
+迪板潘师傅炸鸡(望月路店)  ->  迪板潘师傅望月路店食铺   [食铺]  amenity=fast_food
+罗森  ->  杂货铺   [杂货铺]  shop=convenience
+水乡土菜馆  ->  水乡馆酒楼   [酒楼]  amenity=restaurant
+药膳鸡  ->  酒楼   [酒楼]  amenity=restaurant
+今世缘·国缘  ->  今世缘国缘酒坊   [酒坊]  shop=wine
+大头老鹅馆  ->  大头酒楼   [酒楼]  amenity=restaurant
+潮汕私厨  ->  潮汕酒楼   [酒楼]  amenity=restaurant
+苏州银行  ->  钱铺   [钱铺]  amenity=bank
+北疆饭店  ->  北疆酒楼   [酒楼]  amenity=restaurant
+啁末食光  ->  杂货铺   [杂货铺]  shop=convenience
+麦当劳扬州京杭中路得来速餐厅  ->  食铺   [食铺]  amenity=fast_food
+霸王茶姬  ->  饮品铺   [饮品铺]  amenity=cafe
+扬州绿皮车酒店  ->  绿皮车客栈   [客栈]  tourism=hotel
+扬州美度  ->  美度店铺   [店铺]  shop=watches
+罗森  ->  杂货铺   [杂货铺]  shop=convenience
+普惠体检  ->  普惠药铺   [药铺]  amenity=clinic
+牧白手作  ->  牧白茶肆   [茶肆]  amenity=cafe
+万顺大碗面  ->  万顺酒楼   [酒楼]  amenity=restaurant
+中国兰州拉面店  ->  食铺   [食铺]  amenity=restaurant
+Yangzhou Concert Hall  ->  瓦舍   [瓦舍]  amenity=theatre
+诗渡瓜洲文化展示馆  ->  诗渡瓜洲文化藏馆   [藏馆]  amenity=exhibition_centre
+润扬湿地森林公园-游客服务中心  ->     [问讯处]  tourism=information
+扬州市青少年革命传统教育馆  ->  青少年革命传统教育馆   [碑坊]  historic=monument
+江月广场  ->  江月   [市]  place=square
+吴家粥铺  ->  吴家酒楼   [酒楼]  amenity=restaurant
+称幸手作  ->  称幸饼铺   [饼铺]  shop=bakery
+绝味鸭脖  ->  食铺   [食铺]  shop=deli
+大观园宾馆  ->  大观园客栈   [客栈]  tourism=hotel
+云来民宿 咖啡茶饮  ->  云来民宿茶肆   [茶肆]  amenity=cafe
+巷口烤串  ->  巷口酒楼   [酒楼]  amenity=restaurant
+莲·知觉  ->  莲知觉店铺   [店铺]  shop=fashion_accessories
+Feng-ya ocarina  ->  店铺   [店铺]  shop=musical_instrument
+星巴克  ->  饮品铺   [饮品铺]  amenity=cafe
+趣茶手作  ->  趣茶茶肆   [茶肆]  amenity=cafe
+茉等花开&茉野植治  ->  茉等花开茉野植治花铺   [花铺]  shop=florist
+潘老板炸鸡  ->  潘老板食铺   [食铺]  amenity=fast_food
+萨莉亚  ->  食铺   [食铺]  amenity=restaurant
+乔丹  ->  鞋铺   [鞋铺]  shop=shoes
+M Stand  ->  茶肆   [茶肆]  amenity=cafe
+星巴克  ->  饮品铺   [饮品铺]  amenity=cafe
+易捷  ->  杂货铺   [杂货铺]  shop=convenience
+亿嘉仁生鲜超市  ->  亿嘉仁生鲜超菜铺   [菜铺]  shop=greengrocer
+مەمەتئابدۇلا كاۋاپخانېسې 新疆麦麦提烧烤  ->  مەمەتئابدۇلا كاۋاپخانېسې 新疆麦麦提酒楼   [酒楼]  amenity=restaurant
+罗森  ->  杂货铺   [杂货铺]  shop=convenience
+正宗淮南牛肉汤  ->  淮南酒楼   [酒楼]  amenity=restaurant
+APPLE托教乐园  ->  乐园蒙馆   [蒙馆]  amenity=kindergarten
+蝌蚪音乐中心 蝌蚪琴行  ->  蝌蚪音乐 蝌蚪琴行店铺   [店铺]  shop=musical_instrument
+王鹏口腔门诊  ->  王鹏药铺   [药铺]  amenity=dentist
+星巴克  ->  饮品铺   [饮品铺]  amenity=cafe
+翼日式料理  ->  翼日式酒楼   [酒楼]  amenity=restaurant
+RED SEED CAFE  ->  茶肆   [茶肆]  amenity=cafe
+小胖子大排档  ->  小胖子酒楼   [酒楼]  amenity=restaurant
+陈记药膳鸡  ->  陈记酒楼   [酒楼]  amenity=restaurant
+华莱士  ->  食铺   [食铺]  amenity=fast_food
+罗森  ->  杂货铺   [杂货铺]  shop=convenience
+东北烧烤  ->  东北酒楼   [酒楼]  amenity=restaurant
+哈尔滨水饺  ->  哈尔滨酒楼   [酒楼]  amenity=restaurant
+竹缘茶楼  ->  竹缘茶肆   [茶肆]  amenity=cafe
+蜜雪冰城  ->  饮品铺   [饮品铺]  amenity=cafe
+LIN YOUNG  ->  酒肆   [酒肆]  amenity=bar
+汉库麻辣香锅  ->  汉库酒楼   [酒楼]  amenity=restaurant
+一个可颂  ->  一个饼铺   [饼铺]  shop=bakery
+汉森熊精酿  ->  汉森熊酒肆   [酒肆]  amenity=pub
+滋奇火锅  ->  滋奇酒楼   [酒楼]  amenity=restaurant
+中国工商银行  ->  钱铺   [钱铺]  amenity=bank
+沪上阿姨  ->  饮品铺   [饮品铺]  amenity=cafe
+夜来香药膳鸡  ->  夜来香酒楼   [酒楼]  amenity=restaurant
+夜来香药膳鸡  ->  夜来香酒楼   [酒楼]  amenity=restaurant
+锦熙苏式面馆  ->  锦熙苏式酒楼   [酒楼]  amenity=restaurant
+星巴克  ->  饮品铺   [饮品铺]  amenity=cafe
+环球雅思出国服务中心  ->  环球雅思出国服务店铺   [店铺]  shop=travel_agency
+全季酒店  ->  客栈   [客栈]  tourism=hotel
+UN  ->  梳洗铺   [梳洗铺]  shop=hairdresser
+袋鼠精酿啤酒屋  ->  袋鼠啤酒屋酒肆   [酒肆]  amenity=pub
+古茗  ->  饮品铺   [饮品铺]  amenity=cafe
+兰州拉面  ->  食铺   [食铺]  amenity=restaurant
+川卤冒烤鸭  ->  川卤冒肉铺   [肉铺]  shop=deli
+7-Eleven  ->  杂货铺   [杂货铺]  shop=convenience
+喜茶  ->  饮品铺   [饮品铺]  amenity=cafe
+越师傅越南法棍三明治  ->  越师傅越南饼铺   [饼铺]  shop=bakery
+浙商银行  ->  钱铺   [钱铺]  amenity=bank
+黄大囍面馆  ->  黄大囍酒楼   [酒楼]  amenity=restaurant
+大明寺素食坊  ->  大明寺酒楼   [酒楼]  amenity=restaurant
+兴业银行  ->  钱铺   [钱铺]  amenity=bank
+熊猫别闹·会跳舞的蛋糕  ->  熊猫别闹会跳舞的饼铺   [饼铺]  shop=bakery
+扬州市基督教萃园路礼拜堂  ->  基督教萃园路寺观   [寺观]  amenity=place_of_worship
+库迪咖啡  ->  饮品铺   [饮品铺]  amenity=cafe
+钱亮亮123小火锅  ->  钱亮亮小酒楼   [酒楼]  amenity=restaurant
+老妈米线  ->  老妈酒楼   [酒楼]  amenity=restaurant
+BOBO匠酒馆  ->  匠酒馆酒肆   [酒肆]  amenity=pub
+CoCo都可  ->  饮品铺   [饮品铺]  amenity=cafe
+扬州农商银行  ->  钱铺   [钱铺]  amenity=bank
+肯德基  ->  食铺   [食铺]  amenity=fast_food
+星巴克  ->  饮品铺   [饮品铺]  amenity=cafe
+十足  ->  杂货铺   [杂货铺]  shop=convenience
+杨国福麻辣烫  ->  食铺   [食铺]  amenity=restaurant
+FánGu  ->  店铺   [店铺]  shop=perfumery
+Mao Master  ->  酒楼   [酒楼]  amenity=restaurant
+蜜雪冰城  ->  饮品铺   [饮品铺]  amenity=cafe
+茶百道  ->  饮品铺   [饮品铺]  amenity=cafe
+星巴克  ->  饮品铺   [饮品铺]  amenity=cafe
+米村拌饭  ->  米村食铺   [食铺]  amenity=fast_food
+LINLEE  ->  茶肆   [茶肆]  amenity=cafe
+星伦多海鲜自助  ->  星伦多海鲜酒楼   [酒楼]  amenity=restaurant
+Dairy Queen  ->  食铺   [食铺]  amenity=fast_food
+万达商圈警察流动小屋  ->  巡检司   [巡检司]  amenity=police
+波司登  ->  衣铺   [衣铺]  shop=clothes
+扬州扬子医院住院部  ->  扬子医院医馆   [医馆]  amenity=hospital
+REZEN  ->  客栈   [客栈]  tourism=hotel
+比那多咖啡  ->  比那多茶肆   [茶肆]  amenity=cafe
+中国农业银行  ->  钱铺   [钱铺]  amenity=bank
+瑞幸咖啡  ->  饮品铺   [饮品铺]  amenity=cafe
+古茗  ->  饮品铺   [饮品铺]  amenity=cafe
+茶百道  ->  饮品铺   [饮品铺]  amenity=cafe
+景记药膳鸡  ->  景记酒楼   [酒楼]  amenity=restaurant
+蒋家桥饺面馆  ->  蒋家桥饺酒楼   [酒楼]  amenity=restaurant
+五亭龙G酒店  ->  五亭龙客栈   [客栈]  tourism=hotel
+蒋家桥饺面店  ->  蒋家桥酒楼   [酒楼]  amenity=restaurant
+蒋家桥饺面店  ->  蒋家桥酒楼   [酒楼]  amenity=restaurant
+扬州古籍书店  ->  古籍书店书肆   [书肆]  shop=books
+家和豆浆  ->  家和酒楼   [酒楼]  amenity=restaurant
+扬州市公安局交通管理支队二大队  ->  公安局交通管理支队二大队巡检司   [巡检司]  amenity=police
+上坡楼面馆  ->  上坡楼酒楼   [酒楼]  amenity=restaurant
+中国建设银行  ->  钱铺   [钱铺]  amenity=bank
+达美乐比萨  ->  食铺   [食铺]  amenity=fast_food
+麦当劳  ->  食铺   [食铺]  amenity=fast_food
+喜满客国际影城  ->  喜满客瓦舍   [瓦舍]  amenity=cinema
+牙牙仔小排檔  ->  牙牙仔酒楼   [酒楼]  amenity=restaurant
+幸会咖啡  ->  幸会茶肆   [茶肆]  amenity=cafe
+镇江老鸭粉丝馆  ->  镇江馆食铺   [食铺]  amenity=fast_food
+RED SEED CAFE  ->  茶肆   [茶肆]  amenity=cafe
+隐泉京望日式料理  ->  隐泉京望日式酒楼   [酒楼]  amenity=restaurant
+大參林大药房  ->  大參林药铺   [药铺]  amenity=pharmacy
+袁记云饺  ->  袁记酒楼   [酒楼]  amenity=restaurant
+如家商旅酒店  ->  客栈   [客栈]  tourism=hotel
+胡场老鸭汤  ->  胡场食铺   [食铺]  amenity=fast_food
+老虎山锅贴  ->  老虎山食铺   [食铺]  amenity=fast_food
+高邮面馆  ->  高邮食铺   [食铺]  amenity=fast_food
+凤凰桥牛肉汤  ->  凤凰桥酒楼   [酒楼]  amenity=restaurant
+COFFEE TIME  ->  茶肆   [茶肆]  amenity=cafe
+蜜雪冰城  ->  饮品铺   [饮品铺]  amenity=cafe
+瑞幸咖啡  ->  饮品铺   [饮品铺]  amenity=cafe
+牧羊王烧烤  ->  牧羊王酒楼   [酒楼]  amenity=restaurant
+好想来  ->  杂货铺   [杂货铺]  shop=snack
+秤盘炸鸡  ->  秤盘食铺   [食铺]  amenity=fast_food
+东鹏烤又  ->  东鹏酒楼   [酒楼]  amenity=restaurant
+全季酒店  ->  客栈   [客栈]  tourism=hotel
+送桥社区  ->  送桥社   [村]  place=village
+渌洋湖湿地公园北门  ->     [胜迹]  tourism=attraction
+维也纳酒店  ->  客栈   [客栈]  tourism=hotel
+古茗  ->  饮品铺   [饮品铺]  amenity=cafe
+梦圆旅馆  ->  梦圆客栈   [客栈]  tourism=hotel
+顺丰速运  ->  递铺   [递铺]  amenity=post_office
+牧医宠物医院  ->  牧医兽医铺   [兽医铺]  amenity=veterinary
+Dr. Teeth  ->  药铺   [药铺]  amenity=dentist
+扬州慢庙山野  ->  慢庙山野茶肆   [茶肆]  amenity=cafe building=commercial
+(m)³  ->  茶肆   [茶肆]  amenity=cafe
+华建超市  ->  华建超杂货铺   [杂货铺]  shop=convenience
+Shilvji  ->     [问讯处]  tourism=information
+孙云铸  ->     [问讯处]  tourism=information
+陈桢  ->     [问讯处]  tourism=information
+Zhanglihe  ->     [问讯处]  tourism=information
+三麻虎 Sammaho  ->  三麻虎酒楼   [酒楼]  amenity=restaurant
+香润园简餐超市  ->  香润园简餐超食铺   [食铺]  amenity=fast_food
+家和豆浆  ->  家和酒楼   [酒楼]  amenity=restaurant
+蒋家桥饺面店  ->  蒋家桥酒楼   [酒楼]  amenity=restaurant
+观音岛风景区  ->  观音岛风景胜迹   [胜迹]  tourism=attraction
+市场路  ->  场路   [坊巷]  highway=residential
+S125  ->     [官道]  highway=primary
+广场路  ->     [县道]  highway=tertiary
+人民南路  ->  南路   [官道]  highway=secondary
+人民北路  ->  北路   [县道]  highway=tertiary
+人民北路  ->  北路   [县道]  highway=tertiary
+人民桥  ->     [官道]  highway=secondary
+人民中路  ->  中路   [县道]  highway=tertiary
+S125  ->     [官道]  highway=primary
+S125  ->     [官道]  highway=primary
+S125  ->     [官道]  highway=primary
+S125  ->     [官道]  highway=primary
+S125  ->     [官道]  highway=primary
+扬二厂~仪征  ->  扬二厂仪征   []  
+仪征~古渡  ->  仪征古渡   []  
+扬二厂~江都  ->  扬二厂江都   []  
+s333  ->     [官道]  highway=secondary
+扬厂Ⅱ~蜀岗  ->  扬厂Ⅱ蜀岗   []  
+蜀岗~凤来  ->  蜀岗凤来   []  
+蒋王~蜀岗  ->  蒋王蜀岗   []  
+扬二厂~蒋王  ->  扬二厂蒋王   []  
+蒋王~蜀岗  ->  蒋王蜀岗   []  
+古渡~六圩  ->  古渡六圩   []  
+扬二厂~仪征  ->  扬二厂仪征   []  
+扬二厂~蒋王  ->  扬二厂蒋王   []  
+横沟~六圩  ->  横沟六圩   []  
+古渡~六圩  ->  古渡六圩   []  
+仪征~真州  ->  仪征真州   []  
+蜀岗~凤来  ->  蜀岗凤来   []  
+泰安镇-万福街道界  ->  泰安镇万福街道界   []  
+新东~农歌  ->  新东农歌   []  
+中心公路  ->  公路   [坊巷]  highway=residential
+泰安镇-万福街道界  ->  泰安镇万福街道界   []  
+泰安镇-万福街道界  ->  泰安镇万福街道界   []  
+万福社区界  ->  万福社界   []  
+万福社区界  ->  万福社界   []  
+万福社区界  ->  万福社界   []  
+泰安镇-万福街道界  ->  泰安镇万福街道界   []  
+泰安镇-万福街道界  ->  泰安镇万福街道界   []  
+扬二厂~仪征/古渡~六圩  ->  扬二厂仪征古渡六圩   []  
+扬二厂~蒋王  ->  扬二厂蒋王   []  
+肖山~真州  ->  肖山真州   []  
+蒋王~维扬  ->  蒋王维扬   []  
+维扬~广陵  ->  维扬广陵   []  
+s333  ->     [官道]  highway=secondary
+s333  ->     [官道]  highway=secondary
+s333  ->     [官道]  highway=secondary
+s333  ->     [官道]  highway=secondary
+S125  ->     [官道]  highway=primary
+S125  ->     [官道]  highway=primary
+S125  ->     [官道]  highway=primary
+S125  ->     [官道]  highway=primary
+蒋王社区卫生院  ->  蒋王社卫生院   []  
+S125  ->     [官道]  highway=primary
+瓜洲社区卫生服务中心  ->  瓜洲社卫生服务   []  
+扬州市开发区朴席镇卫生服务中心  ->  朴席镇卫生服务   []  
+扬州市  ->     [界]  
+高邮市  ->  高邮   [界]  
+广陵区  ->  广陵   [界]  
+邗江区  ->  邗江   [界]  
+江都区  ->  江都   [界]  
+仪征市  ->  仪征   [界]  
+文津楼  ->  民居   [民居]  building=college
+广陵经济开发区  ->  广陵经济   [界]  
+维扬经济开发区  ->  维扬经济   [界]  
+南吴社区  ->  南吴社   [界]  
+乐和社区  ->  乐和社   [界]  
+李坝社区  ->  李坝社   [界]  
+新都社区  ->  新都社   [界]  
+龙都社区  ->  龙都社   [界]  
+龙溪社区  ->  龙溪社   [界]  
+南苑社区  ->  南苑社   [界]  
+樊庄社区  ->  樊庄社   [界]  
+龙城社区  ->  龙城社   [界]  
+商贸城社区  ->  商贸城社   [界]  
+张纲社区  ->  张纲社   [界]  
+建乐社区  ->  建乐社   [界]  
+三和社区  ->  三和社   [界]  
+京杭社区  ->  京杭社   [界]  
+茱萸湾社区  ->  茱萸湾社   [界]  
+万福社区  ->  万福社   [界]  
+天顺花园社区  ->  天顺花园社   [界]  
+二桥社区  ->  二桥社   [界]  
+运东社区  ->  运东社   [界]  
+明珠社区  ->  明珠社   [界]  
+孔庄社区  ->  孔庄社   [界]  
+陈庄社区  ->  陈庄社   [界]  
+桥东社区  ->  桥东社   [界]  
+东苑社区  ->  东苑社   [界]  
+龙川社区  ->  龙川社   [界]  
+禹王宫社区  ->  禹王宫社   [界]  
+云峰社区  ->  云峰社   [界]  
+玉带社区  ->  玉带社   [界]  
+高阳社区  ->  高阳社   [界]  
+引江社区  ->  引江社   [界]  
+砖桥社区  ->  砖桥社   [界]  
+邗沟社区  ->  邗沟社   [界]  
+凤凰桥社区  ->  凤凰桥社   [界]  
+便宜门社区  ->  便宜门社   [界]  
+广储社区  ->  广储社   [界]  
+丰乐社区  ->  丰乐社   [界]  
+建隆社区  ->  建隆社   [界]  
+锦旺社区  ->  锦旺社   [界]  
+漕河社区  ->  漕河社   [界]  
+四望亭社区  ->  四望亭社   [界]  
+石塔社区  ->  石塔社   [界]  
+树人苑社区  ->  树人苑社   [界]  
+通泗社区  ->  通泗社   [界]  
+荷花池社区  ->  荷花池社   [界]  
+龙头观社区  ->  龙头观社   [界]  
+常府社区  ->  常府社   [界]  
+旌忠寺社区  ->  旌忠寺社   [界]  
+皇宫社区  ->  皇宫社   [界]  
+双桥社区  ->  双桥社   [界]  
+虹桥社区  ->  虹桥社   [界]  
+文苑社区  ->  文苑社   [界]  
+文扬社区  ->  文扬社   [界]  
+石桥社区  ->  石桥社   [界]  
+卜桥社区  ->  卜桥社   [界]  
+武塘社区  ->  武塘社   [界]  
+康乐社区  ->  康乐社   [界]  
+宝带社区  ->  宝带社   [界]  
+油田社区  ->  油田社   [界]  
+梅苑社区  ->  梅苑社   [地]  
+花园社区  ->  花园社   [界]  
+春江社区  ->  春江社   [界]  
+砚池社区  ->  砚池社   [界]  
+金林社区  ->  金林社   [界]  
+唐庄社区  ->  唐庄社   [界]  
+双仙社区  ->  双仙社   [界]  
+金桥社区  ->  金桥社   [界]  
+枣林湾旅游度假区  ->  枣林湾旅游度假   [界]  
+春江社区  ->  春江社   [界]  
+仙女社区  ->  仙女社   [界]  
+镇北社区  ->  镇北社   [界]  
+北苑社区  ->  北苑社   [界]  
+裔庙社区  ->  裔庙社   [界]  
+王集社区  ->  王集社   [界]  
+夏桥社区  ->  夏桥社   [界]  
+西苑社区  ->  西苑社   [界]  
+化市村  ->  化村   [界]  
+新联社区  ->  新联社   [界]  
+八圩社区  ->  八圩社   [界]  
+双隆社区  ->  双隆社   [界]  
+夏庄社区  ->  夏庄社   [界]  
+王桥社区  ->  王桥社   [界]  
+双都社区  ->  双都社   [界]  
+龙王社区  ->  龙王社   [界]  
+新生社区  ->  新生社   [界]  
+杭集社区  ->  杭集社   [界]  
+沿江社区  ->  沿江社   [界]  
+余林社区  ->  余林社   [界]  
+蒋邑社区  ->  蒋邑社   [界]  
+何桥社区  ->  何桥社   [界]  
+冯庄社区  ->  冯庄社   [界]  
+双沟社区  ->  双沟社   [界]  
+皮市街社区  ->  皮街社   [界]  
+琼花观社区  ->  琼花观社   [界]  
+彩衣街社区  ->  彩衣街社   [界]  
+个园社区  ->  个园社   [界]  
+宋都社区  ->  宋都社   [界]  
+古旗亭社区  ->  古旗亭社   [界]  
+教场社区  ->  教场社   [界]  
+新仓巷社区  ->  新仓巷社   [界]  
+徐凝门社区  ->  徐凝门社   [界]  
+何园社区  ->  何园社   [界]  
+福运门社区  ->  福运门社   [界]  
+荷花池公园  ->  荷花池   [园苑]  leisure=park
+宋夹城体育休闲公园  ->  宋夹城   [园苑]  leisure=park
+茱萸湾公园  ->  茱萸湾   [园苑]  leisure=park
+江苏省扬州中学  ->  书院   [书院]  amenity=school
+来鹤台广场  ->  来鹤台市   [市]  place=square leisure=park
+扬州市公安局  ->  巡检司   [巡检司]  amenity=police
+扬州市第一人民医院  ->  医馆   [医馆]  amenity=hospital
+邗江区政府  ->  邗江政府衙门   [衙门]  amenity=townhall
+新盛派出所  ->  新盛巡检司   [巡检司]  amenity=police
+扬州市育才小学西校区  ->  育才书院   [书院]  amenity=school
+综合贸易市场  ->  综合贸易市集   [市集]  amenity=marketplace
+京华梅岭中学  ->  京华梅岭书院   [书院]  amenity=school
+竹西公园  ->  竹西   [园苑]  leisure=park
+蜀岗西峰生态公园  ->  蜀岗西峰   [园苑]  leisure=park
+市民广场  ->     [园苑]  leisure=park
+曲江公园  ->  曲江   [园苑]  leisure=park
+扬州市城市规划设计研究院  ->  城规划设计研究院   [地]  
+鼓楼广场  ->  鼓楼   [园苑]  leisure=park
+苏果超市  ->  杂货铺   [杂货铺]  shop=supermarket
+扬子公园  ->  扬子   [园苑]  leisure=park
+仪征市人民医院  ->  仪征医馆   [医馆]  amenity=hospital
+仪征市博物馆  ->  仪征藏馆   [藏馆]  tourism=museum
+大仪中心小学  ->  大仪书院   [书院]  amenity=school
+杨庄中学  ->  杨庄书院   [书院]  amenity=school
+丁伙镇派出所  ->  丁伙巡检司   [巡检司]  amenity=police
+新世纪广场  ->  新世纪   [园苑]  leisure=park
+扬州墓园  ->  墓地   [墓地]  landuse=cemetery
+扬州市维扬中学  ->  维扬书院   [书院]  amenity=school
+文峰小学  ->  文峰书院   [书院]  amenity=school
+汤汪中学  ->  汤汪书院   [书院]  amenity=school
+汤汪派出所  ->  汤汪巡检司   [巡检司]  amenity=police
+扬州市邗江区美琪学校  ->  邗江美琪书院   [书院]  amenity=school
+机关三幼京华城园  ->  蒙馆   [蒙馆]  amenity=kindergarten
+扬州开发区实验中学  ->  书院   [书院]  amenity=school
+甘泉小学  ->  甘泉书院   [书院]  amenity=school
+江都中学  ->  江都书院   [书院]  amenity=school
+杭集中学  ->  杭集书院   [书院]  amenity=school
+杭集中心小学  ->  杭集书院   [书院]  amenity=school
+杭集公墓园  ->  杭集墓地   [墓地]  landuse=cemetery
+杭集镇中心幼儿园  ->  杭集蒙馆   [蒙馆]  amenity=kindergarten
+泰安学校  ->  泰安书院   [书院]  amenity=school
+凯莱幼教和园幼儿园  ->  凯莱蒙馆   [蒙馆]  amenity=kindergarten
+扬州广陵新城医院  ->  广陵新城医馆   [医馆]  amenity=hospital
+扬州高等职业技术学校  ->  书院   [书院]  amenity=school
+北京新东方扬州外国语学校  ->  北京新东方书院   [书院]  amenity=school
+扬州会议中心  ->  会议客栈   [客栈]  tourism=hotel
+扬州会议中心  ->  会议客栈   [客栈]  tourism=hotel
+邗江区第一中学  ->  邗江书院   [书院]  amenity=school
+邗江区人民法院  ->  邗江法院处   [处]  amenity=courthouse
+许庄社区法治广场  ->     [园苑]  leisure=park
+学生餐厅  ->  民居   [民居]  building=school
+国家电网扬州供电公司  ->  国家电网供电   [地]  
+玉盛公园  ->  玉盛   [园苑]  leisure=park
+蝶湖公园  ->  蝶湖   [园苑]  leisure=park
+产业工人公园  ->     [园苑]  leisure=park
+京东大厦  ->  民居   [民居]  building=yes
+扬州苏东坡中学  ->  苏东坡书院   [书院]  amenity=school
+扬州市新星小学  ->  新星书院   [书院]  amenity=school
+扬州市八里小学  ->  八里书院   [书院]  amenity=school
+扬州市邗江区运西小学  ->  邗江运西书院   [书院]  amenity=school
+扬州市中医院  ->  医馆   [医馆]  amenity=hospital
+新华中学  ->  新华书院   [书院]  amenity=school
+苏北人民医院  ->  苏北医馆   [医馆]  amenity=hospital
+四季园小学  ->  四季园书院   [书院]  amenity=school
+廉政广场  ->     [园苑]  leisure=park
+扬州友好医院  ->  友好医馆   [医馆]  amenity=hospital
+扬州梅苑双语学校  ->  梅苑双语书院   [书院]  amenity=school
+中国农业银行(文昌分理处)  ->  民居   [民居]  building=commercial
+扬州市育才小学  ->  育才书院   [书院]  amenity=school
+京江大酒店  ->  京江客栈   [客栈]  tourism=hotel
+江都国际学校  ->  江都书院   [书院]  amenity=school
+碉堡  ->     [遗址]  historic=ruins
+新城中心小学  ->  新城书院   [书院]  amenity=school
+引潮河公园  ->  引潮河   [园苑]  leisure=park
+紫阳苑多功能健身休闲广场  ->  紫阳苑多功能   [旷场]  leisure=common
+学生公寓2号楼  ->     [学舍]  building=dormitory
+学生公寓1号楼  ->     [学舍]  building=dormitory
+学生公寓3号楼  ->     [学舍]  building=dormitory
+行政楼  ->  民居   [民居]  building=yes
+大学生活动中心  ->  民居   [民居]  building=yes
+朱塘墓园  ->  朱塘墓地   [墓地]  landuse=cemetery
+扬州高等职业技术学校  ->  书院   [书院]  amenity=school
+胥浦邮电局  ->     [递铺]  amenity=post_office building=yes
+仪化体育馆  ->  仪化校场   [校场]  leisure=stadium
+仪化医院  ->  仪化医馆   [医馆]  amenity=hospital
+江苏省仪征中学  ->  仪征书院   [书院]  amenity=school
+扬州市仙城中学  ->  仙城书院   [书院]  amenity=school
+杨寿学校  ->  杨寿书院   [书院]  amenity=school
+甘泉中学  ->  甘泉书院   [书院]  amenity=school
+苏北人民医院新区分院  ->  苏北医院新分院医馆   [医馆]  amenity=hospital
+邵伯中学  ->  邵伯书院   [书院]  amenity=school
+方正国际酒店  ->  方正酒坊   [酒坊]  shop=wine building=yes
+龙川小学  ->  龙川书院   [书院]  amenity=school
+万博市民广场  ->  万博   [园苑]  leisure=park
+白沙公园  ->  白沙   [园苑]  leisure=park
+仪征化纤第二小学  ->  仪征化纤书院   [书院]  amenity=school
+仪征化纤第一小学  ->  仪征化纤书院   [书院]  amenity=school
+南师大二附中（初中部）  ->  南师大二附中初中部书院   [书院]  amenity=school
+仪化少年宫  ->  民居   [民居]  building=school
+仪化体育场  ->  仪化校场   [校场]  leisure=stadium
+仪征体育场  ->  仪征校场   [校场]  leisure=stadium
+中国建设银行  ->  钱铺   [钱铺]  amenity=bank building=yes
+南师大二附中（高中部）  ->  南师大二附中高中部书院   [书院]  amenity=school
+仪征市第二中学  ->  仪征书院   [书院]  amenity=school
+真州小学  ->  真州书院   [书院]  amenity=school
+精诚高级中学  ->  精诚高级书院   [书院]  amenity=school
+仪征市中医院  ->  仪征医馆   [医馆]  amenity=hospital
+扬子江公园  ->  扬子江   [园苑]  leisure=park
+仪征市警察局  ->  仪征巡检司   [巡检司]  amenity=police building=yes
+仪征中学教学楼  ->  民居   [民居]  building=school
+仪征中学体育馆  ->  仪征校场   [校场]  leisure=stadium
+仪征中学田径场  ->  仪征校场   [校场]  leisure=stadium
+仪化文化宫  ->  民居   [民居]  building=yes
+晶崴国际大酒店  ->  晶崴邸店   [邸店]  tourism=guest_house
+仪征技师学院  ->  仪征技师书院   [书院]  amenity=school
+仪征市第三中学  ->  仪征书院   [书院]  amenity=school
+怡景半岛酒店  ->  怡景半岛客栈   [客栈]  tourism=hotel
+邗江区实验学校  ->  邗江书院   [书院]  amenity=school
+江都实验初级中学  ->  江都初级书院   [书院]  amenity=school
+29  ->  民居   [民居]  building=apartments
+23  ->  民居   [民居]  building=apartments
+9  ->  民居   [民居]  building=apartments
+34  ->  民居   [民居]  building=apartments
+12  ->  民居   [民居]  building=apartments
+7  ->  民居   [民居]  building=apartments
+自在公园  ->  自在   [园苑]  leisure=park
+江都区检察院  ->  民居   [民居]  building=yes
+江都妇幼保健院  ->  江都医馆   [医馆]  amenity=hospital
+江都区交通局  ->  民居   [民居]  building=yes
+江都实验小学  ->  江都书院   [书院]  amenity=school
+机关幼儿园新区分园  ->  蒙馆   [蒙馆]  amenity=school
+江苏电大江都学院  ->  江苏电大江都书院   [书院]  amenity=school
+龙川广场  ->  龙川   [市]  place=square
+广陵图书文化中心  ->  民居   [民居]  building=yes
+梅岭小学金辉分校  ->  梅岭书院   [书院]  amenity=school
+邗江机关幼儿园  ->  邗江蒙馆   [蒙馆]  amenity=kindergarten
+邗江区实验学校(新盛校区)  ->  邗江书院   [书院]  amenity=school
+蒋王中心小学  ->  蒋王书院   [书院]  amenity=school
+江苏省万福闸管理所  ->  民居   [民居]  building=yes
+九月森林  ->  民居   [民居]  building=retail
+花园小学  ->  花园书院   [书院]  amenity=school
+11号楼  ->  民居   [民居]  building=yes
+南水北调源头公园  ->     [园苑]  leisure=park
+马可波罗花世界  ->     [园苑]  leisure=park
+廖家沟公园·东园  ->  廖家沟公园东园园苑   [园苑]  leisure=park
+陈集服务区  ->  陈集服务   [地]  highway=services
+陈集服务区  ->  陈集服务   [地]  highway=services
+七里河公园  ->  七里河   [园苑]  leisure=park
+三湾湿地公园  ->  三湾   [园苑]  leisure=park
+仪征市实验小学东区分校  ->  仪征书院   [书院]  amenity=school
+振兴幼儿园  ->  振兴蒙馆   [蒙馆]  amenity=kindergarten
+仪征市实验中学东区分校  ->  仪征书院   [书院]  amenity=school
+江苏省仪征中学  ->  仪征书院   [书院]  amenity=school
+城市展览馆  ->  城藏馆   [藏馆]  tourism=museum building=yes
+中医院东区分院  ->  中医院东分院医馆   [医馆]  amenity=hospital
+新都会小学  ->  新都会书院   [书院]  amenity=school
+育才小学  ->  育才书院   [书院]  amenity=school
+都会小学  ->  都会书院   [书院]  amenity=school
+仪征综合交通枢纽  ->  民居   [民居]  building=transportation
+五一公园  ->     [园苑]  leisure=park
+孔雀山公园  ->  孔雀山   [园苑]  leisure=park
+邵伯线路所  ->  民居   [民居]  building=transportation
+三河六岸公园  ->  三河六岸   [园苑]  leisure=park
+竹西好人园  ->  竹西   [园苑]  leisure=park
+花都汇生态公园  ->     [园苑]  leisure=park
+学府社区公园  ->  学府社   [园苑]  leisure=park
+蜀冈生态体育公园  ->  蜀冈   [园苑]  leisure=park
+江都区人民医院  ->  江都医馆   [医馆]  amenity=hospital
+西浦·光线电影学院  ->  西浦光线电影书院   [书院]  amenity=college
+扬州航空馆  ->  民居   [民居]  building=yes
+大桥公园  ->     [园苑]  leisure=park
+人才公园  ->     [园苑]  leisure=park
+马拉松公园  ->     [园苑]  leisure=park
+江苏镇江长江豚类省级自然保护区  ->  江苏镇江长江豚类省级自然保护游乐地   [游乐地]  leisure=nature_reserve
+扬子津小学  ->  扬子津书院   [书院]  amenity=school
+红桥中学  ->  红桥书院   [书院]  amenity=school
+扬州育才实验学校  ->  育才书院   [书院]  amenity=school
+教师公寓3号楼  ->     [学舍]  building=dormitory
+韩万河公园  ->  韩万河   [园苑]  leisure=park
+廖家沟公园·西园  ->  廖家沟公园西园园苑   [园苑]  leisure=park
+汶河小学(东校区)  ->  汶河书院   [书院]  amenity=school
+西区操场  ->  西操场   [地]  landuse=recreation_ground
+笃学楼  ->  民居   [民居]  building=college
+博学楼  ->  民居   [民居]  building=college
+报告厅  ->  民居   [民居]  building=college
+立学楼  ->  民居   [民居]  building=university
+实学楼  ->  民居   [民居]  building=university
+恒学楼  ->  民居   [民居]  building=university
+文荟楼  ->  民居   [民居]  building=university
+文萃楼  ->  民居   [民居]  building=university
+12号楼报告厅  ->  民居   [民居]  building=university
+留学生公寓南楼  ->     [学舍]  building=dormitory
+留学生公寓北楼  ->     [学舍]  building=dormitory
+驿苑4号楼  ->     [学舍]  building=dormitory
+西校区29号楼  ->     [学舍]  building=dormitory
+驿苑3号楼  ->     [学舍]  building=dormitory
+驿苑2号楼  ->     [学舍]  building=dormitory
+驿苑1号楼  ->     [学舍]  building=dormitory
+东区操场  ->  东操场   [地]  landuse=recreation_ground
+东区球场  ->  东球场   [地]  landuse=recreation_ground
+教师公寓6号楼  ->  民居   [民居]  building=apartments
+学行楼  ->  民居   [民居]  building=university
+知行楼  ->  民居   [民居]  building=university
+南门传达室  ->  民居   [民居]  building=university
+力行楼  ->  民居   [民居]  building=university
+笃行楼  ->  民居   [民居]  building=university
+试验田  ->     [田]  landuse=farmland
+农水水文水生态试验场  ->  民居   [民居]  building=university
+试验田  ->     [田]  landuse=farmland
+向学楼  ->  民居   [民居]  building=university
+驿苑5号楼  ->     [学舍]  building=dormitory
+驿苑7号楼  ->     [学舍]  building=dormitory
+驿苑9号楼  ->     [学舍]  building=dormitory
+驿苑11号楼  ->     [学舍]  building=dormitory
+驿苑12号楼  ->     [学舍]  building=dormitory
+驿苑10号楼  ->     [学舍]  building=dormitory
+驿苑8号楼  ->     [学舍]  building=dormitory
+驿苑6号楼  ->     [学舍]  building=dormitory
+西校区3号楼  ->  民居   [民居]  building=university
+沁园4号楼  ->     [学舍]  building=dormitory
+沁园3号楼  ->     [学舍]  building=dormitory
+沁园2号楼  ->     [学舍]  building=dormitory
+沁园1号楼  ->     [学舍]  building=dormitory
+沁园8号楼  ->     [学舍]  building=dormitory
+沁园7号楼  ->     [学舍]  building=dormitory
+沁园6号楼  ->     [学舍]  building=dormitory
+沁园5号楼  ->     [学舍]  building=dormitory
+校友林  ->     [林]  landuse=forest
+试验田  ->     [田]  landuse=farmland
+广陵小学  ->  广陵书院   [书院]  amenity=school
+扬州市第一中学  ->  书院   [书院]  amenity=school
+梅岭小学  ->  梅岭书院   [书院]  amenity=school
+新集镇卫生院  ->  新集医馆   [医馆]  amenity=hospital
+新集镇幼教中心  ->  新集蒙馆   [蒙馆]  amenity=school
+动物房  ->  民居   [民居]  building=yes
+后勤楼  ->  民居   [民居]  building=yes
+扬州新东方中学  ->  新东方书院   [书院]  amenity=school
+扬州市维扬实验小学北校区  ->  维扬书院   [书院]  amenity=school
+扬州智能科技技工学校  ->  智能科技技工书院   [书院]  amenity=school
+12圩  ->     [林]  natural=wood
+灯塔公园  ->     [园苑]  leisure=park
+扬州洪泉医院  ->  洪泉医馆   [医馆]  amenity=hospital
+江都区实验小学  ->  江都书院   [书院]  amenity=school
+江都区第二中学  ->  江都书院   [书院]  amenity=school
+扬州市江都区第一中学  ->  江都书院   [书院]  amenity=school
+育才中学  ->  育才书院   [书院]  amenity=school
+隋炀帝陵遗址公园  ->  隋炀帝陵   [园苑]  leisure=park
+半岛公园  ->     [园苑]  leisure=park
+隋炀帝陵遗址博物馆  ->  隋炀帝陵藏馆   [藏馆]  tourism=museum
+隋炀帝陵遗址公园  ->  隋炀帝陵   [园苑]  leisure=park
+二十四桥宾馆  ->  二十四桥客栈   [客栈]  tourism=hotel building=yes
+高邮市高新区实验学校  ->  高邮高新书院   [书院]  amenity=school
+湖西新区体育休闲公园  ->  湖西新   [园苑]  leisure=park
+高新区人民医院  ->  高新医馆   [医馆]  amenity=hospital
+高邮市高新区实验幼儿园  ->  高邮高新蒙馆   [蒙馆]  amenity=kindergarten
+送桥实验小学  ->  送桥书院   [书院]  amenity=school
+扬州梦幻之城  ->  梦幻之城游处   [游处]  tourism=theme_park
+花都汇邻里中心  ->  花都汇邻里大市铺   [大市铺]  shop=mall building=yes
+奥园邻里公园  ->     [园苑]  leisure=park
+梅岭中学（运河校区）  ->  梅岭书院   [书院]  amenity=school
+嘉境邻里公园  ->     [园苑]  leisure=park
+扬州市第二人民医院  ->  医馆   [医馆]  amenity=hospital
+明月幼儿园  ->  明月蒙馆   [蒙馆]  amenity=kindergarten
+扬州市梅岭小学（花都汇校区）  ->  梅岭书院   [书院]  amenity=school
+竹西中学  ->  竹西书院   [书院]  amenity=school
+扬州粮食中专  ->  粮食中专书院   [书院]  amenity=school
+地质大院  ->     [学舍]  building=dormitory
+梅岭公园  ->  梅岭   [园苑]  leisure=park
+江苏油田技师学院  ->  江苏油田技师书院   [书院]  amenity=university
+蒋王师姑塔体育休闲公园  ->  蒋王师姑塔   [园苑]  leisure=park
+凤栖湖公园  ->  凤栖湖   [园苑]  leisure=park
+树人学校凤栖湖校区  ->  树人书院   [书院]  amenity=school
+平山实验学校  ->  平山书院   [书院]  amenity=school
+扬州南部体育公园  ->  南部   [园苑]  leisure=park
+九龙湖公园  ->  九龙湖   [园苑]  leisure=park
+扬子津生态中心  ->  扬子津生态园苑   [园苑]  leisure=park
+春满园生态酒店  ->  春满园生态客栈   [客栈]  tourism=hotel
+扬州市妇女儿童医院  ->  妇女医馆   [医馆]  amenity=hospital
+京华城2期  ->  大市铺   [大市铺]  shop=mall
+扬州市疾病预防控制中心  ->  疾病预防控制医馆   [医馆]  amenity=hospital
+扬州市妇幼保健院  ->  医馆   [医馆]  amenity=hospital
+汇鑫公园  ->     [园苑]  leisure=park
+吉安路体育休闲公园  ->  吉安路   [园苑]  leisure=park
+邗江区中等专业学校  ->  邗江中等书院   [书院]  amenity=school
+扬州技师学院（新校区）  ->  技师书院   [书院]  amenity=school
+树人公园  ->     [园苑]  leisure=park
+人民生态园  ->  生态园园苑   [园苑]  leisure=park
+万达广场  ->  大市铺   [大市铺]  shop=mall
+江苏省邗江中学（新校区）  ->  邗江书院   [书院]  amenity=school
+扬州邵伯湖滑雪场  ->  邵伯湖滑雪场   [地]  landuse=winter_sports
+瓜洲古渡公园-北园  ->  瓜洲古渡公园北园园苑   [园苑]  leisure=park
+瓜洲古渡公园-南园  ->  瓜洲古渡公园南园园苑   [园苑]  leisure=park
+瓜洲枢纽国家水利风景区  ->  瓜洲枢纽国家水利风景园苑   [园苑]  leisure=park
+润扬湿地森林公园  ->     [园苑]  leisure=park
+江苏城市晚报林  ->  江苏城晚报林   [林]  landuse=forest
+扬州太阳岛高尔夫球场  ->  太阳岛高尔夫球场游乐地   [游乐地]  leisure=golf_course
+华东石油技师学院  ->  华东石油技师书院   [书院]  amenity=university
+扬州中学教育集团树人学校（南门街校区）  ->  书院   [书院]  amenity=school
+喜茶  ->  饮品铺   [饮品铺]  amenity=cafe building=yes
+门房  ->  民居   [民居]  building=yes
+瓜洲中学  ->  瓜洲书院   [书院]  amenity=school
+扬州市邗江区实验小学  ->  邗江书院   [书院]  amenity=school
+朴席农贸市场  ->  朴席市集   [市集]  amenity=marketplace
+扬州市朴席中心学校  ->  朴席书院   [书院]  amenity=school
+朴席镇中心幼儿园  ->  朴席蒙馆   [蒙馆]  amenity=kindergarten
+扬州市朴席镇社会福利院  ->  朴席镇社会福利院处   [处]  amenity=social_facility
+
+== 去名对象（原名 [类别]，几何保留不可点）==
+扬州市  [州城]  place
+镇扬汽渡镇江渡口  [渡口]  poi
+镇扬汽渡扬州渡口  [渡口]  poi
+瘦西湖公园南门  [胜迹]  tourism
+瘦西湖公园西门  [胜迹]  tourism
+扬子津校区平面示意图  [问讯处]  tourism
+感恩母校  [碑]  historic
+母校情深  [碑]  historic
+师恩永泽  [碑]  historic
+润扬湿地森林公园-游客服务中心  [问讯处]  tourism
+渌洋湖湿地公园北门  [胜迹]  tourism
+Shilvji  [问讯处]  tourism
+孙云铸  [问讯处]  tourism
+陈桢  [问讯处]  tourism
+Zhanglihe  [问讯处]  tourism
+S125  [官道]  road
+广场路  [县道]  road
+人民桥  [官道]  road
+S125  [官道]  road
+S125  [官道]  road
+S125  [官道]  road
+S125  [官道]  road
+S125  [官道]  road
+s333  [官道]  road
+s333  [官道]  road
+s333  [官道]  road
+s333  [官道]  road
+s333  [官道]  road
+S125  [官道]  road
+S125  [官道]  road
+S125  [官道]  road
+S125  [官道]  road
+S125  [官道]  road
+扬州市  [界]  boundary
+市民广场  [园苑]  leisure
+许庄社区法治广场  [园苑]  leisure
+产业工人公园  [园苑]  leisure
+廉政广场  [园苑]  leisure
+碉堡  []  historic
+碉堡  [遗址]  historic
+学生公寓2号楼  [学舍]  building
+学生公寓1号楼  [学舍]  building
+学生公寓3号楼  [学舍]  building
+胥浦邮电局  [递铺]  building
+南水北调源头公园  [园苑]  leisure
+马可波罗花世界  [园苑]  leisure
+五一公园  [园苑]  leisure
+花都汇生态公园  [园苑]  leisure
+大桥公园  [园苑]  leisure
+人才公园  [园苑]  leisure
+马拉松公园  [园苑]  leisure
+教师公寓3号楼  [学舍]  building
+留学生公寓南楼  [学舍]  building
+留学生公寓北楼  [学舍]  building
+驿苑4号楼  [学舍]  building
+西校区29号楼  [学舍]  building
+驿苑3号楼  [学舍]  building
+驿苑2号楼  [学舍]  building
+驿苑1号楼  [学舍]  building
+试验田  [田]  landuse
+试验田  [田]  landuse
+驿苑5号楼  [学舍]  building
+驿苑7号楼  [学舍]  building
+驿苑9号楼  [学舍]  building
+驿苑11号楼  [学舍]  building
+驿苑12号楼  [学舍]  building
+驿苑10号楼  [学舍]  building
+驿苑8号楼  [学舍]  building
+驿苑6号楼  [学舍]  building
+沁园4号楼  [学舍]  building
+沁园3号楼  [学舍]  building
+沁园2号楼  [学舍]  building
+沁园1号楼  [学舍]  building
+沁园8号楼  [学舍]  building
+沁园7号楼  [学舍]  building
+沁园6号楼  [学舍]  building
+沁园5号楼  [学舍]  building
+校友林  [林]  landuse
+试验田  [田]  landuse
+12圩  [林]  natural
+灯塔公园  [园苑]  leisure
+半岛公园  [园苑]  leisure
+奥园邻里公园  [园苑]  leisure
+嘉境邻里公园  [园苑]  leisure
+地质大院  [学舍]  building
+汇鑫公园  [园苑]  leisure
+树人公园  [园苑]  leisure
+润扬湿地森林公园  [园苑]  leisure
+
+== 各 ancient_kind 数量 ==
+  水: 3413
+  民居: 3310
+  官道: 1805
+  县道: 1285
+  (无): 656
+  坊巷: 585
+  乡道: 280
+  林: 221
+  界: 202
+  园苑: 147
+  处: 113
+  书院: 110
+  河: 93
+  旷场: 76
+  酒楼: 73
+  码头: 70
+  学舍: 51
+  沟: 50
+  江: 44
+  地: 44
+  草地: 41
+  园: 38
+  镇: 33
+  食铺: 28
+  饮品铺: 26
+  胜迹: 24
+  村: 24
+  坊: 24
+  客栈: 23
+  茶肆: 23
+  医馆: 21
+  杂货铺: 20
+  市巷: 19
+  莽: 19
+  钱铺: 18
+  寺观: 18
+  蒙馆: 13
+  问讯处: 12
+  店铺: 10
+  桥: 10
+  药铺: 9
+  衣铺: 9
+  巡检司: 7
+  游乐地: 7
+  大市铺: 6
+  遗址: 6
+  藏馆: 6
+  碑刻: 6
+  菜铺: 6
+  市: 6
+  宅: 6
+  泽: 6
+  州城: 5
+  递铺: 5
+  饼铺: 5
+  酒肆: 5
+  溪: 5
+  洲: 5
+  校场: 5
+  市集: 4
+  碑坊: 4
+  梳洗铺: 4
+  瓦舍: 4
+  肉铺: 4
+  墓地: 4
+  书肆: 3
+  酒坊: 3
+  山: 3
+  亭: 3
+  邸店: 3
+  碑: 3
+  游处: 3
+  道路: 3
+  田: 3
+  渡口: 2
+  兽医铺: 2
+  茶铺: 2
+  花铺: 2
+  坝: 2
+  山野: 2
+  百货铺: 1
+  文房肆: 1
+  浴堂: 1
+  首饰铺: 1
+  甜食铺: 1
+  眼镜铺: 1
+  鞋铺: 1
+  棋馆: 1
+  河道: 1
+  衙门: 1
+  狱: 1

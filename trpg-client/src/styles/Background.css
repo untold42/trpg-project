@@ -1,0 +1,47 @@
+/* 万能通用的画幕大小 */
+.background {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+}
+
+.background-image {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.background-fade-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.background-fade-out {
+  animation: backgroundFadeOut 500ms ease-in-out forwards;
+}
+
+.background-fade-in {
+  animation: backgroundFadeIn 500ms ease-in-out forwards;
+}
+
+@keyframes backgroundFadeOut {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes backgroundFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}

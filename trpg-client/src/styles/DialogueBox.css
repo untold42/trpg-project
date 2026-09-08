@@ -1,0 +1,50 @@
+.dialogue-box {
+  position: absolute;
+  z-index: 100;
+  bottom: 0;
+  width: 90%;
+  height: 25%;
+  background-image: url("../assets/ui/对话框.png");
+  background-position: center;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+}
+
+.dialogue-content {
+  position: absolute;
+  top: 10%;
+  left: 20%;
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  align-items: baseline;
+  width: 70%;
+}
+
+.dialogue-speaker {
+  justify-self: end;
+  padding-right: 12px;
+  white-space: nowrap;
+
+  font-family: "STXingkai", "KaiTi", "楷体", cursive;
+  font-size: 56px;
+
+  background: linear-gradient(to right, #d8b45a, #fff8d6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.dialogue-text {
+  margin-left: 20px;
+  color: white;
+  font-family: "Source Han Serif TC", "思源宋体", serif;
+  font-size: 24px;
+}
+
+.dialogue-character {
+  opacity: 0;
+  transition: opacity 180ms ease-out;
+}
+
+.dialogue-character.is-visible {
+  opacity: 1;
+}
