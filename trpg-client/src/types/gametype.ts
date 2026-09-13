@@ -10,10 +10,15 @@ export type narration = {
   content: string;
 }
 
-export type bg={
-  type: "bg"
-  position: string;
-  time: string;
-}
+// UI 事件：由本地小模型 / 后端工具产生（旁路），不是大模型叙事。
+// 【职责划分】大模型只负责 chat / narration；UI 事件由小模型负责。
+// 例：背景切换 { type:"ui", kind:"bg", data:{ position, time } }
+//     { type:"ui", kind:"music", data:{ track } }
+//     { type:"ui", kind:"minigame", data:{ game, sessionId } }
+export type ui_event = {
+  type: "ui";
+  kind: string;
+  data: Record<string, unknown>;
+};
 
-export type instruction = chat | narration | bg;
+export type instruction = chat | narration | ui_event;

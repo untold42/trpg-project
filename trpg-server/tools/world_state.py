@@ -1,0 +1,130 @@
+# -*- coding: utf-8 -*-
+"""
+world_state.py
+==============
+世界状态（live，结构化）：推演游标 + 宏观 + 定时线 + 人物线程。
+
+存放：`游戏数据/世界状态.json`（经 state_manager 读写）
+    ⇒ 因而自动进入「状态现拼」，大模型每轮都能看到最新世界状态；
+    ⇒ 也自动进入开局快照，`放弃本轮` 时随玩家状态一起回滚。
+
+活跃人物：扫 `trpg-world/角色动态档案/活跃/*.md`（谁在那，就该被推演）。
+
+结构：
+    {
+      "模拟游标": "1220-01-16",           # 已推演到哪一天
+      "宏观":    [ {date, entity, text} ], # 已发生的宏观事件
+      "定时线":  [ {date, text, 已触发} ],  # 作者给定，代码按日期触发
+      "人物线程": {
+         "上官萤": { "地点":"福州",
+                     "最新": {日期,类型,顺利度},
+                     "流水": [ {日期,类型,顺利度}, ... ] }   # 上限截断
+      }
+    }
+"""
+
+import datetime
+from pathlib import Path
+
+from tools.state_manager import state
+
+_ROOT = Path(__file__).resolve().parent.parent.parent
+ACTIVE_DIR = _ROOT / "trpg-world" / "角色动态档案" / "活跃"
+
+# 每人保留的逐日流水上限
+THREAD_LOG_LIMIT = 30
+
+
+def default() -> dict:
+    """一份全新的空世界状态（纯函数，不碰文件）。"""
+    return {"模拟游标": "", "宏观": [], "定时线": [], "人物线程": {}}
+
+
+def load() -> dict:
+    data = state.load("世界状态", {})
+    if not isinstance(data, dict):
+        data = {}
+    for k, v in default().items():
+        data.setdefault(k, v)
+    return data
+
+
+def save(data: dict):
+    state.save("世界状态", data)
+
+
+def cursor() -> str:
+    return load().get("模拟游标", "")
+
+
+def set_cursor(date: str):
+    data = load()
+    data["模拟游标"] = date
+    save(data)
+
+
+def parse_date(s):
+    try:
+        y, m, d = (int(x) for x in str(s).split("-"))
+        return datetime.date(y, m, d)
+    except (ValueError, TypeError):
+        return None
+
+
+def days_between(start: str, end: str) -> int:
+    """end - start 的天数（无法解析返回 0）。"""
+    a, b = parse_date(start), parse_date(end)
+    if a is None or b is None:
+        return 0
+    return (b - a).days
+
+
+def day_after(date: str) -> str:
+    d = parse_date(date)
+    return (d + datetime.timedelta(days=1)).strftime("%Y-%m-%d") if d else date
+
+
+def day_before(date: str, n: int = 1) -> str:
+    d = parse_date(date)
+    return (d - datetime.timedelta(days=n)).strftime("%Y-%m-%d") if d else date
+
+
+def current_date() -> str:
+    """玩家当前游戏内日期（读 基本信息.json）。"""
+    t = (state.load("基本信息", {}) or {}).get("时间", {}) or {}
+    return t.get("日期", "") or ""
+
+
+def current_location() -> str:
+    """玩家当前地点（读 基本信息.json）。"""
+    p = (state.load("基本信息", {}) or {}).get("位置", {}) or {}
+    return p.get("地点", "") or ""
+
+
+def active_characters() -> list[str]:
+    """活跃人物名单：扫 角色动态档案/活跃/ 下的 md，取文件名（人物名）。"""
+    if not ACTIVE_DIR.is_dir():
+        return []
+    return sorted(p.stem for p in ACTIVE_DIR.glob("*.md"))
+
+
+def character_thread(name: str) -> dict:
+    return load().get("人物线程", {}).get(name, {})
+
+
+def update_character(name: str, date: str, location: str, kind: str,
+                     smoothness: str, note: str = ""):
+    """写入某人物当天的推演结果（最新 + 流水，流水按上限截断）。"""
+    data = load()
+    threads = data.setdefault("人物线程", {})
+    th = threads.setdefault(name, {})
+    th["地点"] = location
+    entry = {"日期": date, "类型": kind, "顺利度": smoothness}
+    if note:
+        entry["备注"] = note
+    th["最新"] = entry
+    log = th.setdefault("流水", [])
+    log.append(entry)
+    if len(log) > THREAD_LOG_LIMIT:
+        del log[: len(log) - THREAD_LOG_LIMIT]
+    save(data)

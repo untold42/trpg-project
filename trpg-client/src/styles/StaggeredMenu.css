@@ -1,0 +1,175 @@
+/* ============================================================
+   玩家状态菜单（由 react-bits StaggeredMenu 精简改造）
+   结构：
+     .staggered-menu-wrapper  全屏容器（不拦截点击，常驻）
+       .sm-prelayers          多层背景（滑入动画）
+         .sm-prelayer[-1|-2]
+       .sm-toggle             左上角触发按钮
+       .staggered-menu-panel  左侧面板
+         .sm-panel-inner      内容容器
+           .sm-panel-content  内容块容器（直接子元素逐个 stagger 入场）
+             .sm-stat-block   ← 每个内容块（金钱/背包/属性/状态）
+               .sm-stat-title
+               .sm-stat-body
+   ============================================================ */
+
+/* 全屏容器：常驻，但 pointer-events:none 让点击穿透；
+   只有 .sm-toggle 和 .staggered-menu-panel 恢复可点 */
+.staggered-menu-wrapper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 300;
+    pointer-events: none;
+    overflow: hidden;
+
+    /* 16:9 区域：与游戏画布等高、垂直居中，上下留黑边 */
+    --menu-top: calc((100vh - 56.25vw) / 2);
+    --menu-height: 56.25vw;
+}
+
+/* ---------- 多层背景（先于面板滑入，营造层叠感） ---------- */
+.sm-prelayers {
+    position: absolute;
+    top: var(--menu-top);
+    left: 0;
+    width: 100vw;
+    height: var(--menu-height);
+    pointer-events: none;
+    z-index: 5;
+}
+
+[data-position='right'] .sm-prelayers {
+    left: auto;
+    right: 0;
+}
+
+.sm-prelayer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+}
+
+/* 两层背景色，视觉风格在这里改 */
+.sm-prelayer-1 {
+    background: #2b2118;
+}
+
+.sm-prelayer-2 {
+    background: #4a3626;
+}
+
+/* ---------- 左上角触发按钮 ---------- */
+.sm-toggle {
+    position: absolute;
+    right: 0;
+    top: var(--menu-top);
+    z-index: 20;
+    pointer-events: auto;
+
+    width: 120px;
+    height: 50px;
+
+    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-position: center;
+
+    border: none;
+    background-color: transparent;
+    cursor: pointer;
+    color: white;
+    font-family: "Source Han Serif TC", "思源宋体", serif;
+    font-size: 18px;
+}
+
+/* ---------- 左侧面板主体 ---------- */
+.staggered-menu-panel {
+    position: absolute;
+    top: var(--menu-top);
+    left: 0;
+    width: 100vw;
+    height: var(--menu-height);
+
+    background-image: url("../assets/ui/面板背景.png");
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-position: center;
+
+    /* 面板底色 */
+    display: flex;
+    flex-direction: column;
+    padding: 5em 1.5em 1.5em 1.5em;
+    box-sizing: border-box;
+    overflow-y: auto;
+
+    z-index: 10;
+    pointer-events: auto;
+    opacity: 0;
+}
+
+[data-position='right'] .staggered-menu-panel {
+    left: auto;
+    right: 0;
+}
+
+/* ---------- 内容区 ---------- */
+.sm-panel-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+/* 内容块：直接子元素会在打开时逐个上浮入场 */
+.sm-panel-content>* {
+    will-change: transform, opacity;
+}
+
+/* 单个内容块（金钱/背包/属性/状态） */
+.sm-stat-block {
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+}
+
+.sm-stat-title {
+    margin: 0 0 0.4rem;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--sm-accent, #c0392b);
+    font-family: "Source Han Serif TC", "思源宋体", serif;
+}
+
+.sm-stat-body {
+    font-size: 0.95rem;
+    color: #3a2f26;
+    line-height: 1.7;
+    white-space: pre-line;
+    font-family: "Source Han Serif TC", "思源宋体", serif;
+}
+/* 菜单项按钮（存档 / 放弃 / 地图 / 势力 / 返回） */
+.sm-menu-item {
+    display: block;
+    width: 100%;
+    padding: 0.7rem 1rem;
+    background: rgba(255, 255, 255, 0.6);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: left;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #3a2f26;
+    font-family: "Source Han Serif TC", "思源宋体", serif;
+    transition: background 0.2s, color 0.2s;
+}
+
+.sm-menu-item:hover {
+    background: rgba(255, 255, 255, 0.92);
+    color: var(--sm-accent, #c0392b);
+}

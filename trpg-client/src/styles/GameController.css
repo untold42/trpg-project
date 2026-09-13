@@ -1,31 +1,8 @@
-/* 返回主菜单 */
-.back-button {
+/* 数据面板按钮 */
+.data-button {
     position: absolute;
     right: 0px;
     bottom: 175px;
-    z-index: 100;
-
-    width: 120px;
-    height: 50px;
-
-    background-image: url("../assets/ui/金红矩形按钮.png");
-    background-size: 100% 100%;
-    background-repeat: no-repeat;
-    background-position: center;
-
-    border: none;
-    background-color: transparent;
-
-    cursor: pointer;
-    color: white;
-    font-family: "Source Han Serif TC";
-}
-
-/* 地图 */
-.map-button {
-    position: absolute;
-    right: 0px;
-    bottom: 225px;
     z-index: 100;
 
     width: 120px;
@@ -199,4 +176,140 @@
     z-index: 100;
     color: white;
     font-size: 22px;
+}
+
+/* 数据面板（金钱/背包/属性/状态） */
+.data-box {
+    position: absolute;
+    right: 140px;
+    bottom: 25px;
+    z-index: 400;
+
+    width: 320px;
+    max-height: 70vh;
+    overflow-y: auto;
+
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+
+    padding: 1rem;
+    border-radius: 10px;
+    background: rgba(20, 12, 8, 0.75);
+}
+
+/* 势力画廊覆盖层（全屏） */
+.gallery-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 400;
+    background: rgba(0, 0, 0, 0.88);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.gallery-overlay .accordion-gallery {
+    width: 100%;
+}
+
+
+/* 画廊关闭按钮 */
+.gallery-close {
+    position: absolute;
+    top: 24px;
+    right: 32px;
+    z-index: 10;
+
+    width: 120px;
+    height: 50px;
+
+    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-position: center;
+
+    border: none;
+    background-color: transparent;
+    cursor: pointer;
+    color: white;
+    font-family: "Source Han Serif TC", serif;
+    font-size: 18px;
+}
+
+/* 画廊：两行布局（每行一个 AccordionGallery，高度自适应均分）
+   整体为 16:9 舞台，与游戏画布 / 全屏阅读一致（177.78vh = 100vh × 16/9） */
+.gallery-rows {
+    width: min(100vw, 177.78vh);
+    height: min(56.25vw, 100vh);
+    padding: 2.4% 2%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.gallery-rows .accordion-gallery {
+    flex: 1 1 0;
+    min-height: 0;
+}
+
+/* ===== 全屏阅读界面 ===== */
+.gallery-reader {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    /* 16:9：177.78vh = 100vh * 16/9 */
+    width: min(100vw, 177.78vh);
+    height: min(56.25vw, 100vh);
+    z-index: 500;
+    overflow: hidden;
+    background: #0b0705;
+}
+
+.reader-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.35;
+}
+
+.reader-scrim {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg,
+        rgba(8, 5, 3, 0.96) 0%,
+        rgba(8, 5, 3, 0.78) 45%,
+        rgba(8, 5, 3, 0.30) 100%);
+}
+
+.reader-inner {
+    position: absolute;
+    top: 50%;
+    left: 8%;
+    right: 8%;
+    transform: translateY(-50%);
+    max-width: 900px;
+    max-height: 76%;
+    overflow-y: auto;
+    color: #f5efe0;
+    font-family: "Source Han Serif TC", "思源宋体", serif;
+}
+
+.reader-title {
+    margin: 0 0 1.5rem;
+    font-size: clamp(2rem, 3vw, 3rem);
+    letter-spacing: 0.12em;
+    color: #d8b45a;
+    border-left: 4px solid #d8b45a;
+    padding-left: 1rem;
+}
+
+.reader-text {
+    font-size: clamp(1rem, 1.1vw, 1.25rem);
+    line-height: 2.1;
+    white-space: pre-line;
 }

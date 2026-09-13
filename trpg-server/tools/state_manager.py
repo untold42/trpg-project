@@ -55,6 +55,28 @@ class StateManager:
             self.save(name, new_data)
             return new_data
 
+    def names(self):
+        """列出 游戏数据/ 下所有 JSON 的名称（不含扩展名），已排序。"""
+        try:
+            files = os.listdir(self.data_dir)
+        except OSError:
+            return []
+        return sorted(
+            os.path.splitext(f)[0] for f in files if f.endswith(".json")
+        )
+
+    def snapshot(self):
+        """返回 {名称: 数据} 的完整快照。读取失败的条目跳过，不影响整体。
+
+        供引擎在每次调用 LLM 前现拼「当前状态」使用，是状态的唯一读取入口。
+        """
+        out = {}
+        for name in self.names():
+            data = self.load(name, None)
+            if data is not None:
+                out[name] = data
+        return out
+
 
 # 全局单例：tools/游戏数据/ 目录
 GAME_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "游戏数据")

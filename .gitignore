@@ -7,3 +7,4 @@ trpg-client/public/tiles
 
 trpg-map/扬州.pbf
 trpg-map/draw_tiles/tiles
+trpg-server/sessions/
