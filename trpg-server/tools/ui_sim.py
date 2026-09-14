@@ -223,6 +223,27 @@ def battle_tracks() -> list[str]:
     return _listed(_BATTLE_MANIFEST)
 
 
+def battle_track_for(present=None, location: str = None) -> str:
+    """战斗选曲：命中「绑定」（敌人名 / 地点类型）的专属曲优先，否则用通用战斗曲。
+
+    - `present`：敌方登场人物名（用于 boss 专属曲，如「温夫人」）。
+    - `location`：地点名（用于地点绑定，如「千灯楼」）。
+    无曲库时返回 ""。
+    """
+    listed = battle_tracks()
+    if not listed:
+        return ""
+    binds = music_bindings(_BATTLE_MANIFEST)
+    kind = _kind_of(location) if location else ""
+    names = [str(x).strip() for x in (present or []) if str(x).strip()]
+    for t in listed:
+        b = binds.get(t, "")
+        if b and _binding_matches(b, location, names, kind):
+            return t
+    generic = [t for t in listed if not binds.get(t)]
+    return (generic or listed)[0]
+
+
 def current_shichen() -> str:
     t = (state.load("基本信息", {}) or {}).get("时间", {}) or {}
     return t.get("时辰", "") or ""

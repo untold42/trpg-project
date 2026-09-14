@@ -38,6 +38,7 @@ from tools.location import update_location
 from tools.time_weather import update_time, update_weather
 from tools.weather_system import get_weather
 from tools.event_dice import daily_event_dice, travel_event_dice
+from tools.battle_session import start_battle
 
 _ENTRIES = [
     (
@@ -872,6 +873,59 @@ _ENTRIES = [
             },
         },
         travel_event_dice,
+    ),
+    (
+        "start_battle",
+        {
+            "type": "function",
+            "function": {
+                "name": "start_battle",
+                "description": "判定进入战斗：指定敌人（可选友方），开启 n vs n 回合制战斗。"
+                "**只在梁峰确实与人动手、且冲突升级为械斗/生死相搏时调用**；"
+                "口角、推挤、一两个回合就能了结的短暂冲突不必开战斗。"
+                "调用后只叙述「杀机骤起 / 剑已出鞘」一两句即止，"
+                "具体回合由玩家在战斗界面里操作。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "敌人": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "名字": {"type": "string"},
+                                    "梯度": {"type": "string",
+                                             "enum": ["T0", "T1", "T2", "T3", "T4", "T5", "T6", "T7"]},
+                                    "兵器": {"type": "string", "enum": ["剑法", "拳掌", "暗器"]},
+                                    "五行": {"type": "string", "enum": ["火", "金", "木", "土", "水", "无"]},
+                                    "武器类型": {"type": "string", "enum": ["利器", "钝器", "徒手"]},
+                                    "生命": {"type": "integer"},
+                                },
+                                "required": ["名字"],
+                            },
+                        },
+                        "友方": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "名字": {"type": "string"},
+                                    "梯度": {"type": "string"},
+                                    "兵器": {"type": "string"},
+                                    "五行": {"type": "string"},
+                                    "武器类型": {"type": "string"},
+                                    "生命": {"type": "integer"},
+                                },
+                                "required": ["名字"],
+                            },
+                        },
+                        "缘由": {"type": "string", "description": "开战缘由（一句话）"},
+                    },
+                    "required": ["敌人"],
+                },
+            },
+        },
+        start_battle,
     ),
 ]
 

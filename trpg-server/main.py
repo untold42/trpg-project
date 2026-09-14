@@ -12,6 +12,8 @@ from tools.difficulty_settings import get_settings, set_difficulty
 
 # 工具注册表（schema + 实现的单一真相源）
 from tools.registry import TOOLS_MAP
+from tools import battle_session
+from tools.battle_settings import THOUGHT_MODEL_OPTIONS, get_thought_model, set_thought_model
 
 # 引擎（回合运行 + 会话 + 过程日志）
 from engine import GameSession, TurnRunner, continue_cue
@@ -78,6 +80,89 @@ def set_settings_route():
     """修改设置（目前：难度）。请求体 {\"难度\": \"普通\"}。"""
     data = request.json or {}
     return jsonify(set_difficulty(data.get("难度", "")))
+
+
+# ------------------------------------------------------------
+# 战斗（回合制 n vs n）
+# ------------------------------------------------------------
+def _battle_note(s: dict) -> str:
+    """把战斗结果摘要拼成给主持人的系统提醒。"""
+    p = s.get("玩家") or {}
+    parts = [f"战斗结束（{s.get('原因') or '—'}）"]
+    if s.get("胜方"):
+        parts.append(f"胜方：{s['胜方']}")
+    if p:
+        parts.append(f"梁峰 生命 {p.get('生命')}/{p.get('生命上限')}、内力 {p.get('内力')}/{p.get('内力上限')}")
+    if s.get("倒下"):
+        parts.append("倒下：" + "、".join(s["倒下"]))
+    if s.get("撤离"):
+        parts.append("撤离：" + "、".join(s["撤离"]))
+    if s.get("约定撤退"):
+        parts.append("（事先约定撤退者：" + "、".join(s["约定撤退"]) + "，可叙其是否跟撤）")
+    return "、".join(parts) + "。请据此叙事后效（伤势 / 尸体 / 战利品 / 被俘等），不要重述战斗过程。"
+
+
+@app.route("/battle/state", methods=["GET"])
+def battle_state_route():
+    """当前战斗状态（无战斗时 {active:false}）。"""
+    return jsonify(battle_session.state())
+
+
+@app.route("/battle/action", methods=["POST"])
+def battle_action_route():
+    """玩家在战斗界面提交一个动作。
+
+    请求体：{\"动作\", \"目标\", \"移动\", \"招式\", \"目标格\", \"思路\"}。
+    返回推进后的完整战斗状态；战斗结束时附 \"结果\" 并把结果注入下一轮 GM 提示。
+    """
+    data = request.json or {}
+    action = {k: data[k] for k in ("动作", "目标", "移动", "招式", "目标格")
+              if data.get(k) is not None}
+    st = battle_session.submit(action, data.get("思路", ""))
+    if isinstance(st, dict) and st.get("结果"):
+        runner.session.pending_notes.append("【战斗结果】" + _battle_note(st["结果"]))
+    return jsonify(st)
+
+
+@app.route("/battle/settings", methods=["GET"])
+def battle_settings_get():
+    """战斗设置：思路判定模型（小模型 / 大模型）。"""
+    return jsonify({"思路判定模型": get_thought_model(),
+                    "可选思路判定模型": list(THOUGHT_MODEL_OPTIONS)})
+
+
+@app.route("/battle/settings", methods=["POST"])
+def battle_settings_post():
+    """切换思路判定模型。请求体 {\"思路判定模型\": \"小模型\"|\"大模型\"}。"""
+    data = request.json or {}
+    return jsonify(set_thought_model(data.get("思路判定模型", "")))
+
+
+@app.route("/battle/roster", methods=["GET"])
+def battle_roster_route():
+    """模拟战斗可选名单（来自 武力排名.md）。"""
+    return jsonify(battle_session.roster())
+
+
+@app.route("/battle/sim", methods=["POST"])
+def battle_sim_route():
+    """环境设定里的「模拟战斗」：直接开局，不走 GM。
+
+    请求体：{\"友方\": [名字...], \"敌人\": [名字...], \"缘由\": \"...\"}。
+    玩家（梁峰）固定参战。返回完整战斗状态（前端直接开战斗界面）。
+    """
+    data = request.json or {}
+    return jsonify(battle_session.start(
+        data.get("敌人") or [], data.get("友方") or [],
+        缘由=data.get("缘由") or "模拟战斗", 模拟=True,
+    ))
+
+
+@app.route("/battle/abort", methods=["POST"])
+def battle_abort_route():
+    """中止/丢弃当前战斗（不写回状态）。"""
+    battle_session.clear()
+    return jsonify({"success": True})
 
 
 @app.route("/recap", methods=["GET"])

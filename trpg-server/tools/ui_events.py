@@ -33,7 +33,7 @@ kind 清单（协议）：
 UI_EVENTS_KEY = "_ui_events"
 
 #: 已定义的 UI 事件 kind（新增 kind 请同时改前端 types/gametype.ts）
-KINDS = ("bg", "music", "minigame")
+KINDS = ("bg", "music", "battle", "minigame")
 
 
 def ui_event(kind: str, **data) -> dict:

@@ -18,9 +18,14 @@ small_model.py
 """
 
 import json
+import os
 import threading
 
 MODEL_KEY = "qwen/qwen3-4b-2507"
+
+#: 单次调用默认上限（秒）：超时则 cancel 生成、返回 None（由调用方降级）
+#: 可用环境变量 `TRPG_SMALL_TIMEOUT` 覆盖。
+TIMEOUT = float(os.environ.get("TRPG_SMALL_TIMEOUT", "10"))
 
 _lock = threading.RLock()
 _model = None
@@ -44,32 +49,61 @@ def available() -> bool:
         return False
 
 
-def ask_json(system: str, user: str, schema: dict, max_tokens: int = None):
-    """一次结构化调用。成功返回 dict；失败返回 None。
+def ask_json(system: str, user: str, schema: dict, max_tokens: int = None,
+             timeout: float = None):
+    """一次结构化调用（带硬超时）。成功返回 dict；超时/失败返回 None。
 
-    `max_tokens`：限制生成长度（强烈建议给）。
-    **判定 / 分类类系统提示必须在末尾加 `/no_think` 禁止思考**，否则 4B 会陷入长思考
-    （实测：不禁思考会生成 8000+ token / 150s+；加 `/no_think` 后降到 0.5–3s）。
+    - `max_tokens`：限制生成长度（强烈建议给）。
+    - `timeout`：秒；默认 `TIMEOUT=10`。超时会 **cancel 生成**（真中断，不是干等）。
+    - **判定 / 分类类系统提示必须在末尾加 `/no_think` 禁止思考**，否则 4B 会陷入长思考
+      （实测：不禁思考会生成 8000+ token / 150s+；加 `/no_think` 后降到 0.5–3s）。
+
+    实现：流式 `respond_stream` 放到守护线程里消费，主线程最多等 `timeout` 秒；
+    超时就调 `stream.cancel()` 发取消消息。`set_sync_api_timeout` 不管用（它只管消息间隔）。
     """
-    try:
-        model = _get_model()
-        config = {"maxTokens": max_tokens} if max_tokens else None
-        res = model.respond(
-            {"messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ]},
-            response_format=schema,
-            config=config,
-        )
-    except Exception:
+    timeout = TIMEOUT if timeout is None else float(timeout)
+    holder: dict = {}
+    done = threading.Event()
+
+    def _run():
+        try:
+            model = _get_model()
+            stream = model.respond_stream(
+                {"messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ]},
+                response_format=schema,
+                config={"maxTokens": max_tokens} if max_tokens else None,
+            )
+            holder["stream"] = stream
+            for _ in stream:      # 消费至完成
+                pass
+            holder["res"] = stream.result()
+        except Exception as e:
+            holder["err"] = e
+        finally:
+            done.set()
+
+    th = threading.Thread(target=_run, daemon=True)
+    th.start()
+    if not done.wait(timeout):
+        st = holder.get("stream")
+        try:
+            if st is not None:
+                st.cancel()       # 真中断生成
+        except Exception:
+            pass
         return None
 
+    res = holder.get("res")
+    if res is None:
+        return None
     parsed = getattr(res, "parsed", None)
     if isinstance(parsed, dict):
         return parsed
     try:  # 退回：部分版本 parsed 可能是字符串
-        data = json.loads(res.content)
+        data = json.loads(getattr(res, "content", "") or "")
         return data if isinstance(data, dict) else None
     except Exception:
         return None

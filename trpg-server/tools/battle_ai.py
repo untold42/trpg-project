@@ -21,8 +21,6 @@ battle_ai.py
 
 import json
 
-import llm
-
 from tools import battle_settings, small_model
 
 # ------------------------------------------------------------
@@ -91,6 +89,8 @@ def _judge_small(context, action, target, thought) -> dict:
 
 
 def _judge_big(context, action, target, thought) -> dict:
+    import llm  # 惰性导入：避免 registry → battle_ai → llm → registry 的循环
+
     messages = [
         {"role": "system", "content": _JUDGE_SYSTEM_BIG},
         {"role": "user", "content": _judge_user(context, action, target, thought)},
@@ -140,8 +140,14 @@ SIDE_MOVES = ["原地", "前进1", "后退1", "侧移1", "斜移1"]
 _SIDE_SYSTEM = (
     "你是武侠战斗的「阵营 AI」。根据战局，为**每一个**该阵营角色决定本回合行动。\n"
     "只输出 JSON（对象，含 `行动` 数组），每个角色一条，顺序与人名一致。\n"
-    "约束：动作只能从那六个里选；目标必须是给定名单里的名字（没有合适目标填空字符串）；"
-    "移动只能选给定项；思路不超过 12 字。\n"
+    "决策原则（务必遵守）：\n"
+    "1. **「目标」必须填敌方角色的名字**——绝不能填自己、也绝不能填队友（填错会被系统判为无效）。\n"
+    "2. 与敌方**相邻（距离1）**时，「舞剑」攻击（目标填那个敌人的名字）。\n"
+    "3. 距离 > 1 时用「移动」靠近敌人：选「前进1」或「斜移1」（朝敌人所在的 X 方向）；"
+    "**不要移动到已被占用的格**。\n"
+    "4. 能远程攻击（技能射程够）时可直接「技能」打敌人。\n"
+    "5. 残血（HP < 1/3）可「防守」或「撤退」。\n"
+    "约束：动作只能从那六个里选；目标必须是给定名单里的名字；移动只能选给定项；思路不超过 12 字。\n"
     "禁止思考、禁止叙述。\n/no_think"
 )
 
@@ -152,6 +158,7 @@ def _side_schema(members: list, targets: list) -> dict:
         "properties": {
             "行动": {
                 "type": "array",
+                "maxItems": max(1, len(members)),
                 "items": {
                     "type": "object",
                     "properties": {
@@ -196,7 +203,8 @@ def decide_side(side: str, snapshot: str, members: list, targets: list,
         f"请给出你方每个成员本回合的行动。"
     )
     r = small_model.ask_json(
-        _SIDE_SYSTEM, user, _side_schema(names, targets), max_tokens=max_tokens
+        _SIDE_SYSTEM, user, _side_schema(names, targets),
+        max_tokens=min(max_tokens, 120 * max(1, len(names)) + 120),
     )
     if not isinstance(r, dict):
         return out

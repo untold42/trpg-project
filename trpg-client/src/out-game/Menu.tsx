@@ -6,6 +6,10 @@ import "../styles/Background.css";
 import GooseAnimation from "./GooseAnimation";
 import MoveLogo from "./Logo";
 import type { instruction } from "../types/gametype";
+import BattleScene, { type BattleState } from "../in-game/battle";
+
+// 模拟战斗可选名单条目
+type Roster = { 名字: string; 梯度: string };
 
 // 进游戏时一并带进去的数据（前情回顾段落 + 最后一幕 bg/音乐）
 export type StartData = {
@@ -71,6 +75,56 @@ function Menu({ onStartGame }: MenuProps) {
                 body: JSON.stringify({ 难度: d }),
             });
         } catch { /* 后端没起：忽略 */ }
+    }
+
+    // ---- 环境设定：模拟战斗（直接测战斗系统，不动真实存档）----
+    const [roster, setRoster] = useState<Roster[]>([]);
+    const [sim友, setSim友] = useState<string[]>([]);
+    const [sim敌, setSim敌] = useState<string[]>([]);
+    const [simState, setSimState] = useState<BattleState | null>(null);
+    const [simBusy, setSimBusy] = useState(false);
+
+    useEffect(() => {
+        if (!showSetting || roster.length) return;
+        (async () => {
+            try {
+                const d = await (await fetch(`${API}/battle/roster`)).json();
+                if (Array.isArray(d?.角色)) setRoster(d.角色);
+            } catch { /* 后端没起：忽略 */ }
+        })();
+    }, [showSetting, roster.length]);
+
+    function 切换参战(side: "友" | "敌", name: string) {
+        if (side === "友") {
+            setSim友((p) => p.includes(name) ? p.filter((x) => x !== name) : [...p, name]);
+            setSim敌((p) => p.filter((x) => x !== name));
+        } else {
+            setSim敌((p) => p.includes(name) ? p.filter((x) => x !== name) : [...p, name]);
+            setSim友((p) => p.filter((x) => x !== name));
+        }
+    }
+
+    async function 开始模拟() {
+        if (simBusy || !sim敌.length) return;
+        setSimBusy(true);
+        try {
+            const st = await (await fetch(`${API}/battle/sim`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 友方: sim友, 敌人: sim敌, 缘由: "模拟战斗" }),
+            })).json();
+            if (st?.active) {
+                audioRef.current?.pause();   // 暂停主页面主题曲
+                setSimState(st);
+                setshowSetting(false);
+            }
+        } catch { /* 后端没起：忽略 */ } finally { setSimBusy(false); }
+    }
+
+    function 退出模拟() {
+        setSimState(null);
+        audioRef.current?.play();        // 恢复主页面主题曲
+        fetch(`${API}/battle/abort`, { method: "POST" }).catch(() => { });
     }
 
     // ---- 归隐山林：直接退出 ----
@@ -141,6 +195,48 @@ function Menu({ onStartGame }: MenuProps) {
                                         ))}
                                     </div>
                                 </div>
+
+                                <div className="setting-row sim-row">
+                                    <span className="setting-label">模拟战斗</span>
+                                    <div className="sim-wrap">
+                                        {!roster.length && (
+                                            <div className="sim-empty">（后端未启动，读不到名单）</div>
+                                        )}
+                                        {roster.length > 0 && (
+                                            <div className="sim-cols">
+                                                <div className="sim-col">
+                                                    <div className="sim-col-title">友军 {sim友.length}</div>
+                                                    <div className="sim-chips">
+                                                        {roster.map((c) => (
+                                                            <button key={c.名字}
+                                                                className={"sim-chip ally" + (sim友.includes(c.名字) ? " active" : "")}
+                                                                onClick={() => 切换参战("友", c.名字)}>
+                                                                {c.名字}<i>{c.梯度}</i>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                                <div className="sim-col">
+                                                    <div className="sim-col-title">敌人 {sim敌.length}</div>
+                                                    <div className="sim-chips">
+                                                        {roster.map((c) => (
+                                                            <button key={c.名字}
+                                                                className={"sim-chip enemy" + (sim敌.includes(c.名字) ? " active" : "")}
+                                                                onClick={() => 切换参战("敌", c.名字)}>
+                                                                {c.名字}<i>{c.梯度}</i>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                        <button className="sim-start"
+                                            disabled={!sim敌.length || simBusy}
+                                            onClick={开始模拟}>
+                                            {simBusy ? "开局中…" : "开始模拟战斗（梁峰固定参战）"}
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )
@@ -162,6 +258,8 @@ function Menu({ onStartGame }: MenuProps) {
                     <span>雾锁山门，已归隐山林</span>
                 </div>
             )}
+
+            {simState && <BattleScene initial={simState} onExit={退出模拟} />}
         </>
     );
 }

@@ -5,7 +5,7 @@
 > - 待办规划 → `TODO.md`
 > - 地图生成细节 → `trpg-map/draw_tiles/STATUS.md`
 
-最后更新：记忆层已改为**两级**（动态档案为主 + §10 超 20 条 LRU→`char_memory`）；新增**地点见闻**（`place_notes`）与**方位注入**（八方位/城区方位）；前端**去掉 `data/`**、势力/设置改由后端供，并新增**前情回顾加载**（`GET /recap`）；**难度设置**（`难度设置.json`）与**归隐退出**；`游戏数据`/`天气数据`/`归档存档` 已从 `tools/` 搬到 `trpg-server/` 同级；过程日志统一叫 `current.jsonl`。总纲第 5 条 **「硬事实由代码裁决」** 继续贯穿（时间/距离/方位/城内城外/骰值）。
+最后更新：**战斗系统 v0.1 已实现**（网格 n vs n · 阶段驱动 · 小/大模型思路判定 · 模拟战斗 · 战斗 BGM；见 `trpg-world/战斗系统.md` / `ARCHITECTURE.md` 第十三节）。此后：记忆层改为**两级**（动态档案为主 + §10 超 20 条 LRU→`char_memory`）；新增**地点见闻**（`place_notes`）与**方位注入**（八方位/城区方位）；前端**去掉 `data/`**、势力/设置改由后端供，并新增**前情回顾加载**（`GET /recap`）；**难度设置**（`难度设置.json`）与**归隐退出**；`游戏数据`/`天气数据`/`归档存档` 已从 `tools/` 搬到 `trpg-server/` 同级；过程日志统一叫 `current.jsonl`。总纲第 5 条 **「硬事实由代码裁决」** 继续贯穿（时间/距离/方位/城内城外/骰值）。
 
 > ⚠️ **交接必读（第十二节）**：如果你是从一份旧会话接手，先看第十二节「当前进度与下一步」；
 > 并注意：`trpg-server` 的代码改动**必须重启后端**才生效（改规则 md 则免重启）。
@@ -33,12 +33,12 @@ main.py            bootstrap + 路由（薄，不再写工具循环）
 engine.py          GameSession（history + current.jsonl + 开局快照）
                    TurnRunner（回合：LLM↔工具循环、状态现拼、事件流）
 save_pipeline.py   POST /save 收尾管线（蒸馏→誊写→归档→重置）
-llm.py             大模型客户端（DeepSeek）：send_messages(游戏 32 工具) + complete(无工具补全)
-tools/registry.py  工具 schema + 实现的**单一真相源**（34 个：游戏 32 + 存档 2；存档专用的不发给游戏 GM）
+llm.py             大模型客户端（DeepSeek）：send_messages(游戏 33 工具) + complete / complete_json
+tools/registry.py  工具 schema + 实现的**单一真相源**（35 个：游戏 33 + 存档 2；存档专用的不发给游戏 GM）
 tools/state_manager.py  trpg-server/游戏数据 的统一读写（state 单例）
 tools/mem_store.py  chroma 访问层（懒加载）
 tools/ui_events.py  工具→前端的 UI 事件旁路
-tools/small_model.py  本地小模型 Qwen3-4B 封装
+tools/small_model.py  本地小模型 Qwen3-4B 封装（单次 10s 硬超时，超时 cancel 生成）
 tools/ui_sim.py       小模型 UI 事件（背景 bg / 音乐 music）
 tools/money.py       金钱：直接落账（modify_money 直接改钱）
 tools/map_query.py  空间库查询 + city_context（城内/外、距城墙、最近城门）
@@ -50,6 +50,12 @@ tools/get_character.py      NPC 登场读档（静态 §1–§8 + 动态 §9–�
 tools/factions.py           玩家可见势力（读 trpg-world/势力介绍.json）
 tools/difficulty_settings.py  游戏设置（难度；trpg-server/游戏数据/难度设置.json）
 tools/recap.py              前情回顾（大模型浓缩 + 小模型选 bg/音乐）
+tools/battle.py             战斗数值核心（网格/6动作/命中伤害/五行/武器/Buff/胜负，纯代码）
+tools/battle_tactics.py     NPC 代码战术层（L2 枚举+打分 + L3 一回合前瞻）
+tools/battle_runner.py      战斗阶段驱动（回合阶段机 + 战局快照）
+tools/battle_ai.py          战斗 AI（思路判定路由小/大模型 + 阵营决策 + 降级）
+tools/battle_session.py     当前战斗单例 + 梯度查表 + 结束写回状态
+tools/battle_settings.py    战斗设置（思路判定模型，存 sessions/battle_settings.json）
 ```
 
 ### 核心机制
@@ -84,15 +90,22 @@ tools/recap.py              前情回顾（大模型浓缩 + 小模型选 bg/音
 | POST | `/action` | 游戏主循环 `{input, mode, ke?}` → 事件流（`mode`：`action` 角色行动 / `say` 对 NPC 说的台词 / `gm` 场外话 / `continue` 继续（`ke` 刻数，0=只看信息）） |
 | POST | `/save` | 存档收尾管线（蒸馏→誊写→归档→重置） |
 | POST | `/abandon` | 放弃本轮（回滚玩家状态 + 世界状态，丢弃本局） |
+| GET | `/battle/state` | 当前战斗状态（无战斗 `{active:false}`） |
+| POST | `/battle/action` | 战斗提交一个动作 `{动作,目标,招式,目标格,思路}` → 推进到下一次轮询 |
+| GET/POST | `/battle/settings` | 思路判定模型（小/大模型，存 `sessions/battle_settings.json`） |
+| GET | `/battle/roster` | 模拟战斗可选名单（55 人，来自 `武力排名.md`） |
+| POST | `/battle/sim` | 模拟开局 `{友方,敌人}`（不回写存档） |
+| POST | `/battle/abort` | 中止当前战斗 |
 
 ---
 
-## 四、工具清单（游戏中 32 个，`tools/registry.py`；另 2 个存档专用 = 共 34）
+## 四、工具清单（游戏中 33 个，`tools/registry.py`；另 2 个存档专用 = 共 35）
 
 - **金钱/背包**：`modify_money` `get_money` `modify_item` `add_item` `remove_item` `get_inventory`
 - **状态/属性**：`modify_hunger` `modify_health` `modify_injury` `modify_hp` `modify_tp` `get_state` `get_ability`
 - **移动/时间/天气**：`update_location` `update_time` `update_weather` `get_weather`
 - **骰子**：`roll_dice` `daily_event_dice` `travel_event_dice`
+- **战斗**：`start_battle`（GM 判定开战 → 战斗界面）
 - **记忆库**：`DB_query_tool` `DB_add_and_update_tool` `DB_query_tool_in_saving`
 - **地图查询**：`query_nearby` `query_place` `list_map_kinds`（`update_place_note` 为存档专用，游戏中不可见）
 - **人物/表情**：`get_character` `check_expression`
@@ -125,6 +138,7 @@ trpg-server/归档存档/              ← 存档时归档的逐字叙事
 trpg-server/sessions/           （.gitignore）
     current.jsonl         本局过程日志（每轮一行）
     run_start_state.json  本局开局快照（放弃本轮回滚用）
+    battle_settings.json  战斗设置（思路判定模型；模拟战斗也用它）
 ```
 
 `游戏数据/` 是**领域自有存储区**：禁止通用文件工具写，只能走专用接口 + `state_manager`。
@@ -137,6 +151,8 @@ trpg-server/sessions/           （.gitignore）
 - **「菜单」**（左侧滑出）：存档游戏 / 放弃本轮 / 地图 / 势力 / 返回主菜单。
 - **背景**：由 UI 事件 `kind:"bg"` 控制（`in-game/background.ts` 负责 地点+时辰→图），`GameScene` 只收 `background` prop。
 - **音乐**：由 UI 事件 `kind:"music"` 控制（`in-game/music.ts`，曲库=`assets/音乐/*.mp3`，**只放一遍不循环**，播完即停；离开游戏停止）。
+- **战斗**：`in-game/battle.tsx` + `styles/Battle.css` —— 10×6 网格 + **实心矩形 token**（阵营配色/名字/血内力条/buff）+ 动作菜单 + 目标点选 + 思路输入框 + 滚动日志 + 顶部**小/大模型开关** + 结算浮层；`GameController` 收 `kind:"battle"` 打开，战斗 BGM 由 `ui_sim.battle_track_for()` 选。
+- **模拟战斗**：主菜单「环境设定」里选友军/敌人（`GET /battle/roster`）→ `POST /battle/sim` → 直接开战斗界面（不回写存档）；主页面主题曲自动暂停/恢复。
 - **历史面板 / 续玩**：读 `GET /history`；不再有前端 `historyLog`。
 - **地图**：`Map.tsx` 请求 `/explored`；`ClickableLayer.tsx` 探索迷雾 + IndexedDB 缓存 + 可视范围图标层。
 - **势力画廊**：读 `GET /factions`（数据源 `trpg-world/势力介绍.json`）；**前端已无 `data/` 文件夹**。
@@ -231,12 +247,14 @@ cp -r tiles/{11..16} ../../trpg-client/public/tiles/
 9. **足迹不发 LLM**：只存盘。
 10. **只跑一个后端**：开两个 `python main.py` 会抢 5000 端口 / 一个跑旧代码旧路径，表现为"改了没生效 / 有的对有的不对"。
 11. **数据目录在 `trpg-server/` 下**：`游戏数据` / `天气数据` / `归档存档` 与 `tools/` 同级（**不在 `tools/` 里**）；路径均由 `__file__` 绝对解析。
+12. **小模型单次调用有 10s 硬超时**（`tools/small_model.ask_json`）：超时会 `stream.cancel()` **真中断**并返回 None（调用方降级）；可用 `TRPG_SMALL_TIMEOUT` 覆盖。注意 `lmstudio.set_sync_api_timeout()` **不管用**（它只管消息间隔，实测 33s 照样跑完）。
 
 ---
 
 ## 十二、交接：当前进度与下一步
 
 ### 本轮做了什么（最近一次开发）
+- **战斗系统 v0.1**：网格 n vs n（10×6，切比雪夫）+ **阶段制**（先手方→后手方）；6 动作（移动/舞剑/防守/技能（五行）/交流（队友或对手）/撤退）；HP/TP·五行相克·**武器类型**（利器流血 / 钝器眩晕 / 徒手）/ Buff（10 基础 + 蓄力/穿甲）；**思路判定小/大模型可切**，且**模型只出「评价」、修正由代码映射**（±10，只作用于伤害）；NPC 走小模型（每侧 1 次调用，幻觉降级）；`start_battle` 工具 + `/battle/*` 路由；2D 俯视桌面**矩形 token** 前端；**环境设定「模拟战斗」**；**战斗 BGM**（boss 绑定专属曲）。详见 `trpg-world/战斗系统.md`。
 - **UI 事件管线 ⑧**：bg/music 全由小模型选（`ui_sim.py`）——场景按 `场景映射.md` 地点类型约束；音乐分 `音乐清单.md`（叙事）/`战斗音乐清单.md`（战斗）双清单；专属曲按 `曲名｜绑定` 触发；默认底色曲 `山中好岁月`；**只放一遍不循环**；换曲门槛=换背景或当前曲失效。
 - **时间加「刻」**（1 时辰=8 刻）；「继续」按钮可选 **0–4 刻**（0=不推进时间、只看信息）。
 - **金钱直接落账**（去掉请款/确认环节与账本；`modify_money` 直接改钱）。
@@ -255,19 +273,20 @@ cp -r tiles/{11..16} ../../trpg-client/public/tiles/
 
 ### ⚠️ 重启后才生效
 `trpg-server` 代码（本轮）：`main.py`（新路由 `/settings`）/ `tools/difficulty_settings.py` / `tools/recap.py` / `tools/factions.py` / `tools/state_manager.py` / `tools/map_query.py` / `tools/location.py` / `tools/weather_system.py` / `tools/file_tools.py` / `engine.py` / `save_pipeline.py` / `llm.py`；以及前端（`App` / `Menu` / `GameController` / `GameScene` / css）。
+> 战斗系统新增/改动：`main.py`（`/battle/*` 路由）/ `tools/battle.py` / `battle_runner.py` / `battle_ai.py` / `battle_session.py` / `battle_settings.py` / `registry.py`（`start_battle`）/ `ui_events.py`（`battle`）/ `ui_sim.py`（战斗选曲）；前端 `in-game/battle.tsx` / `styles/Battle.css` / `out-game/Menu.tsx` / `GameController.tsx`。
 > ⚠️ **只跑一个 `python main.py`**（开了两个会抢 5000 端口 / 一个跑旧代码，表现为"改了没生效"）。
 
 ### 下一步优先级（建议）
-1. **大跨度时间流逝规则**：`总览.md` 补"住店只是订房，不等于睡到天亮"（规则热更免重启）。**很小**。
-2. **§8.4 点选行程耗时**（以「刻」为单位、速度取决于体力/轻功）。
-3. **属性养成**（`update_ability` / `train_skill`）——轻功前置。
-4. **战斗系统（§四）**（建议先写数值设计再写码）。
+1. **战斗 v0.2**：NPC 配招式 / 扇形直线范围 / 地形 / 借机攻击 / 受击方五行（见 TODO §四）。
+2. **大跨度时间流逝规则**：`总览.md` 补"住店只是订房，不等于睡到天亮"（规则热更免重启）。**很小**。
+3. **§8.4 点选行程耗时**（以「刻」为单位、速度取决于体力/轻功）。
+4. **属性养成**（`update_ability` / `train_skill`）——轻功前置。
 5. 大工程（均**未动**）：**§九 信息边界（两段式调用）**、**§十 知识库层**。
 
 > 暂缓：`history` 滑动窗口 / 摘要 —— 用户称模型上下文足够大，**暂不需要**（长局/成本敏感时再评估）。
 
 ### 未动的大块（对应 TODO 编号）
-⑧剩余 ui_event 协议细化（music/minigame 已可）；⑨ 战斗 / 小游戏；属性养成；日历（农历）；地图扩展（`type` / 地域特色 / 世界地图 / 补史实城门）；点选行程（§8.4）；信息边界；知识库。
+⑧剩余 ui_event 协议细化（music/minigame 已可）；⑨ **战斗 ✅ v0.1**、小游戏（未做）；属性养成；日历（农历）；地图扩展（`type` / 地域特色 / 世界地图 / 补史实城门）；点选行程（§8.4）；信息边界；知识库。
 
 ---
 
@@ -279,7 +298,7 @@ cp -r tiles/{11..16} ../../trpg-client/public/tiles/
 | `trpg-server/save_pipeline.py` | 存档收尾管线 |
 | `trpg-server/main.py` | 路由 + bootstrap |
 | `trpg-server/llm.py` | 大模型客户端 |
-| `trpg-server/tools/registry.py` | 工具单一注册表（34：游戏 32 + 存档 2） |
+| `trpg-server/tools/registry.py` | 工具单一注册表（35：游戏 33 + 存档 2） |
 | `trpg-server/tools/state_manager.py` | 游戏数据统一读写层 |
 | `trpg-server/tools/mem_store.py` | chroma 访问层（懒加载） |
 | `trpg-server/tools/character_archive.py` | 角色动态档案写入 + §10 LRU 淘汰 |
@@ -289,6 +308,13 @@ cp -r tiles/{11..16} ../../trpg-client/public/tiles/
 | `trpg-server/tools/factions.py` | 玩家可见势力（读 `trpg-world/势力介绍.json`） |
 | `trpg-server/tools/difficulty_settings.py` | 游戏设置（难度；读`游戏数据/难度设置.json`） |
 | `trpg-server/tools/recap.py` | 前情回顾（大模型浓缩 + 小模型选 bg/音乐） |
+| `trpg-server/tools/battle.py` | 战斗数值核心（网格/动作/命中伤害/五行/武器/Buff/胜负，纯代码） |
+| `trpg-server/tools/battle_tactics.py` | NPC 代码战术层（L2 Utility + L3 前瞻） |
+| `trpg-server/tools/battle_runner.py` | 战斗阶段驱动（回合阶段机 + 战局快照） |
+| `trpg-server/tools/battle_ai.py` | 战斗 AI（思路判定 + 阵营决策） |
+| `trpg-server/tools/battle_session.py` | 当前战斗单例 + 梯度查表 + 结束写回 |
+| `trpg-server/tools/battle_settings.py` | 战斗设置（思路判定模型） |
+| `trpg-client/src/in-game/battle.tsx` | 战斗界面（网格/矩形 token/日志/思路框/模型开关） |
 | `trpg-server/tools/world_sim.py` / `world_worker.py` | 世界推演 / 异步 worker |
 | `trpg-server/游戏数据/` | 游戏状态 JSON + 世界状态（与 `tools/` 同级） |
 | `trpg-server/sessions/` | 过程日志 + 开局快照 |
@@ -342,7 +368,7 @@ trpg-world/势力介绍.json          ← 玩家可见源（已剔除剧透）
 玩家输入 POST /action {input, mode, ke}
    ▼ engine.TurnRunner
    ├─ 状态现拼 state.snapshot()（游戏数据/*.json，排除 足迹/账目）
-   ├─ 大模型 ↔ 工具循环（registry：游戏 32 工具）
+   ├─ 大模型 ↔ 工具循环（registry：游戏 33 工具）
    └─ 小模型 ui_sim 选 bg / 音乐
    ▼ 统一事件流 [ ui 事件… , chat / narration… ]
 前端 GameController：ui → 旁路（背景/音乐/…）；chat/narration → GameScene
@@ -373,6 +399,10 @@ trpg-world/势力介绍.json          ← 玩家可见源（已剔除剧透）
 | 前情回顾 bg / 音乐 | | ✅ | |
 | 存档蒸馏（gm/char/档案/见闻） | ✅ | | |
 | 距离 / 时间 / 方位 / 骰值 / 状态 | | | ✅ |
+| 战斗：思路判定（可切大模型） | ✅ | ✅ | |
+| 战斗：NPC 战术（默认，L2+L3） | | | ✅ |
+| 战斗：NPC 阵营决策（`TRPG_BATTLE_AI=model` 时） | | ✅ | |
+| 战斗：命中/伤害/HP/内力/Buff/胜负 | | | ✅ |
 
 ### 14.6 设置（难度）
 
@@ -381,4 +411,40 @@ trpg-world/势力介绍.json          ← 玩家可见源（已剔除剧透）
       │
       └─（随「状态现拼」每轮注入状态块）──► 大模型按难度调整「世界如何回应」
                                              （不改硬事实：距离/时间/骰值仍由代码算）
+```
+
+### 14.7 战斗系统
+
+```
+【开战·正式】GM 判定动手
+   └─ 工具 start_battle(敌人,友方,缘由) ──► battle_session.start()
+         ├─ _tier_map() 读 trpg-world/江湖势力/武力排名.md（名→梯度）
+         ├─ _build() → npc_combatant（缺梯度默认 T5）
+         ├─ new_battle()：player_combatant() 读 状态/属性/基本信息 + 招式表 → Battle
+         ├─ BattleRunner.start()：begin_round → 走 NPC（小模型）→ 停在玩家
+         └─ 选战斗 BGM：ui_sim.battle_track_for(敌人, 地点)
+   ◄── UI 事件 kind:"battle"（含 战场/日志/音乐）
+   前端 GameController.handleUiEvents → setBattleState → BattleScene 打开 + playMusic
+
+【开战·模拟】菜单「环境设定」→ GET /battle/roster（55 人）
+   └─ POST /battle/sim {友方,敌人} ──► start(模拟=True) → 同一 BattleScene（不回写存档）
+
+【一回合】
+   POST /battle/action {动作,目标,招式,目标格,思路}
+     ▼ battle_session.submit
+       ├─ judge_thought(战局快照, …, 思路)   ← 小/大模型，只出「评价」→代码映射修正
+       ├─ Battle.perform(玩家, 动作, 修正)   ← 纯代码结算 + 写日志
+       └─ advance()：友方小模型一次 → 敌方小模型一次 → end_round → begin_round
+     ◄── 新战场 + 日志 + 最后的思路判定
+
+【结束】
+   battle.ended → battle_session._finalize()
+     ├─ 玩家 生命/精力/伤势 → 游戏数据/状态.json（模拟战斗跳过）
+     └─ 结果摘要 → main.py 拼「【战斗结果】…」→ session.pending_notes
+            └─（下一轮 /action）随「状态现拼」注入 → 大模型叙事后效
+
+【读写】
+   读：状态.json / 属性.json / 基本信息.json / 招式表.json / 武力排名.md / 战斗音乐清单.md
+   写：状态.json（结束）；sessions/battle_settings.json（切模型）
+   战斗状态本身只在内存（battle_session._RUNNER）
 ```

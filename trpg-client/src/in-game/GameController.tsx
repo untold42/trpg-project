@@ -9,6 +9,7 @@ import { StaggeredMenu } from "./Staggered Menu";
 import AccordionGallery, { type AccordionGalleryItem } from "./AccordionGallery";
 import { 默认背景, getBackgroundImage } from "./background";
 import { playMusic, stopMusic } from "./music";
+import BattleScene, { type BattleState } from "./battle";
 
 // 承接App.tsx
 type GamingProps = {
@@ -172,6 +173,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         return rows;
     }, [galleryItems]);
     const [showContinue, setShowContinue] = useState(false); // 「继续」的刻数选项
+    const [battleState, setBattleState] = useState<BattleState | null>(null); // 战斗界面（可阻塞）
 
     // 统一处理 /state 返回：更新状态
     function applyState(s: PlayerState | null) {
@@ -189,6 +191,9 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                 ));
             } else if (ev.kind === "music") {
                 playMusic(String(ev.data.track ?? ""));
+            } else if (ev.kind === "battle") {
+                // 战斗界面（可阻塞）：data 即 /battle/state 的结构
+                setBattleState(ev.data as unknown as BattleState);
             } else {
                 console.debug("[ui]", ev.kind, ev.data);
             }
@@ -365,6 +370,13 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         return (
             <div className="background">
                 <GameScene key="game" history={history} background={background} />
+
+                {battleState && (
+                    <BattleScene
+                        initial={battleState}
+                        onExit={() => { setBattleState(null); sendAction("", "continue", 0); }}
+                    />
+                )}
 
                 <button className="chat-button" onClick={() => { setshowInputGM(!showInputGM); setShowInputAct(false); setShowInputSay(false); }}>
                     主持人
