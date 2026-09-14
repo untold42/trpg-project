@@ -5,7 +5,7 @@ state_manager.py
 统一的游戏状态读写层。
 
 所有工具不再各自 open 游戏数据 JSON，统一通过这里的 state 单例读写：
-    - 路径集中管理（tools/游戏数据/{name}.json，绝对路径，与启动目录无关）
+    - 路径集中管理（游戏数据/{name}.json，绝对路径，与启动目录无关）
     - 读文件容错（文件损坏/不存在时返回默认值，不崩）
     - 原子写（先写临时文件再 rename，写到一半崩溃也不会损坏 JSON）
     - 读写加锁（将来并发也安全）
@@ -78,6 +78,7 @@ class StateManager:
         return out
 
 
-# 全局单例：tools/游戏数据/ 目录
-GAME_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "游戏数据")
+# 全局单例：trpg-server/游戏数据/ 目录（与 tools/ 同级）
+_HERE = os.path.dirname(os.path.abspath(__file__))
+GAME_DATA_DIR = os.path.join(os.path.dirname(_HERE), "游戏数据")
 state = StateManager(GAME_DATA_DIR)

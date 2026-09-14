@@ -5,11 +5,11 @@ save_pipeline.py
 存档收尾管线（存档 = 结束本局）。
 
 流程：
-    1. 代码：从 turns.jsonl 誊写本局逐字叙事（transcript）
+    1. 代码：从 current.jsonl 誊写本局逐字叙事（transcript）
     2. LLM ：按《存档流程.md》蒸馏 transcript → gm_memory（客观）+ char_memory（主观）
     3. 代码：transcript 写入 游戏数据/游戏存档.md（供下一局读作前情）
-    4. 代码：归档一份到 tools/归档存档/
-    5. 代码：重置会话（history + turns.jsonl）；玩家状态保留（故事连续）
+    4. 代码：归档一份到 归档存档/
+    5. 代码：重置会话（history + current.jsonl）；玩家状态保留（故事连续）
 
 分工：代码负责机械部分（誊写 / 归档 / 重置），LLM 只负责语义蒸馏。
 不再让 LLM 用文件工具写 游戏数据/（会撞上写保护）。
@@ -26,9 +26,9 @@ from tools import character_archive
 from tools.get_character import CHARACTER_DIR
 
 SERVER_DIR = Path(__file__).resolve().parent
-GAME_DATA_DIR = SERVER_DIR / "tools" / "游戏数据"
+GAME_DATA_DIR = SERVER_DIR / "游戏数据"
 SAVE_TRANSCRIPT = GAME_DATA_DIR / "游戏存档.md"
-ARCHIVE_DIR = SERVER_DIR / "tools" / "归档存档"
+ARCHIVE_DIR = SERVER_DIR / "归档存档"
 SAVE_FLOW_DOC = SERVER_DIR.parent / "trpg-world" / "存档流程.md"
 
 # 会改变玩家状态的工具（其效果誊写进存档；查询类不誊写）
@@ -48,32 +48,33 @@ _NON_CHARACTERS = {"旁白", "系统", "主持人", "你", ""}
 
 
 def _render_user(turn: dict) -> str:
-    """按 mode 区分「角色行动」（IC）/「对主持人的场外话」（OOC）/「继续」。
+    """按 mode 渲染玩家输入，**只改前缀**为「梁峰」开头（内容不动）。
 
-    OOC 渲染为【场外】，且**不参与记忆蒸馏**（见 存档流程.md 铁律）。
+    - 行动 / 台词 → `梁峰：…` / `梁峰说：「…」`
+    - 场外（OOC）→ `梁峰（场外）：…`（标了「场外」的行**不参与记忆蒸馏**）
     """
     s = (turn.get("user") or "").strip()
     if turn.get("mode") == "continue":
-        return "（静观其变，时间流逝）"
+        return "梁峰：（静观其变，时间流逝）"
     if turn.get("mode") == "say":
         body = s.removeprefix("梁峰开口说：「")
         if body.endswith("」"):
             body = body[:-1]
-        return "你说：「" + body + "」"
+        return "梁峰说：「" + body + "」"
     if turn.get("mode") == "gm" or s.startswith(_GM_PREFIX):
-        return "【场外】" + s.removeprefix(_GM_PREFIX)
-    return "你说：" + s.removeprefix(_IC_PREFIX)
+        return "梁峰（场外）：" + s.removeprefix(_GM_PREFIX)
+    return "梁峰：" + s.removeprefix(_IC_PREFIX)
 
 
 def _render_instruction(item) -> list[str]:
-    """把一条叙事指令渲染成存档文本行。"""
+    """把一条叙事指令渲染成存档文本行，**只改前缀**：旁白→`GM：`，NPC 台词→`GM（人名）：`。"""
     if not isinstance(item, dict):
         return []
     t = item.get("type")
     if t == "chat":
-        return [f"{item.get('speaker', '?')}：「{item.get('content', '')}」"]
+        return [f"GM（{item.get('speaker', '?')}）：「{item.get('content', '')}」"]
     if t == "narration":
-        return [item.get("content", "")]
+        return [f"GM：{item.get('content', '')}"]
     return []  # bg / ui 等不誊写
 
 
@@ -86,7 +87,7 @@ def _render_tools(tool_calls) -> list[str]:
         res = tc.get("result")
         if isinstance(res, dict):
             res = res.get("message") or res.get("error") or json.dumps(res, ensure_ascii=False)
-        lines.append(f"（系统：{res}）")
+        lines.append(f"GM（系统）：{res}")
     return lines
 
 
@@ -210,7 +211,7 @@ def write_current_transcript(transcript: str) -> Path:
 
 
 def archive_transcript(transcript: str, start: str, end: str) -> Path:
-    """归档到 tools/归档存档/<起>~<止> 存档.md（重名自动加序号）。"""
+    """归档到 归档存档/<起>~<止> 存档.md（重名自动加序号）。"""
     ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
     span = start if start == end else f"{start}~{end}"
     path = ARCHIVE_DIR / f"{span} 存档.md"

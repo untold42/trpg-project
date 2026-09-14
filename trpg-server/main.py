@@ -6,6 +6,9 @@ from llm import send_messages
 from tools.explore import read_player_position, record_position
 from tools.accident import accident
 from tools.state_manager import state
+from tools.factions import list_factions
+from tools.recap import build_recap
+from tools.difficulty_settings import get_settings, set_difficulty
 
 # 工具注册表（schema + 实现的单一真相源）
 from tools.registry import TOOLS_MAP
@@ -58,9 +61,37 @@ def get_player_state():
     return jsonify(state.snapshot())
 
 
+@app.route("/factions", methods=["GET"])
+def get_factions():
+    """玩家可见的势力条目（画廊用）。数据源：trpg-world/势力介绍.json。"""
+    return jsonify(list_factions())
+
+
+@app.route("/settings", methods=["GET"])
+def get_settings_route():
+    """游戏设置（目前：难度）。数据源：游戏数据/难度设置.json。"""
+    return jsonify(get_settings())
+
+
+@app.route("/settings", methods=["POST"])
+def set_settings_route():
+    """修改设置（目前：难度）。请求体 {\"难度\": \"普通\"}。"""
+    data = request.json or {}
+    return jsonify(set_difficulty(data.get("难度", "")))
+
+
+@app.route("/recap", methods=["GET"])
+def get_recap():
+    """前情回顾（进入游戏前的加载）：浓缩上一轮存档为 ≤10 段 narration + 选最后一幕 bg/音乐。"""
+    try:
+        return jsonify(build_recap())
+    except Exception as e:
+        return jsonify({"has_recap": False, "error": str(e)})
+
+
 @app.route("/history", methods=["GET"])
 def get_history():
-    """当前本局的历史（单一真相源：turns.jsonl）。
+    """当前本局的历史（单一真相源：current.jsonl）。
 
     前端用途：① 历史面板文本行；② 中途退出后续玩（tail = 最后一轮的指令）。
     """

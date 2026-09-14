@@ -5,7 +5,7 @@ engine.py
 游戏引擎：回合运行 + 会话状态 + 过程日志。
 
 职责边界（见 ARCHITECTURE.md 第五节）：
-    - GameSession  : 持有 history（纯叙事）与 turns.jsonl（过程真相），负责落盘/恢复
+    - GameSession  : 持有 history（纯叙事）与 current.jsonl（过程真相），负责落盘/恢复
     - TurnRunner   : 一次玩家动作的完整回合（LLM 工具循环），产出给前端的
                     统一事件流（叙事指令 + 工具 UI 事件）
     - 状态注入      : 每次调用 LLM 都从 state_manager 现拼「当前状态」，只出现一次
@@ -17,7 +17,7 @@ main.py 只负责 bootstrap（建 session/runner）与路由，不再持有 hist
       collapse_tool_messages 事后清理，现在从源头就不落进去）。
     - 状态不进 history，而是每次 build_messages 时现拼、放在 messages 末尾。
       这样上下文里的状态永远唯一且最新，落实「数据先于叙述」。
-    - turns.jsonl 每轮追加：唯一的「边玩边写」。一次磁盘 append 成本可忽略，
+    - current.jsonl 每轮追加：唯一的「边玩边写」。一次磁盘 append 成本可忽略，
       换来崩溃安全与后续「存档誊写」的原始素材。
 """
 
@@ -44,7 +44,7 @@ from tools.registry import SAVE_TOOLS
 SERVER_DIR = Path(__file__).resolve().parent
 SESSIONS_DIR = SERVER_DIR / "sessions"
 CURRENT_LOG = SESSIONS_DIR / "current.jsonl"
-GAME_DATA_DIR = SERVER_DIR / "tools" / "游戏数据"
+GAME_DATA_DIR = SERVER_DIR / "游戏数据"
 SAVE_TRANSCRIPT = GAME_DATA_DIR / "游戏存档.md"
 
 # 规则文件（主持人/*.md）热更新：按文件夹最新 mtime 缓存，改文件即时生效
@@ -129,7 +129,7 @@ def _time_advanced(events) -> str:
 
 
 # ------------------------------------------------------------
-# 过程日志的读取与渲染（单一真相源：turns.jsonl）
+# 过程日志的读取与渲染（单一真相源：current.jsonl）
 # ------------------------------------------------------------
 _IC_PREFIX = "梁峰："
 _SAY_PREFIX = "梁峰开口说：「"
@@ -156,7 +156,7 @@ CONTINUE_CUE = continue_cue(2)  # 默认（兼容）
 
 
 def read_turns(log_path) -> list[dict]:
-    """读取 turns.jsonl（跳过写了一半的坏行）。"""
+    """读取 current.jsonl（跳过写了一半的坏行）。"""
     turns = []
     try:
         text = Path(log_path).read_text(encoding="utf-8")
@@ -215,7 +215,7 @@ class GameSession:
     """一局游戏的状态容器。
 
     - history      : LLM 工作上下文里的纯叙事（user / assistant 正文）
-    - turns.jsonl  : 过程真相，每轮一行，重启可恢复
+    - current.jsonl  : 过程真相，每轮一行，重启可恢复
     """
 
     def __init__(self, rules_prompt: str = "", log_path: Path = CURRENT_LOG,
@@ -267,7 +267,7 @@ class GameSession:
 
     # ---- 日志 / 恢复 ----
     def _restore(self):
-        """从 turns.jsonl 重建 history（崩溃/重启后继续同一局）。"""
+        """从 current.jsonl 重建 history（崩溃/重启后继续同一局）。"""
         if not self.log_path.exists():
             return
         try:
@@ -290,14 +290,14 @@ class GameSession:
                 )
 
     def append_turn(self, turn: dict):
-        """追加一轮到 turns.jsonl（原子性由单行写入保证）。"""
+        """追加一轮到 current.jsonl（原子性由单行写入保证）。"""
         with self._lock:
             self.log_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.log_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(turn, ensure_ascii=False) + "\n")
 
     def reset(self):
-        """结束本局：清空 history 与 turns.jsonl。玩家状态保留（故事连续）。
+        """结束本局：清空 history 与 current.jsonl。玩家状态保留（故事连续）。
 
         重置后重新读取刚写好的 游戏存档.md 作为下一局的前情提要，
         并记录新本局的开局状态快照。
@@ -501,7 +501,7 @@ class TurnRunner:
     def run_save(self, transcript: str, rules: str) -> dict:
         """把本局记录蒸馏进长期记忆。
 
-        与普通回合不同：**不写 history、不写 turns.jsonl**（这不是叙事回合）。
+        与普通回合不同：**不写 history、不写 current.jsonl**（这不是叙事回合）。
         注入《存档流程》规则 + 本局记录，跑工具循环（LLM 调数据库工具）。
         返回 {"content": 最终文本, "tool_calls": [...]}
         """

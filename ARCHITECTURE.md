@@ -5,7 +5,7 @@
 >
 > 状态图例：✅ 已定/已完成 ｜ 🚧 待实现 ｜ 🔧 待修改 ｜ ❓ 待定
 
-最后更新：地基（引擎 / 事件流 / 工具注册表 / 记忆层 / 存档）与本局生命周期、UI 重构、世界推演（⑦）已完成；新增设计决策——**信息边界（第十节）**、**知识库层（第十一节）**、以及**硬事实由代码裁决（总纲第 5 条）**，并落地 UI 事件管线（⑥⑧）、时间「刻」位、城池内外判定等。
+最后更新：记忆层改为**两级**（动态档案 + LRU）、**地点见闻**、**方位注入**；前端去 `data/`、势力/设置后端化、**前情回顾加载**、**难度设置与归隐退出**；数据目录搬到 `trpg-server/` 同级、日志统一 `current.jsonl`。设计待建：**信息边界（第十节）**、**知识库层（第十一节）**；总纲第 5 条 **「硬事实由代码裁决」** 贯穿。
 
 ---
 
@@ -34,8 +34,9 @@
 | 硬事实 | 产出方 |
 |---|---|
 | 时间（日期 / 时辰 / 刻） | `time_weather.update_time` |
-| 位置、移动距离、耗时提示 | `location.update_location` |
-| 城内/城外、距城墙、最近城门 | `map_query.city_context` |
+| 位置、移动距离 / **方位**、耗时提示 | `location.update_location` |
+| 城内/城外、**城区方位**、距城墙、最近城门 | `map_query.city_context` |
+| 某地相对玩家的**方位 / 距离** | `map_query.query_place` / `query_nearby` |
 | 天气 | `weather_system.get_weather` |
 | 骰值 / 事件顺利度 | `dice` / `world_sim` |
 | 金钱 / 物品 / 生命精力 / 属性 | 各 `state` 工具 |
@@ -52,11 +53,12 @@
 | **正典层** | `trpg-world/角色静态档案/`(55)、`江湖势力/`、`世界.md` | md | 按需检索 | 🚧 检索接口未做 |
 | **记忆层** | chroma（`gm_memory` / `char_memory`） | chroma | 局内只读检索；存档时写入 | ✅ |
 | **人物视图** | `trpg-world/角色动态档案/{活跃,不活跃}/*.md` | 推演投影 | NPC 登场时读档 | ✅ |
-| **状态层** | `trpg-server/tools/游戏数据/*.json`（含 `世界状态.json`） | JSON | 每次 LLM 调用现拼 | ✅ |
+| **状态层** | `trpg-server/游戏数据/*.json`（含 `世界状态.json`） | JSON | 每次 LLM 调用现拼 | ✅ |
 | **过程日志** | `trpg-server/sessions/current.jsonl` | 日志 | 每轮追加，唯一"边玩边写" | ✅ |
 | **世界推演** | 宏观时间线 + 活跃人物线程 | 小模型（Qwen3-4B） | 异步，每游戏日一次（第七节） | ✅ |
 | **知识库层** | `trpg-world/考据/*.md` + 现有正典 | chroma（`lore`，**可重建投影**） | `KB_query_tool` 按需检索（第十一节） | 🚧 |
 | **信息边界** | 跨层可见性（`owner` / `在场·知悉·公开度` / `visibility`） | — | 贯穿记忆/历史/知识三层（第十节） | 🚧 |
+| **表现层（前端）** | `trpg-client/`（`GameScene` / `GameController` / `Map` / `AccordionGallery` / 菜单回顾） | **全部来自后端** | 只请求后端接口（`/action` `/state` `/history` `/factions` `/recap` …），**不存游戏内容** | ✅ |
 
 ---
 
@@ -68,7 +70,7 @@
 - **状态在每次 LLM 调用时现拼，且上下文中只出现一次、永远最新**。
   理由：状态必然影响叙述（"有一万两却不知道"会写偏），但快照会过期，不能塞进 `history`。
 - **`history` 只保留纯叙事**（user / assistant 正文），状态与工具中间消息都不进 `history`。
-- **`turns.jsonl` 每轮追加**：唯一"边玩边做"的更新；一次磁盘 append 成本可忽略，换崩溃安全。
+- **`current.jsonl` 每轮追加**：唯一"边玩边做"的更新；一次磁盘 append 成本可忽略，换崩溃安全。
   落盘（每轮，廉价）≠ 蒸馏（存档，昂贵）。
 - **`世界状态.json` 放在 `游戏数据/` 下**，因此也被"状态现拼"自动纳入每次调用（第七节）。
 
@@ -157,7 +159,7 @@ chroma（trpg-db/chroma_db）  访问层：tools/mem_store.py（懒加载）
   1. LLM 蒸馏本局 → `gm_memory`（客观）+ 角色动态档案（主观）
   2. 角色档案 LRU 淘汰 → `char_memory`（✅ 已实现：`tools/character_archive.py`，§10 情感记忆超 20 条时淘汰最旧）
   3. 代码誊写 `游戏存档.md` + 归档
-  4. 重置**会话**（history + turns.jsonl）；**玩家状态保留**（故事连续）
+  4. 重置**会话**（history + current.jsonl）；**玩家状态保留**（故事连续）
 
 > 注：「动态档案 = 存档时快照」已被**世界推演**修订——活跃档案随推演每游戏日更新（第七节）。
 
@@ -171,7 +173,7 @@ chroma（trpg-db/chroma_db）  访问层：tools/mem_store.py（懒加载）
 
 ### 关键规则
 
-- **IC / OOC**：`【场外】` 行是玩家对主持人的元对话，**不蒸馏**（见第六节）。
+- **IC / OOC**：`梁峰（场外）` 行是玩家对主持人的元对话，**不蒸馏**（见第六节）。
 - **id 命名**：`gm_N` / `char_N`，两库各自计数。
 
 ---
@@ -184,19 +186,17 @@ chroma（trpg-db/chroma_db）  访问层：tools/mem_store.py（懒加载）
   （`file_tools` 的 `WORKSPACE` 只到 `tools/`，本来就够不到 `trpg-world`。）
 - **规则层全量注入**：`主持人/*.md`（小、必须每轮在场）。
 - **正典层按需检索**：角色静态档案(55)、势力档案、世界设定（大、引用型，全量注入会稀释注意力）。🚧 检索接口未做 → 方案见第十一节「知识库层」。
-- **势力介绍动态化**，内容放 `trpg-world`。但——
+- **势力介绍：玩家可见数据独立成文件** `trpg-world/势力介绍.json`（已剔除剧透），前端经 `GET /factions`（`tools/factions.py`）读取。**前端不再有 `data/` 文件夹**——所有游戏数据一律向后端请求，后端从 `trpg-world` 对应文件返回。
 
-> **动态 ≠ 把 GM 笔记给玩家看。** `trpg-world/江湖势力/*.md` 含剧透（锦香宫实为泥教人间道、释明暗算唐门等）。必须分两级：
+> **动态 ≠ 把 GM 笔记给玩家看。** `trpg-world/江湖势力/*.md` 含剧透（锦香宫实为泥教人间道、释明暗算唐门等），仍是 **GM 正典（真相）**，只进 LLM、**不经接口暴露**。
 
 ```
-trpg-world/江湖势力/*.md   ← GM 正典（真相），只进 LLM
-        │ 投影
+trpg-world/江湖势力/*.md    ← GM 正典（真相），只进 LLM
+trpg-world/势力介绍.json     ← 玩家可见（已剔除剧透）
+        │ tools/factions.py · GET /factions
         ▼
-玩家可见的势力条目          ← 画廊读这个，来自「玩家已知」
-   { name, desc, detail, image }
+前端画廊 { name, desc, detail, image }
 ```
-
-"玩家已知"本身是游戏状态，由 GM 通过接口（如 `update_faction_intro`）动态维护，前端经 `GET /factions` 读取。
 
 ### 角色档案
 
@@ -208,7 +208,7 @@ trpg-world/江湖势力/*.md   ← GM 正典（真相），只进 LLM
 
 ### 待办 🔧
 
-- `势力介绍.ts` 从"数据源"退化为"类型定义 + 兜底缓存"，改读 `GET /factions`。（第 ⑥ 步）
+- ~~`势力介绍.ts`~~ ✅ 已删；改为 `trpg-world/势力介绍.json` + `GET /factions`（`tools/factions.py`），前端 `GameController` 按需 fetch。
 - ~~`find_specific_character.py` 路径写错~~ ✅ 已升级为 **`get_character`**（静态正典 + 动态近记忆；`tools/get_character.py`）。
 
 ---
@@ -219,7 +219,7 @@ trpg-world/江湖势力/*.md   ← GM 正典（真相），只进 LLM
 
 ```
 engine.py
-  ├─ GameSession       : history + turns.jsonl + 开局快照 + 前情
+  ├─ GameSession       : history + current.jsonl + 开局快照 + 前情
   ├─ TurnRunner.run(input, mode) -> list[Event]
   ├─ TurnRunner.run_save(transcript, rules)   # 存档蒸馏专用回合
   └─ 事件流组装        : 叙事指令 + 工具 UI 事件
@@ -242,7 +242,7 @@ main.py                : bootstrap + 路由
   - `TOOLS = {name: (schema, fn)}`
   - `ALL_TOOLS`（`llm.send_messages` 用）
   - `TOOLS_MAP`（`engine.TurnRunner` 用）
-- 当前 **33 个工具**（游戏中 32 + 存档专用 `update_character_archive`）；新增工具只需在 `_ENTRIES` 加一行，不必再改 `llm.py` / `main.py`。
+- 当前 **34 个工具**（游戏中 32 + 存档专用 2：`update_character_archive` / `update_place_note`）；新增工具只需在 `_ENTRIES` 加一行，不必再改 `llm.py` / `main.py`。
 
 ### 本局生命周期（已实现）
 
@@ -253,17 +253,17 @@ main.py                : bootstrap + 路由
 ```
 
 - **开局快照**：`GameSession` 在本局开始时把 `游戏数据/*.json` 存到 `sessions/run_start_state.json`；`abandon` 用它回滚。
-- `reset`（存档用）保留现状；`abandon`（放弃用）先回滚快照。两者都重拍快照、重读前情、清空 `turns.jsonl`。
+- `reset`（存档用）保留现状；`abandon`（放弃用）先回滚快照。两者都重拍快照、重读前情、清空 `current.jsonl`。
 - "重开新档"（清空记忆/状态/前情）暂不做。
 
 ### 存档管线（已实现）
 
 ```
 POST /save
- 1. 代码：turns.jsonl ──► 逐字叙事 transcript（按游戏内时间分段）
+ 1. 代码：current.jsonl ──► 逐字叙事 transcript（按游戏内时间分段）
  2. LLM ：读《存档流程.md》蒸馏 ──► gm_memory / char_memory
  3. 代码：transcript ──► 游戏数据/游戏存档.md（下一局读作前情）
- 4. 代码：归档 ──► tools/归档存档/<起>~<止> 存档.md
+ 4. 代码：归档 ──► 归档存档/<起>~<止> 存档.md
  5. 代码：重置会话（玩家状态保留）
 ```
 
@@ -284,7 +284,7 @@ POST /save
 | UI 事件 | `type:"ui"`（`kind`: `bg`/`music`/`minigame` …） | 旁路；`minigame` 可阻塞叙事 |
 
 - **工具副作用**（切背景、放音乐、开小游戏）通过 **UI 事件旁路**送到前端——解决工具中间消息被清理后副作用传不出去的问题。
-- **历史面板 / 续玩**走 `GET /history`（读 `turns.jsonl`）；前端不再维护平行的 `historyLog`。
+- **历史面板 / 续玩**走 `GET /history`（读 `current.jsonl`）；前端不再维护平行的 `historyLog`。
 - **元操作走界面按钮**：存档、放弃本轮、地图、势力、返回主菜单均**不由 LLM 工具触发**（确定性 + 二次确认）。
 - **模型分工**：大模型只产 `chat`/`narration`；`ui_event` 由**本地小模型**产出。
 - 原 `bg` 类型已从 `instruction` 删除。
@@ -315,7 +315,9 @@ def some_tool(...):
 - `mode:"gm"` → 玩家对主持人的场外话（OOC）。后端组装 `玩家的对主持人说的话：<input>`。
 - `mode:"continue"` → **「继续」按钮**（可选 `ke` 刻数）：`ke=0` **不推进时间**、只看更多场景信息；`ke>=1` 推进 N 刻。后端用 `engine.continue_cue(ke)` 组装提示语（静观其变、推进场景/NPC、勿替玩家决定、`update_time(advance_ke=N)`）。
 
-`mode` 存进 `turns.jsonl`。存档誊写时：IC → `你说：「…」`；OOC → `【场外】…` 且**禁止蒸馏**。
+`mode` 存进 `current.jsonl`。存档誊写时**只改前缀**、不改内容：
+IC → `梁峰：…` / `梁峰说：「…」`；OOC → `梁峰（场外）：…`（**禁止蒸馏**）；
+旁白 → `GM：…`；NPC 台词 → `GM（人名）：…`。
 
 > 为什么：前缀字符串是脆弱的 UI 约定；"是不是 OOC"必须是**数据**，不能靠猜。
 > OOC 是元对话，**不是世界内发生的事**，混进 `gm_memory` 会造假事实。
@@ -463,7 +465,7 @@ chroma                        ← 存档时蒸馏（大模型，重）
 | 6 | 存档流程 off-by-one（蒸馏上一局） | `存档流程.md` | ✅ 已修正：蒸馏本局 |
 | 7 | 前端属性/金钱是写死的假数据 | `GameController.tsx` | ✅ 已接 `/state` |
 | 8 | 工具双份登记 | `llm.py` + `main.py` | ✅ 已合并为 `tools/registry.py` |
-| 9 | 内容双写（势力介绍） | `势力介绍.ts` vs `trpg-world` | 🚧 待第 ⑥ 步 |
+| 9 | 内容双写（势力介绍） | `势力介绍.ts` vs `trpg-world` | ✅ 已修：删前端 `data/`，改为 `trpg-world/势力介绍.json` + `GET /factions` |
 | 10 | `角色动态档案/` 为空且无机制 | `trpg-world/角色动态档案/` | 🚧 待第 ⑦ 步 |
 | 11 | `属性.json` / `混乱度.json` 无写接口 | `游戏数据/` | 🚧 待补 `update_ability` / `evaluate_chaos` |
 | 12 | 放弃确认用原生 `window.confirm`，与 UI 不搭 | `GameController.tsx` | 🚧 待换自定义浮层 |
@@ -471,7 +473,7 @@ chroma                        ← 存档时蒸馏（大模型，重）
 | 14 | 活跃人物名单无人写入（`角色动态档案/活跃/`） | `trpg-world/角色动态档案/` | ✅ 已修：存档管线自动写入（三来源抽取，幂等，可从不活跃迁回） |
 | 15 | **外部程序打开 `chroma_db` 会让 chromadb 静默卡死** | `trpg-db/chroma_db` | ⚠️ 已知坑：Rust 内核启动要拿写锁，被占则无输出死等（如 DB Browser for SQLite）。运行前先关掉 |
 | 16 | **`check_DB_length` 式编 id：删过条目后会撞 id，而 chroma 对重复 id 静默丢弃 → 记忆悄失** | `tools/DB.py` | ✅ 已修：id 由代码 `_next_id`（max+1）分配，LLM 不再编 id（32 工具） |
-| 17 | **NPC 全知**：单一 `history` 被 LLM 当作"人人知道"，NPC 说出梁峰私下所为 | `engine.py` / `turns.jsonl` | 🚧 第十节「信息边界」：加知情字段 + 两段式调用 |
+| 17 | **NPC 全知**：单一 `history` 被 LLM 当作"人人知道"，NPC 说出梁峰私下所为 | `engine.py` / `current.jsonl` | 🚧 第十节「信息边界」：加知情字段 + 两段式调用 |
 | 18 | 正典层（角色/势力/世界）无检索接口，只能全量注入或靠 `file_tools` | `trpg-world/` | 🚧 第十一节「知识库层」 |
 
 ---
@@ -480,7 +482,7 @@ chroma                        ← 存档时蒸馏（大模型，重）
 
 ```
 地基（互相咬合）：
-  ① engine.py + GameSession + turns.jsonl 落盘        ✅
+  ① engine.py + GameSession + current.jsonl 落盘        ✅
   ② 统一事件流（含 /state、/history）                 ✅
   ③ 单一工具注册表                                    ✅
 
@@ -490,7 +492,7 @@ chroma                        ← 存档时蒸馏（大模型，重）
   本局生命周期（存档 / 放弃 / 续玩）                    ✅
 
 内容层：
-  ⑥ /factions 投影 + 玩家可见势力接口                  🚧
+  ⑥ /factions 投影 + 玩家可见势力接口                  ✅（2026-09-13）
 
 小模型层：
   ⑦ 世界状态.json + 日推演异步 worker + 宏观时间线      ✅
@@ -514,7 +516,7 @@ chroma                        ← 存档时蒸馏（大模型，重）
 - **③ 单一工具注册表**：`tools/registry.py`（脚本从旧代码生成，零错配）；`llm.py` 缩到客户端；`main.py` 去工具导入。
 - **④ 记忆层双库**：`gm_memory` / `char_memory`；`tools/mem_store.py`（懒加载）；`DB.py` 按 collection+owner；修 init 路径与 embedding。初始化脚本改为**只建结构、不写入任何内容**（`--reset` 可重建）。**id 由代码分配**（`_next_id` = max+1），LLM 不再编 id；`check_DB_length` 退出工具集。
   - ⚠️ chroma 的 `delete()` 是**逻辑删除 + 打墓碑**：`count()` 归 0，但写前日志 `embeddings_queue` 与 HNSW 向量段仍留痕迹。**彻底清空只能 `init_GM_DB.py --reset`**。
-- **⑤ 存档流程**：`save_pipeline.py`；`TurnRunner.run_save`；`存档流程.md` 重写；`POST /save`；IC/OOC 输入模式与 `【场外】` 不蒸馏。
+- **⑤ 存档流程**：`save_pipeline.py`；`TurnRunner.run_save`；`存档流程.md` 重写；`POST /save`；IC/OOC 输入模式与「场外」标记不蒸馏。
 - **历史面板 + 续玩**：`GET /history`（`{active, lines, tail}`）；删 `historyLog`；进入游戏自动续上最后一幕。
 - **放弃本轮**：开局快照 `sessions/run_start_state.json`；`POST /abandon` 回滚状态。
 - **UI 重构**：顶层按钮收敛为 主持人/行动/**继续**/历史记录/数据；存档/放弃/地图/势力/返回入「菜单」；`save_game` 工具退役（32 工具）。
@@ -534,6 +536,11 @@ chroma                        ← 存档时蒸馏（大模型，重）
   - **动态档案为主、char_memory 只在溢出时写入（LRU）**（2026-09-13，按用户要求，阈值 N=20）：此前存档流程直接叫 LLM 把主观记忆写 `char_memory`（冷库），而设计本应是「热=动态档案 §9–§13」→「冷=char_memory（仅 LRU 溢出）」，且根本没有写动态档案的工具（LRU 也没实现）。新增 `tools/character_archive.py` + 存档专用工具 `update_character_archive`（仅 `SAVE_TOOLS` 可见，游戏中的 GM 看不到）：按模板更新某 NPC 的动态档案（§9 里程碑/最近互动/态度、§10 情感记忆、§11 情绪、§12 信息边界），首次登场可带 `static` 字段建静态档案；§10 超 20 行 → 最旧的写入 `char_memory[owner]`（写入成功才从档案移除，chroma 不可用则不删）。`存档流程.md` 重写：客观 → `gm_memory`，主观 → `update_character_archive`，**不再写 `char_memory`**。`registry` 拆出 `ALL_TOOLS`（游戏，排除 save-only）与 `SAVE_TOOLS`（存档，含全部）；`llm.send_messages` 加 `tools=` 参数；`engine.run_save` 用 `SAVE_TOOLS`。实测：模板字段写入、§10 25 行→20 行、真实 chroma 写入失败时保留不删。
   - **新登场 NPC 也建档、地位平等**（2026-09-13，按用户明确要求）：原先 `contacted_characters` 只保留**有静态档案**的人物，导致实战里 阿沅 / 怀茂青楼老妇 / 挑炭人 这类新角色全被丢弃、世界推演空转。改为：凡本局有实质互动的 NPC 都建档——**静态档案**（存档蒸馏时 `update_character_archive` 的 `static` 字段，或 `character_archive.ensure_static` 兼底，不存在则按 `静态模板` §1–§8 建）+ **动态档案**（§9–§13）；经 `world_state.promote_active` 入活跃名单。**所有角色地位平等**（新角色一经建档即与预设角色同等），代码/文档不再区分「正典 / 临时」。配套：`get_character` 静态缺失时退回动态（兼底）；`world_sim._profile` 无静态时读动态。`存档流程.md` 加「人物命名要统一、用规范名」与「【场外】整段回答不蒸馏」。
   - **建档逻辑显式化**（2026-09-13）：`update_character_archive` 先查静态档案：**已存在**（老角色）→ 只更新动态（静态正典不覆盖）；**不存在**（新角色）→ 建静态（用 `static` 或 stub）+ 动态。返回值加 `new_character` 标志。实测：老角色静态 hash 不变、新角色两档均建。
+  - **前端去 `data/`，势力改由后端供**（2026-09-13，按用户要求）：删 `trpg-client/src/data/`（`previous.ts` + `势力介绍.ts`）；玩家可见势力落到 `trpg-world/势力介绍.json`（从原 TS 导出，13 条），新增 `tools/factions.py` + `GET /factions`，`GameController` 改 `fetch` + `useMemo` 构建画廊（不再用模块常量）。原则：**前端要的游戏数据一律向后端请求，后端从 `trpg-world` 对应文件返回**。
+  - **前情回顾加载（`GET /recap`）**（2026-09-13，按用户要求）：点「继续旅途」→ 主页面加载（主题曲继续放）→ `tools/recap.py` 读 `游戏数据/游戏存档.md`，大模型浓缩成 **≤10 段 narration**（末段无缝衔接当前地点/时间），小模型为最后一幕选 **bg + 音乐**（复用 `ui_sim.generate`）→ 拿到后**直接进游戏**；前情提要在 **in game 内**用 `GameScene` 点击推进（新增 `onFinish`、防空历史），播完才进正常游戏。进入游戏时主题曲停、播放所选 bg/音乐（`App` 经 `initialBg`/`initialMusic`/`initialRecap` 传入 `Gaming`）。无存档 → 跳过回顾直接进游戏。
+  - **方位注入（修 GM 方位翻车）**（2026-09-14，实战发现）：GM 把城**东北**的「水门」当成「**西**水关」，叙述了一整套西边地理（因地图只有一座「水门」，无「西水关」，GM 凭地名臆断）。根因：代码从不告知方位。修：`map_query.bearing_name()`（八方位）+ `distance_m()`；`query_place`/`query_nearby` 每个结果带 `方位` + `距玩家（米）`；`city_context` 加 `城区方位`（如「城内东北」）；`update_location` 加 `移动方位` + `位置.城区方位`。`总览.md`「叙事节奏与移动」规则 6 改为「方位以数据为准，不得凭地名臆断」。仍待办：地图缺「西水关」等史实城门（需改地图源并重建）。
+  - **难度设置 + 归隐退出**（2026-09-14）：新增 `tools/difficulty_settings.py` + `GET`/`POST /settings`；难度**及其各级含义 `难度说明`** 均存 `游戏数据/难度设置.json`（**数据源**，随状态现拼每轮发给 LLM，可手工编辑扩充）——四档「轻松/普通/困难/硬核」；`总览.md` 通用规则 13 仅指向状态块 `难度设置.json`（按难度调整世界回应，不改硬事实）。前端「环境设定」面板可选难度、「归隐山林」直接退出（`window.close()` + 退出屏兼底）。
+  - **数据目录搬到 `trpg-server/` 同级 + 日志重命名**（2026-09-14）：`tools/游戏数据` / `tools/天气数据` / `tools/归档存档` → `trpg-server/游戏数据` / `天气数据` / `归档存档`（`git mv`）；所有路径改基于 `__file__` 绝对解析（`state_manager` / `weather_system` / `recap` / `file_tools` / `engine` / `save_pipeline`）。过程日志 `turns.jsonl` → **`current.jsonl`**（注释/文档全量更名；代码标识 `CURRENT_LOG` 不变）。
   - **`get_character`**（2026-09-13）：`tools/get_character.py` 取代 `find_specific_character`——NPC 登场时返回**静态正典 + 动态近记忆**（活跃优先、退不活跃）；**深层记忆（chroma）不取**，交 LLM 按需调 `DB_query_tool`。模糊匹配改进：文件名精确 > 文件名包含 > 身份标识（称号/绰号）> 正文包含（`龙王刀`→上官隼）。已测全路径。
   - **时间权威**（2026-09-13）：`总览.md` 通用规则 10（时间流逝必须调 `update_time`）；`engine` 加 `_time_advanced`（正则检出 `翌日/次日/数日后/赶了N天/…`）+ `_check_time_authority`：叙述推进了时间却未调 `update_time` → 写 `session.pending_time_note`，注入下一轮，补上后清除。已测正/负例。
   - **时间统一为十二时辰**（2026-09-13）：`update_time` 参数 `hour`→`shichen`、`advance_hours`→`advance_shichen`；`time_weather.HOURS`→`SHICHEN`；tool schema / `总览.md` / `engine` 提醒同步。不再出现"小时 / 24 小时"概念（12 时辰 = 1 天）。
@@ -565,7 +572,7 @@ chroma                        ← 存档时蒸馏（大模型，重）
 | 层 | 隔离键 |
 |---|---|
 | `char_memory` | `owner` |
-| `history` / `turns.jsonl` | `在场` / `知悉` / `公开度` |
+| `history` / `current.jsonl` | `在场` / `知悉` / `公开度` |
 | `lore` 知识库 | `visibility: public / gm_only / char:<名>` |
 
 ### 关键澄清：`在场` ≠ `知悉`
@@ -612,7 +619,7 @@ NPC X 的知悉集 = `在场∋X` ∪ `知悉∋X` ∪ `公开度≥传闻且能
 
 ### 数据模型
 
-`turns.jsonl` 增加 `在场` / `知悉` / `公开度` / `scene_id`（把连续回合归为同一幕）。
+`current.jsonl` 增加 `在场` / `知悉` / `公开度` / `scene_id`（把连续回合归为同一幕）。
 
 ---
 
@@ -681,7 +688,7 @@ KB 优先（离线、可溯源、无年代泄漏、无剧透失控）。真接 w
 
 ### 待定
 
-- [ ] **⑥** 玩家可见势力由谁维护（GM 工具动态写 vs md 标记抽取）
+- [x] **⑥** 玩家可见势力：独立文件 `trpg-world/势力介绍.json`（人工维护、已剔除剧透），后端 `GET /factions` 返回（✅ 2026-09-13）
 - [ ] **⑦** `世界状态.json` 体积与注入策略（全量 vs 摘要 + 工具）
 - [ ] **⑦** 活跃 → 不活跃 淘汰规则 🅿️ 搁置
 - [x] **⑦** `get_character(name)` 工具（静态 + 动态；✅ 2026-09-13）
@@ -694,7 +701,7 @@ KB 优先（离线、可溯源、无年代泄漏、无剧透失控）。真接 w
 - [ ] **地图** `features` 表加 `description`（自由文本）+ `type`（语义分类），记录定时活动
 - [ ] **地图** 地域特色重制（避免所有城市同一算法生成，江南/北方…各异）
 - [ ] **地图** 世界地图（多 `map_id`、跨城距离/官道水路/旅行耗时）
-- [ ] **信息边界** `turns.jsonl` 加 `在场`/`知悉`/`公开度`/`scene_id`；两段式调用（GM 叙述 / NPC 对白）
+- [ ] **信息边界** `current.jsonl` 加 `在场`/`知悉`/`公开度`/`scene_id`；两段式调用（GM 叙述 / NPC 对白）
 - [ ] **信息边界** tag 来源（小模型异步标注 vs 大模型 `scene` 控制事件）
 - [ ] **信息边界** `公开度` 随 `world_sim` 传播（私密→传闻→公开）
 - [ ] **知识库** `chroma_lore` + `ingest_lore.py` + `KB_query_tool` + 引擎预检索

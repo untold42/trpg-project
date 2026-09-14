@@ -44,16 +44,23 @@ def available() -> bool:
         return False
 
 
-def ask_json(system: str, user: str, schema: dict):
-    """一次结构化调用。成功返回 dict；失败返回 None。"""
+def ask_json(system: str, user: str, schema: dict, max_tokens: int = None):
+    """一次结构化调用。成功返回 dict；失败返回 None。
+
+    `max_tokens`：限制生成长度（强烈建议给）。
+    **判定 / 分类类系统提示必须在末尾加 `/no_think` 禁止思考**，否则 4B 会陷入长思考
+    （实测：不禁思考会生成 8000+ token / 150s+；加 `/no_think` 后降到 0.5–3s）。
+    """
     try:
         model = _get_model()
+        config = {"maxTokens": max_tokens} if max_tokens else None
         res = model.respond(
             {"messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ]},
             response_format=schema,
+            config=config,
         )
     except Exception:
         return None

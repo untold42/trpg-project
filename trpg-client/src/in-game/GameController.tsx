@@ -1,20 +1,23 @@
 import GameScene from "./GameScene";
 import "../styles/GameController.css"
 import "../styles/Background.css"
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { instruction } from "../types/gametype";
-import { story_previous } from "../data/previous"
 import preloadImages from "./PreloadImages";
 import GameMap from "./Map"
 import { StaggeredMenu } from "./Staggered Menu";
 import AccordionGallery, { type AccordionGalleryItem } from "./AccordionGallery";
-import { 势力列表 } from "../data/势力介绍";
 import { 默认背景, getBackgroundImage } from "./background";
 import { playMusic, stopMusic } from "./music";
 
-//承接App.tsx
+// 承接App.tsx
 type GamingProps = {
     onBackMenu: () => void;
+    // 前情回顾选定的「最后一幕」bg/音乐（无缝衔接）；无则用默认
+    initialBg?: { position?: string; time?: string } | null;
+    initialMusic?: string | null;
+    // 前情回顾段落（≤10 段 narration）：进入游戏后先放这个，点击推进完才进入正常游戏
+    initialRecap?: instruction[] | null;
 };
 
 //预加载前端资源
@@ -31,7 +34,7 @@ const images = import.meta.glob(
     }
 );
 
-// 江湖势力画廊：自动取 assets/画廊 下的图，介绍在 data/势力介绍.ts 里填
+// 江湖势力画廊：自动取 assets/画廊 下的图，介绍来自后端 GET /factions（trpg-world/势力介绍.json）
 const galleryRawImages = import.meta.glob(
     "../assets/画廊/*.{png,jpg,jpeg,webp}",
     {
@@ -69,20 +72,18 @@ const GALLERY_ROW_SIZE = 5;
 // 画廊条目 = 组件需要的字段 + 全屏阅读用的 detail
 type 画廊条目 = AccordionGalleryItem & { detail: string };
 
-// 顺序完全由 data/势力介绍.ts 的 势力列表 数组决定（没图的名字自动跳过）
-const galleryItems: 画廊条目[] = 势力列表
-    .filter((s) => galleryUrlByName[s.name])
-    .map((s) => ({
-        image: galleryUrlByName[s.name],
-        label: s.name,
-        description: s.desc,
-        detail: s.detail || s.desc,
-    }));
+// 势力条目：**从后端 GET /factions 取**（数据源 trpg-world/势力介绍.json）
+type FactionEntry = { name: string; desc: string; detail: string };
 
-// 按每行 GALLERY_ROW_SIZE 个切成多行
-const galleryRows: 画廊条目[][] = [];
-for (let i = 0; i < galleryItems.length; i += GALLERY_ROW_SIZE) {
-    galleryRows.push(galleryItems.slice(i, i + GALLERY_ROW_SIZE));
+async function fetchFactions(): Promise<FactionEntry[]> {
+    try {
+        const res = await fetch("http://localhost:5000/factions");
+        if (!res.ok) return [];
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+    } catch {
+        return [];
+    }
 }
 
 // ---- 玩家状态（GET /state）----
@@ -114,7 +115,7 @@ async function getState(): Promise<PlayerState | null> {
     }
 }
 
-// 读取当前本局历史（turns.jsonl 是唯一真相源）
+// 读取当前本局历史（current.jsonl 是唯一真相源）
 type HistoryView = { active: boolean; lines: string[]; tail: instruction[] };
 
 async function fetchHistory(): Promise<HistoryView | null> {
@@ -127,12 +128,16 @@ async function fetchHistory(): Promise<HistoryView | null> {
     }
 }
 
-function Gaming({ onBackMenu }: GamingProps) {
+function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingProps) {
     const [showInputGM, setshowInputGM] = useState(false); //展示主持人输入框
     const [showInputAct, setShowInputAct] = useState(false); //展示动作输入框
     const [showInputSay, setShowInputSay] = useState(false); //展示「说话」（台词）输入框
     const [input, setInput] = useState(""); //输入框输入的内容
-    const [history, setHistory] = useState<instruction[]>(story_previous); //拿到llm的回复
+    const [history, setHistory] = useState<instruction[]>([]); //拿到llm的回复
+    // 前情回顾（进入游戏后先播，点击推进完才进正常游戏；null = 无回顾）
+    const [recap, setRecap] = useState<instruction[] | null>(
+        initialRecap && initialRecap.length ? initialRecap : null
+    );
     const [showHistory, setShowHistory] = useState(false) //展示历史记录
     const [loaded, setLoaded] = useState(false); //判断是否加载完成
     const historyBoxRef = useRef<HTMLDivElement>(null);//历史对话框的保持底部
@@ -141,8 +146,31 @@ function Gaming({ onBackMenu }: GamingProps) {
     const [showData, setShowData] = useState(false); // 数据面板（金钱/背包/属性/状态）
     const [readingIndex, setReadingIndex] = useState<number | null>(null);
     const [playerState, setPlayerState] = useState<PlayerState | null>(null); // 玩家真实状态
-    const [background, setBackground] = useState<string>(默认背景); // 当前背景（由 UI 事件控制）
+    const [background, setBackground] = useState<string>(
+        initialBg?.position ? getBackgroundImage(initialBg.position, initialBg.time ?? "") : 默认背景
+    ); // 当前背景（由 UI 事件控制）
     const [historyLines, setHistoryLines] = useState<string[]>([]); // 历史面板（读后端）
+    const [factions, setFactions] = useState<FactionEntry[]>([]); // 势力画廊（GET /factions）
+
+    // 画廊条目：顺序由后端 /factions 数组决定；没有对应图片的自动跳过
+    const galleryItems: 画廊条目[] = useMemo(
+        () => factions
+            .filter((s) => galleryUrlByName[s.name])
+            .map((s) => ({
+                image: galleryUrlByName[s.name],
+                label: s.name,
+                description: s.desc,
+                detail: s.detail || s.desc,
+            })),
+        [factions]
+    );
+    const galleryRows: 画廊条目[][] = useMemo(() => {
+        const rows: 画廊条目[][] = [];
+        for (let i = 0; i < galleryItems.length; i += GALLERY_ROW_SIZE) {
+            rows.push(galleryItems.slice(i, i + GALLERY_ROW_SIZE));
+        }
+        return rows;
+    }, [galleryItems]);
     const [showContinue, setShowContinue] = useState(false); // 「继续」的刻数选项
 
     // 统一处理 /state 返回：更新状态
@@ -234,6 +262,12 @@ function Gaming({ onBackMenu }: GamingProps) {
         load();
     }, []);
 
+    // 拉势力画廊（GET /factions）；进入游戏时播放前情回顾选定的音乐
+    useEffect(() => {
+        fetchFactions().then(setFactions);
+        if (initialMusic) playMusic(initialMusic);
+    }, []);
+
     // 进入游戏：若本局未结束，续上（显示最后一幕），并载入历史面板
     useEffect(() => {
         const load = async () => {
@@ -299,6 +333,20 @@ function Gaming({ onBackMenu }: GamingProps) {
         );
     }
 
+    // 前情回顾：进入游戏后先放这段（主题曲已停，响起回顾选定的音乐）；点击推进，播完才进正常游戏
+    if (recap && recap.length) {
+        return (
+            <div className="background">
+                <GameScene
+                    key="recap"
+                    history={recap}
+                    background={background}
+                    onFinish={() => setRecap(null)}
+                />
+            </div>
+        );
+    }
+
     else {
         const 状态 = playerState?.状态 ?? {};
         const 基础 = playerState?.属性?.基础属性 ?? {};
@@ -316,7 +364,7 @@ function Gaming({ onBackMenu }: GamingProps) {
 
         return (
             <div className="background">
-                <GameScene history={history} background={background} />
+                <GameScene key="game" history={history} background={background} />
 
                 <button className="chat-button" onClick={() => { setshowInputGM(!showInputGM); setShowInputAct(false); setShowInputSay(false); }}>
                     主持人

@@ -5,7 +5,7 @@ weather_system.py
 天气系统：根据日期（day_of_year）+ 区域（北/南/西/东）查天气数据表，
 把结果写入 游戏数据/基本信息.json 的「天气」字段。
 
-数据来源：tools/天气数据/*.json（每区 366 天，1220 闰年，索引 0=1月1日）。
+数据来源：天气数据/*.json（与 tools/ 同级；每区 366 天，1220 闰年，索引 0=1月1日）。
 
 """
 
@@ -16,7 +16,8 @@ import random
 
 from tools.state_manager import state
 
-WEATHER_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "天气数据")
+_HERE = os.path.dirname(os.path.abspath(__file__))
+WEATHER_DIR = os.path.join(os.path.dirname(_HERE), "天气数据")
 
 # 区域 → 分区（关键词匹配，命中即返回；默认东部城市）
 ZONE_KEYWORDS = {

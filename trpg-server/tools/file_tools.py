@@ -10,7 +10,7 @@ WORKSPACE = Path(__file__).parent.resolve()
 
 # 游戏数据目录：由专用工具（update_location/update_time/update_weather 等）管理，
 # 禁止文件工具直接写入，防止 LLM 绕过状态工具改坏 JSON。
-GAME_DATA_DIR = (WORKSPACE / "游戏数据").resolve()
+GAME_DATA_DIR = (WORKSPACE.parent / "游戏数据").resolve()
 
 
 def _guard_game_data(target: Path):

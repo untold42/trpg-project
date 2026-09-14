@@ -28,3 +28,22 @@ def send_messages(history, tools=None):
         model="deepseek-v4-flash", messages=history, tools=tools or ALL_TOOLS
     )
     return response.choices[0].message
+
+
+def complete(messages, model="deepseek-v4-flash"):
+    """无工具的纯文本补全（用于前情浓缩等，不涉及 function calling）。"""
+    response = client.chat.completions.create(model=model, messages=messages)
+    return response.choices[0].message.content or ""
+
+
+def complete_json(messages, model="deepseek-v4-flash"):
+    """无工具的 JSON 补全（保证返回合法 JSON 对象）。
+
+    用于战斗里大模型判定「思路」：只要结构化的评价，不要叙事。
+    """
+    response = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        response_format={"type": "json_object"},
+    )
+    return response.choices[0].message.content or "{}"

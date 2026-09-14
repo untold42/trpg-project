@@ -2,7 +2,7 @@
 .data-button {
     position: absolute;
     right: 0px;
-    bottom: 175px;
+    bottom: 225px;
     z-index: 100;
 
     width: 120px;
@@ -31,7 +31,7 @@
 .history-button {
     position: absolute;
     right: 0px;
-    bottom: 125px;
+    bottom: 275px;
     z-index: 100;
 
     width: 120px;
@@ -132,7 +132,7 @@
 .say-button {
     position: absolute;
     right: 0px;
-    bottom: 275px;
+    bottom: 125px;
     z-index: 100;
 
     width: 120px;
@@ -155,7 +155,7 @@
 .continue-button {
     position: absolute;
     right: 0px;
-    bottom: 225px;
+    bottom: 175px;
     z-index: 100;
 
     width: 120px;
@@ -178,7 +178,7 @@
 .continue-panel {
     position: absolute;
     right: 130px;
-    bottom: 225px;
+    bottom: 175px;
     z-index: 100;
     display: flex;
     gap: 6px;

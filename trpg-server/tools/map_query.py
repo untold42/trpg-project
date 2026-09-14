@@ -81,6 +81,49 @@ def _shape(gtype, coords_txt):
         return None
 
 
+# ------------------------------------------------------------
+# 方位 / 距离（硬事实：供主持人表述东南西北，不得臆断）
+# ------------------------------------------------------------
+_DIRS = ["北", "东北", "东", "东南", "南", "西南", "西", "西北"]
+
+
+def bearing_name(lon1, lat1, lon2, lat2) -> str:
+    """从点 1 到点 2 的**八方位**（北/东北/东/…）。失败返回 ''。"""
+    try:
+        dlon = math.radians(float(lon2) - float(lon1))
+        la1, la2 = math.radians(float(lat1)), math.radians(float(lat2))
+    except (TypeError, ValueError):
+        return ""
+    y = math.sin(dlon) * math.cos(la2)
+    x = math.cos(la1) * math.sin(la2) - math.sin(la1) * math.cos(la2) * math.cos(dlon)
+    brg = (math.degrees(math.atan2(y, x)) + 360) % 360
+    return _DIRS[int((brg + 22.5) // 45) % 8]
+
+
+def distance_m(lon1, lat1, lon2, lat2) -> float:
+    """两点近似距离（米，等距圆柱投影，与 location._distance_m 一致）。"""
+    try:
+        mlat = 111132.95
+        mlon = 111320.0 * math.cos(math.radians((float(lat1) + float(lat2)) / 2))
+        return math.hypot((float(lon2) - float(lon1)) * mlon,
+                          (float(lat2) - float(lat1)) * mlat)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def player_position():
+    """玩家当前坐标（读 基本信息.位置），拿不到返回 (None, None)。"""
+    try:
+        from tools.state_manager import state
+        p = (state.load("基本信息", {}) or {}).get("位置", {}) or {}
+        lon, lat = p.get("经度"), p.get("纬度")
+        if isinstance(lon, (int, float)) and isinstance(lat, (int, float)):
+            return lon, lat
+    except Exception:
+        pass
+    return None, None
+
+
 def _reppoint(geom):
     """要素的代表点（点=自身；线=中点；面=内部代表点）。"""
     if geom is None or geom.is_empty:
@@ -244,6 +287,14 @@ def query_place(name=None, kind=None, category=None, limit=20):
     _attach_notes(conn, results)
     conn.close()
 
+    # 每个结果的方位 / 距玩家（硬事实：防主持人把「东北」说成「西」）
+    plon, plat = player_position()
+    if plon is not None:
+        for r in results:
+            if isinstance(r.get("lon"), (int, float)) and isinstance(r.get("lat"), (int, float)):
+                r["方位"] = bearing_name(plon, plat, r["lon"], r["lat"])
+                r["距玩家（米）"] = round(distance_m(plon, plat, r["lon"], r["lat"]))
+
     return {"success": True, "count": len(results), "results": results}
 
 
@@ -335,9 +386,15 @@ def city_context(lon, lat) -> dict:
     poly = _wall_polygon()
     if poly is not None:
         pt = sg.Point(lon, lat)
-        out["在城内"] = bool(poly.contains(pt))
+        inside = bool(poly.covers(pt))  # covers 含边界（城门就在墙线上）
+        out["在城内"] = inside
         d_deg = poly.exterior.distance(pt)
         out["距城墙（米）"] = round(d_deg * M_PER_DEG_LON0 * math.cos(math.radians(lat)))
+        # 城区方位（相对城墙中心）：如「城内东北」「城外西南」
+        cx, cy = poly.centroid.x, poly.centroid.y
+        ns = "北" if lat > cy else "南"
+        ew = "东" if lon > cx else "西"
+        out["城区方位"] = ("城内" if inside else "城外") + ew + ns
     try:
         gates = query_nearby(lon, lat, radius_km=3.0, kind="城门", limit=1).get("results", [])
         if gates:

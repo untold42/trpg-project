@@ -15,7 +15,8 @@ location.py
 import math
 
 from tools.explore import record_position
-from tools.map_query import DEFAULT_REGION, city_context, query_place, query_nearby
+from tools.map_query import (DEFAULT_REGION, bearing_name, city_context,
+                             query_nearby, query_place)
 from tools.state_manager import state
 
 # 扬州地图有效范围（WGS84，略大于瓦片覆盖范围留缓冲）
@@ -109,10 +110,12 @@ def update_location(place_name=None, lon=None, lat=None, move_mode=None):
     crossed_wall = (old_inside is not None and ctx.get("在城内") is not None
                     and old_inside != ctx["在城内"])
 
-    # 移动距离（供主持人判断时间推进是否相称）
+    # 移动距离（供主持人判断时间推进是否相称）+ 移动方位（硬事实）
     moved_m = None
+    move_bearing = ""
     if isinstance(old_lon, (int, float)) and isinstance(old_lat, (int, float)):
         moved_m = round(_distance_m(old_lat, old_lon, target_lat, target_lon))
+        move_bearing = bearing_name(old_lon, old_lat, target_lon, target_lat)
 
     # 4. 记足迹：玩家一到新地方，附近 POI 立即解锁（探索迷雾联动）
     record_position(target_lon, target_lat, resolved_name)
@@ -151,8 +154,10 @@ def update_location(place_name=None, lon=None, lat=None, move_mode=None):
             "在城内": ctx.get("在城内"),
             "距城墙（米）": ctx.get("距城墙（米）"),
             "最近城门": ctx.get("最近城门"),
+            "城区方位": ctx.get("城区方位"),
         },
         "移动距离（米）": moved_m,
+        "移动方位": move_bearing,
         "耗时提示": _time_hint(moved_m),
         "城墙穿越": crossed_wall,
         "提示": "（本次移动穿过了城墙：玩家已进出城，叙述请写明经过城门/城墙）" if crossed_wall else "",
