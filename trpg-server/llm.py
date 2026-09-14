@@ -23,14 +23,8 @@ client = OpenAI(
 )
 
 
-def send_messages(history):
+def send_messages(history, tools=None):
     response = client.chat.completions.create(
-        model="deepseek-v4-flash", messages=history, tools=ALL_TOOLS
+        model="deepseek-v4-flash", messages=history, tools=tools or ALL_TOOLS
     )
-
-    print()
-    print("LLM的完整回复数据")
-    print(response)
-    print()
-
     return response.choices[0].message

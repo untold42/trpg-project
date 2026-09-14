@@ -1,9 +1,10 @@
-import json
-from pathlib import Path
+# -*- coding: utf-8 -*-
+"""get_ability：读取玩家属性（统一走 state_manager，不依赖启动目录）。"""
 
-ABILITY_PATH = Path("./tools/游戏数据/属性.json")
+import json
+
+from tools.state_manager import state
+
 
 def get_ability():
-    with open(ABILITY_PATH, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    return json.dumps(data, ensure_ascii=False)
+    return json.dumps(state.load("属性", {}), ensure_ascii=False)

@@ -3,7 +3,6 @@ from flask_cors import CORS
 from llm import send_messages
 
 # 需要单独用到的非工具函数
-from tools.folder_to_prompt import folder_to_prompt
 from tools.explore import read_player_position, record_position
 from tools.accident import accident
 from tools.state_manager import state
@@ -12,7 +11,7 @@ from tools.state_manager import state
 from tools.registry import TOOLS_MAP
 
 # 引擎（回合运行 + 会话 + 过程日志）
-from engine import GameSession, TurnRunner
+from engine import GameSession, TurnRunner, continue_cue
 
 # 存档收尾管线
 from save_pipeline import run_save
@@ -22,8 +21,8 @@ app = Flask(__name__)
 CORS(app)
 
 # ---- 引擎：一局会话 + 回合运行器 ----
-# 规则层全量注入；状态每次调用现拼（见 engine.snapshot_state），history 只存纯叙事
-session = GameSession(rules_prompt=folder_to_prompt("../trpg-world/主持人"))
+# 规则层全量注入（热更新：改 trpg-world/主持人/*.md 即时生效）；状态每次调用现拼
+session = GameSession(rules_dir="../trpg-world/主持人")
 runner = TurnRunner(session, send_messages, TOOLS_MAP)
 
 # chroma 记忆库由 tools/mem_store.py 懒加载（首次读写记忆时才连）
@@ -93,18 +92,29 @@ def save():
 def action():
     data = request.json or {}
     raw = data.get("input", "")
-    # mode: "action"=角色行动（IC）｜"gm"=玩家对主持人的场外话（OOC）
+    # mode: "action"=角色行动｜"say"=对 NPC 说的话（IC 台词）｜"gm"=对主持人的场外话（OOC）｜"continue"=继续
     mode = data.get("mode", "action")
-    if mode not in ("action", "gm"):
+    if mode not in ("action", "say", "gm", "continue"):
         mode = "action"
 
     # 意外机制：只作用于角色行动
     if mode == "action" and accident():
         raw += "(意外：梁峰行动失败)"
 
-    # 组装 LLM 看到的文本：带前缀区分 IC / OOC；mode 一并交给引擎存日志
-    prefix = "梁峰：" if mode == "action" else "玩家的对主持人说的话："
-    events = runner.run(prefix + raw, mode)
+    # 组装 LLM 看到的文本
+    if mode == "continue":
+        try:
+            ke = max(0, int(data.get("ke", 2)))
+        except (TypeError, ValueError):
+            ke = 2
+        text = continue_cue(ke)
+    elif mode == "say":
+        text = "梁峰开口说：「" + raw + "」"
+    elif mode == "action":
+        text = "梁峰：" + raw
+    else:
+        text = "玩家的对主持人说的话：" + raw
+    events = runner.run(text, mode)
     return jsonify(events)
 
 

@@ -24,15 +24,19 @@ main.py 只负责 bootstrap（建 session/runner）与路由，不再持有 hist
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 from pathlib import Path
 
 from tools.folder_to_prompt import folder_to_prompt  # noqa: F401  (供 main 使用)
 from tools.state_manager import state
-from tools.ui_events import UI_EVENTS_KEY
+from tools.time_weather import KE_CN
+from tools.ui_events import UI_EVENTS_KEY, music_event
 from tools import world_state
 from tools import world_worker
+from tools import ui_sim
+from tools.registry import SAVE_TOOLS
 
 # ------------------------------------------------------------
 # 路径
@@ -43,15 +47,41 @@ CURRENT_LOG = SESSIONS_DIR / "current.jsonl"
 GAME_DATA_DIR = SERVER_DIR / "tools" / "游戏数据"
 SAVE_TRANSCRIPT = GAME_DATA_DIR / "游戏存档.md"
 
+# 规则文件（主持人/*.md）热更新：按文件夹最新 mtime 缓存，改文件即时生效
+_rules_cache: dict = {}
+
+
+def _rules_text(folder: str) -> str:
+    try:
+        m = max(p.stat().st_mtime for p in Path(folder).rglob("*") if p.is_file())
+    except (OSError, ValueError):
+        m = 0
+    cached = _rules_cache.get(folder)
+    if cached and cached[0] == m:
+        return cached[1]
+    text = folder_to_prompt(folder)
+    _rules_cache[folder] = (m, text)
+    return text
+
 
 # ------------------------------------------------------------
 # 上下文素材
 # ------------------------------------------------------------
 def snapshot_state() -> str:
-    """现拼当前机械状态（游戏数据/*.json）为一段文本。不含 游戏存档.md。"""
+    """现拼当前机械状态（游戏数据/*.json）为一段文本。不含 游戏存档.md。
+
+    特殊处理：
+      - **世界状态**：按「纳入上下文」裁剪人物线程（只裁**注入**，不裁存储）；
+      - **不进 LLM 上下文的文件**（`足迹`）：从前端 `/state` 仍可读到，
+        但**不发给大模型**，避免探索足迹白占上下文。
+    """
     snapshot = state.snapshot()
     if not snapshot:
         return "（暂无状态数据）"
+    if "世界状态" in snapshot:
+        snapshot["世界状态"] = world_state.context_view()
+    for _skip in ("足迹",):
+        snapshot.pop(_skip, None)
     blocks = []
     for name in sorted(snapshot):
         body = json.dumps(snapshot[name], ensure_ascii=False, indent=2)
@@ -68,16 +98,61 @@ def load_previous_story() -> str:
 
 
 def current_game_time() -> str:
-    """当前游戏内时间（日期 + 时辰），形如 '1220-01-15 酉时'。"""
+    """当前游戏内时间（日期 + 时辰 + 刻），形如 '1220-01-15 酉时二刻'。"""
     t = (state.load("基本信息", {}) or {}).get("时间", {}) or {}
-    return f"{t.get('日期', '')} {t.get('时辰', '')}".strip()
+    ke = t.get("刻", 0)
+    ke_txt = ""
+    if isinstance(ke, int) and ke > 0:
+        ke_txt = KE_CN.get(ke, str(ke)) + "刻"
+    return f"{t.get('日期', '')} {t.get('时辰', '')}{ke_txt}".strip()
+
+
+# 「时间权威」检测：叙述里出现明确的时间推进标记（用于提醒 LLM 补 update_time）
+_TIME_ADVANCE_RE = re.compile(
+    r"翌日|次日|第二天|隔日|隔天|隔夜|转天|翌晨|次晨|"
+    r"过了一夜|一夜过去|一夜无话|一宿|"
+    r"数日|数天|几日|几天|半月|数月|"
+    r"(?:[一二两三四五六七八九十百千半\d]+)\s*(?:天|日|个月|月)\s*(?:之?后|过去|已过)|"
+    r"赶了[^。，；\n]{0,6}[天日]|走了[^。，；\n]{0,6}[天日]"
+)
+
+
+def _time_advanced(events) -> str:
+    """若叙述里出现明确的时间推进标记，返回命中片段（否则空串）。"""
+    text = "".join(
+        str(it.get("content", ""))
+        for it in events
+        if isinstance(it, dict) and it.get("type") in ("narration", "chat")
+    )
+    m = _TIME_ADVANCE_RE.search(text)
+    return m.group(0) if m else ""
 
 
 # ------------------------------------------------------------
 # 过程日志的读取与渲染（单一真相源：turns.jsonl）
 # ------------------------------------------------------------
 _IC_PREFIX = "梁峰："
+_SAY_PREFIX = "梁峰开口说：「"
+_SAY_SUFFIX = "」"
 _GM_PREFIX = "玩家的对主持人说的话："
+
+#: 「继续」按钮（mode="continue"）：ke = 推进的刻数（0 = 不推进时间，只看更多信息）
+def continue_cue(ke: int = 2) -> str:
+    if ke <= 0:
+        return (
+            "（静观其变：玩家停下细看，**不推进时间**。"
+            "请就**当前场景**给出更多可观察的细节——环境、在场人物、可注意之处（声音、气味、异样之物）。"
+            "不要推进时间，也不要替玩家做决定。）"
+        )
+    return (
+        f"（静观其变：玩家不做特别动作，让时间流逝约 {ke} 刻（约 {ke * 15} 分钟）。"
+        "请推进眼前的场景与 NPC 的行动、让已有线索自然发酵，"
+        "到玩家可能想介入的地方即止；不要替玩家做决定。"
+        f"时间确有流逝时请调用 update_time（advance_ke={ke}）推进时间。）"
+    )
+
+
+CONTINUE_CUE = continue_cue(2)  # 默认（兼容）
 
 
 def read_turns(log_path) -> list[dict]:
@@ -112,7 +187,14 @@ def history_lines(turns: list[dict]) -> list[str]:
     lines = []
     for turn in turns:
         s = (turn.get("user") or "").strip()
-        if turn.get("mode") == "gm" or s.startswith(_GM_PREFIX):
+        if turn.get("mode") == "continue":
+            lines.append("（静观其变，时间流逝）")
+        elif turn.get("mode") == "say":
+            body = s.removeprefix(_SAY_PREFIX)
+            if body.endswith(_SAY_SUFFIX):
+                body = body[:-len(_SAY_SUFFIX)]
+            lines.append("梁峰说：「" + body + "」")
+        elif turn.get("mode") == "gm" or s.startswith(_GM_PREFIX):
             lines.append("场外：" + s.removeprefix(_GM_PREFIX))
         else:
             lines.append(_IC_PREFIX + s.removeprefix(_IC_PREFIX))
@@ -136,11 +218,17 @@ class GameSession:
     - turns.jsonl  : 过程真相，每轮一行，重启可恢复
     """
 
-    def __init__(self, rules_prompt: str, log_path: Path = CURRENT_LOG):
+    def __init__(self, rules_prompt: str = "", log_path: Path = CURRENT_LOG,
+                 rules_dir: str = None):
         self.rules_prompt = rules_prompt
+        self.rules_dir = rules_dir  # 若给了目录，则每回合热读（改规则免重启）
         self.log_path = Path(log_path)
         self.history: list[dict] = []
         self.previous_story = load_previous_story()
+        self.pending_time_note = ""  # 「时间权威」提醒：下一轮注入，补上 update_time 后清除
+        self.pending_notes: list[str] = []  # 其他系统提醒（下一轮注入一次）
+        self.last_bg = None       # 上次发给前端的背景 (position, time)，用于去重
+        self.last_music = None    # 上次发给前端的音乐 track
         self._lock = threading.RLock()
         self._restore()
         # 本局尚未开始且没有快照 → 记录「本局开局状态」（放弃本轮时回滚用）
@@ -215,12 +303,16 @@ class GameSession:
         并记录新本局的开局状态快照。
         """
         with self._lock:
+            world_worker.clear(wait=True)  # 先停在途推演，避免旧任务写脏下一局的快照
             self.history = []
+            self.pending_time_note = ""
+            self.pending_notes = []
+            self.last_bg = None
+            self.last_music = None
             if self.log_path.exists():
                 self.log_path.unlink()
             self.previous_story = load_previous_story()
             self._take_snapshot()
-            world_worker.clear()  # 底层状态已变，清空待推演任务
 
     def abandon(self) -> bool:
         """放弃本轮：玩家状态**回滚到本局开始**，丢弃本局日志，开始新本局。
@@ -229,13 +321,17 @@ class GameSession:
         返回是否成功回滚。
         """
         with self._lock:
+            world_worker.clear(wait=True)  # 先停在途推演（必须在回滚之前，否则在途写入会晚于回滚落地）
             restored = self._restore_snapshot()
             self.history = []
+            self.pending_time_note = ""
+            self.pending_notes = []
+            self.last_bg = None
+            self.last_music = None
             if self.log_path.exists():
                 self.log_path.unlink()
             self.previous_story = load_previous_story()
             self._take_snapshot()  # 新本局从回滚后的状态开始
-            world_worker.clear()
             return restored
 
     # ---- 历史视图（供前端 GET /history）----
@@ -246,8 +342,11 @@ class GameSession:
         return {"active": bool(turns), "lines": history_lines(turns), "tail": tail}
 
     # ---- 上下文组装 ----
+    def _rules(self) -> str:
+        return _rules_text(self.rules_dir) if self.rules_dir else self.rules_prompt
+
     def _system_messages(self) -> list[dict]:
-        msgs = [{"role": "system", "content": self.rules_prompt}]
+        msgs = [{"role": "system", "content": self._rules()}]
         if self.previous_story:
             msgs.append({
                 "role": "system",
@@ -258,18 +357,25 @@ class GameSession:
     def build_messages(self, tool_msgs: list[dict] | None = None) -> list[dict]:
         """组装本次发往 LLM 的 messages。
 
-        结构：[规则, 前情?, ...history, ...本轮工具消息, 当前状态]
+        结构：[规则, 前情?, ...history, ...本轮工具消息, 时间提醒?, 当前状态]
         状态放末尾（稳定前缀利于上下文缓存），且每次现拼、只出现一份。
         """
-        return (
-            self._system_messages()
-            + self.history
-            + list(tool_msgs or [])
-            + [{
+        msgs = self._system_messages() + self.history + list(tool_msgs or [])
+        if self.pending_time_note:
+            msgs.append({
                 "role": "system",
-                "content": "===== 当前状态 =====\n" + snapshot_state(),
-            }]
-        )
+                "content": "===== 时间提醒 =====\n" + self.pending_time_note,
+            })
+        if self.pending_notes:
+            msgs.append({
+                "role": "system",
+                "content": "===== 系统提醒 =====\n" + "\n".join(self.pending_notes),
+            })
+        msgs.append({
+            "role": "system",
+            "content": "===== 当前状态 =====\n" + snapshot_state(),
+        })
+        return msgs
 
 
 # ------------------------------------------------------------
@@ -282,6 +388,24 @@ class TurnRunner:
     FORMAT_CORRECTION = (
         "后端发现你的最终回复格式有误，请严格按照系统规定输出合法JSON数组，"
         "不要输出任何额外内容。"
+    )
+
+    #: 时间权威提醒（叙述推进了时间却未调用 update_time）
+    _TIME_NOTE = (
+        "上一轮叙述里出现了时间流逝（「{hit}」），但你**没有调用 `update_time`**。"
+        "世界日期未推进 —— 世界推演不会触发，天气 / 饥饿 / 精力也不会更新。"
+        "请在本轮先用 `update_time` 把时间补到正确值"
+        "（短时间用 `advance_ke` 推进几刻，较久用 `advance_shichen` 推进时辰；12 时辰＝1 天），再继续叙述。"
+    )
+
+    #: 「台词 / 场外」回合允许的最大时间推进（刻）。说话不该让时间跳时辰、过夜。
+    SAY_MAX_KE = 2
+
+    #: 台词回合试图推进时间时的驳回语（回给 LLM）——规则 12 的机械兼底
+    _SAY_TIME_BLOCK = (
+        "本轮是玩家的**台词 / 场外话**，不是行动，**不得据此替玩家推进时间**。"
+        "已驳回本次 `update_time`。请只让 NPC 回应；若确需时间流逝，等玩家另行发出行动。"
+        "（确有小额流逝才可用 `advance_ke`，不超过 {max_ke} 刻。）"
     )
 
     def __init__(self, session: GameSession, send_messages, tools_map: dict):
@@ -324,7 +448,9 @@ class TurnRunner:
                     arguments = json.loads(tc.function.arguments)
                 except (json.JSONDecodeError, TypeError):
                     arguments = {}
-                tool_result = self._call_tool(name, arguments)
+                tool_result = self._say_time_guard(mode, name, arguments)
+                if tool_result is None:
+                    tool_result = self._call_tool(name, arguments)
                 # 2b) 取出工具产生的 UI 事件，并从给 LLM 的结果中剥离
                 if isinstance(tool_result, dict) and UI_EVENTS_KEY in tool_result:
                     ui_events.extend(tool_result.get(UI_EVENTS_KEY) or [])
@@ -349,6 +475,10 @@ class TurnRunner:
 
         # 5) 解析最终 JSON（必要时请求一次格式修正）
         raw, events = self._finalize(result, tool_msgs)
+        # 5b) 时间权威：叙述推进了时间却没调 update_time → 记提醒，下一轮注入
+        self._check_time_authority(events, tool_records)
+        # 5c) UI 事件（小模型）：背景 / 音乐
+        scene_ui = self._scene_ui_events(events)
 
         session.history.append({"role": "assistant", "content": raw})
         session.append_turn({
@@ -359,11 +489,13 @@ class TurnRunner:
             "assistant_raw": raw,
             "tool_calls": tool_records,
             "ui_events": ui_events,
+            "scene_ui": scene_ui,
         })
         # 世界推演：检测跨天并入队（异步，不阻塞玩家）
         world_worker.on_turn_end()
-        # 统一事件流：工具产生的 UI 事件在前，LLM 的叙事指令在后
-        return ui_events + events
+        session.pending_notes = []  # 系统提醒只注入一次
+        # 统一事件流：UI 事件（小模型 + 工具）在前，LLM 的叙事指令在后
+        return scene_ui + ui_events + events
 
     # ---- 存档蒸馏专用回合 ----
     def run_save(self, transcript: str, rules: str) -> dict:
@@ -384,7 +516,7 @@ class TurnRunner:
             tool_records: list[dict] = []
             state_msg = {"role": "system", "content": "===== 当前状态 =====\n" + snapshot_state()}
 
-            result = self.send_messages(base + [state_msg])
+            result = self._send_save(base + [state_msg])
             while result.tool_calls:
                 tool_msgs.append({
                     "role": "assistant",
@@ -405,9 +537,38 @@ class TurnRunner:
                     })
                     tool_records.append({"name": name, "arguments": arguments,
                                          "result": tool_result})
-                result = self.send_messages(base + tool_msgs + [state_msg])
+                result = self._send_save(base + tool_msgs + [state_msg])
 
             return {"content": result.content or "", "tool_calls": tool_records}
+
+    def _say_time_guard(self, mode: str, name: str, arguments: dict):
+        """台词 / 场外回合的时间护栏（机械执行规则 12）。
+
+        `mode` 为 `say`（对 NPC 的台词）或 `gm`（场外话）时，只允许 ≤ `SAY_MAX_KE` 刻的
+        `advance_ke`；任何「设置日期 / 时辰 / 刻」或更大的推进都驳回（返回错误结果）。
+        正常（无需拦截）返回 `None`。
+        """
+        if mode not in ("say", "gm") or name != "update_time":
+            return None
+        adv_sh = arguments.get("advance_shichen") or 0
+        adv_ke = arguments.get("advance_ke") or 0
+        jump = (
+            arguments.get("date") is not None
+            or arguments.get("shichen") is not None
+            or arguments.get("ke") is not None
+            or adv_sh * 8 + adv_ke > self.SAY_MAX_KE
+        )
+        if not jump:
+            return None
+        print(f"[say] 驳回{mode}回合的时间推进：{arguments}")
+        return {"success": False, "error": self._SAY_TIME_BLOCK.format(max_ke=self.SAY_MAX_KE)}
+
+    def _send_save(self, messages):
+        """存档蒸馏回合：带上存档专用工具（含 `update_character_archive`）。"""
+        try:
+            return self.send_messages(messages, tools=SAVE_TOOLS)
+        except TypeError:  # 兼容不接受 tools 参数的 send_messages
+            return self.send_messages(messages)
 
     def _call_tool(self, name: str, arguments: dict):
         tool = self.tools_map.get(name)
@@ -417,6 +578,84 @@ class TurnRunner:
             return tool(**arguments)
         except Exception as e:  # 工具异常不应打断整局
             return {"success": False, "error": str(e)}
+
+    def _check_time_authority(self, events, tool_records):
+        """时间权威：叙述推进了时间，却未调用 update_time → 记提醒，下一轮注入。"""
+        called = any(tc.get("name") == "update_time" for tc in tool_records)
+        hit = _time_advanced(events)
+        if called:
+            self.session.pending_time_note = ""
+        elif hit:
+            if not self.session.pending_time_note:
+                print(f"[time] 叙述含时间流逝「{hit}」但未调用 update_time")
+            self.session.pending_time_note = self._TIME_NOTE.format(hit=hit)
+
+    def _scene_ui_events(self, events) -> list[dict]:
+        """小模型判断本幕背景 / 音乐。
+
+        - 传入当前地点 + 当前背景/音乐，供小模型判断；
+        - **换曲规则**：背景变化 **或** 当前曲已不适用于本地点/在场时，才允许换曲；
+          当前曲不再适用且模型没给新曲 → 发「停乐」。
+        """
+        if not ui_sim.ENABLED:
+            return []
+        text = "".join(
+            str(it.get("content", ""))
+            for it in events
+            if isinstance(it, dict) and it.get("type") in ("narration", "chat")
+        )
+        if not text.strip():
+            return []
+        loc = world_state.current_location()
+        prev_scene = (self.session.last_bg or (None, None))[0]
+        # 本轮登场人物（chat 说话者）——专属曲绑定据此判定，非仅提及
+        present = {
+            str(it.get("speaker")).strip()
+            for it in events
+            if isinstance(it, dict) and it.get("type") == "chat" and it.get("speaker")
+        }
+        try:
+            produced = ui_sim.generate(
+                text,
+                location=loc,
+                current_scene=prev_scene,
+                current_music=self.session.last_music,
+                present=present,
+            )
+        except Exception:
+            return []
+
+        bg_ev = next((e for e in produced if e.get("kind") == "bg"), None)
+        music_ev = next((e for e in produced if e.get("kind") == "music"), None)
+
+        out = []
+        scene_changed = False
+        if bg_ev:
+            data = bg_ev.get("data") or {}
+            key = (data.get("position"), data.get("time"))
+            if key != self.session.last_bg:
+                self.session.last_bg = key
+                scene_changed = True
+                out.append(bg_ev)
+
+        # 当前曲是否仍适用于本地点 / 在场
+        try:
+            allowed = set(ui_sim.narrative_tracks(loc, present))
+        except Exception:
+            allowed = set()
+        last = self.session.last_music
+        music_invalid = bool(last) and last not in allowed
+
+        if music_ev and (scene_changed or music_invalid):
+            track = (music_ev.get("data") or {}).get("track")
+            if track != last or music_invalid:
+                self.session.last_music = track
+                out.append(music_ev)
+        elif music_invalid and not music_ev:
+            # 当前曲已不适用，模型也没给新曲 → 停乐
+            self.session.last_music = ""
+            out.append(music_event(ui_sim.NONE))
+        return out
 
     def _finalize(self, result, tool_msgs: list[dict]):
         """返回 (最终 assistant 原文, 解析出的指令数组)。"""

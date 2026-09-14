@@ -1,0 +1,72 @@
+import musicFiles from "../assets/音乐";
+
+// 背景音乐控制：由 UI 事件 kind:"music" 触发（后端小模型选择曲目）。
+// 曲名 = 文件名去扩展名；把 mp3 丢进 src/assets/音乐/ 即自动进入曲库。
+const 曲库: Record<string, string> = {};
+for (const [path, url] of Object.entries(musicFiles)) {
+  const name = path.replace(/^\.\//, "").replace(/\.[^.]+$/, "");
+  曲库[name] = url as string;
+}
+console.info(`[music] 曲库载入 ${Object.keys(曲库).length} 首`);
+
+let 当前: HTMLAudioElement | null = null;
+let 当前曲 = "";
+let 待播: string | null = null; // 被浏览器自动播放策略挡下的曲目，等用户手势后重试
+
+function 开始播放(track: string) {
+  const url = 曲库[track];
+  if (!url) {
+    console.warn("[music] 无此曲目:", track, "｜曲库:", Object.keys(曲库).join("、"));
+    return;
+  }
+  当前?.pause();
+  const audio = new Audio(url);
+  audio.loop = false; // 只放一遍，不循环
+  audio.volume = 0.5;
+  当前 = audio;
+  // 放完即结束（清空状态，若之后再发同曲才会重新播）
+  audio.addEventListener("ended", () => {
+    if (当前 === audio) {
+      当前 = null;
+      当前曲 = "";
+    }
+  });
+  audio
+    .play()
+    .then(() => {
+      当前曲 = track;
+      待播 = null;
+      console.info("[music] ▶", track, "（一遍，不循环）");
+    })
+    .catch((e) => {
+      待播 = track;
+      console.warn("[music] 播放被拦（需用户手势）:", track, e?.name);
+    });
+}
+
+/** 播放/循环背景音乐。同名不重启；track 为「无」时停止播放。 */
+export function playMusic(track: string) {
+  if (!track || track === "无") {
+    stopMusic();
+    return;
+  }
+  if (track === 当前曲) return;
+  开始播放(track);
+}
+
+// 用户任意手势后，重试被拦下的曲目（浏览器自动播放限制）
+function 重试() {
+  if (待播) 开始播放(待播);
+}
+if (typeof window !== "undefined") {
+  window.addEventListener("pointerdown", 重试);
+  window.addEventListener("keydown", 重试);
+}
+
+/** 停止背景音乐（离开游戏时调用）。 */
+export function stopMusic() {
+  当前?.pause();
+  当前 = null;
+  当前曲 = "";
+  待播 = null;
+}

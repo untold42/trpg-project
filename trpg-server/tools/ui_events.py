@@ -23,11 +23,29 @@ ui_events.py
 
 事件统一形状（与前端 types/gametype.ts 对齐）：
     {"type": "ui", "kind": <str>, "data": {...}}
+
+kind 清单（协议）：
+    bg        data: {position: 场景名, time: 时辰}   切背景
+    music     data: {track: 曲名}                    切/停背景音乐
+    minigame  data: {game, sessionId, ...}           开小游戏（可阻塞叙事，预留）
 """
 
 UI_EVENTS_KEY = "_ui_events"
 
+#: 已定义的 UI 事件 kind（新增 kind 请同时改前端 types/gametype.ts）
+KINDS = ("bg", "music", "minigame")
+
 
 def ui_event(kind: str, **data) -> dict:
-    """构造一条 UI 事件。kind 例：bg / music / minigame / ..."""
+    """构造一条 UI 事件。kind 见 KINDS。"""
     return {"type": "ui", "kind": kind, "data": data}
+
+
+def bg_event(position: str, time: str) -> dict:
+    """切背景：position = 前端 背景/ 下的场景名；time = 十二时辰。"""
+    return ui_event("bg", position=position, time=time)
+
+
+def music_event(track: str) -> dict:
+    """切背景音乐：track = 前端 音乐/ 下的曲名（不含扩展名）。"""
+    return ui_event("music", track=track)

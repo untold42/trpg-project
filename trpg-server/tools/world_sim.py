@@ -11,7 +11,7 @@ world_sim.py
 
 每次推演 = 一个游戏日：
     1. 触发当天（及已逾期）的宏观定时线条目
-    2. 对每个活跃人物采样（与玩家同地点者豁免）
+    2. 对**每个活跃人物**采样（是否进大模型上下文由小模型的「纳入上下文」决定）
     3. 写回 世界状态.json，游标推进到当天
 """
 
@@ -44,8 +44,12 @@ CHAR_SCHEMA = {
     "properties": {
         "地点": {"type": "string", "description": "地名，2-6 字"},
         "事件类型": {"type": "string", "enum": KINDS},
+        "纳入上下文": {
+            "type": "boolean",
+            "description": "此事是否应立刻进入主持人上下文（依据离玩家远近）",
+        },
     },
-    "required": ["地点", "事件类型"],
+    "required": ["地点", "事件类型", "纳入上下文"],
 }
 
 
@@ -68,8 +72,17 @@ def _rules() -> str:
 
 
 def _profile(name: str, max_chars: int = 700) -> str:
-    """读人物静态档案（去 frontmatter、截断），给小模型当上下文。"""
+    """读人物档案（去 frontmatter、截断），给小模型当上下文。
+
+    优先静态档案；无静态档案时退回动态近记忆（安全网）。
+    """
     path = CHAR_DIR / f"{name}.md"
+    if not path.is_file():
+        for d in (world_state.ACTIVE_DIR, world_state.INACTIVE_DIR):
+            p = d / f"{name}.md"
+            if p.is_file():
+                path = p
+                break
     if not path.is_file():
         return f"（无 {name} 的档案）"
     try:
@@ -117,14 +130,26 @@ def _trigger_macro(date: str) -> list[dict]:
     return fired
 
 
-def simulate_character(name: str, date: str):
-    """对单个活跃人物采样。成功返回 {日期,地点,类型,顺利度}，失败返回 None。"""
+def simulate_character(name: str, date: str, player_region: str = None,
+                       player_location: str = None):
+    """对单个活跃人物采样。成功返回 {日期,地点,类型,顺利度,纳入上下文}，失败返回 None。
+
+    `纳入上下文`：小模型按「离玩家远近」判断此事是否该进大模型视野（只影响注入裁剪）。
+    """
     th = world_state.character_thread(name)
     latest = th.get("最新", {}) or {}
+    where = "玩家此刻所在不详。"
+    if player_region:
+        where = f"玩家此刻在：{player_region}"
+        if player_location and player_location != player_region:
+            where += f"（{player_location}）"
     user = (
         f"人物档案（节选）：\n{_profile(name)}\n\n"
         f"现状：地点={th.get('地点', '未知')}；最近在做={latest.get('类型', '未知')}。\n"
-        f"今天是 {date}。他/她这一天在哪（2-6 字地名）、主要在做什么（枚举之一）？"
+        f"{where}\n"
+        f"今天是 {date}。他/她这一天在哪（2-6 字地名）、主要在做什么（枚举之一）？\n"
+        f"并判断：这件事离玩家够近、值得让主持人立刻知道吗（纳入上下文）？"
+        f"远在天边、与玩家当前处境无关的填 false。"
     )
     r = small_model.ask_json(_rules(), user, CHAR_SCHEMA)
     if not r:
@@ -133,7 +158,11 @@ def simulate_character(name: str, date: str):
     kind = r.get("事件类型")
     if kind not in KINDS:
         kind = "生活"
-    return {"日期": date, "地点": loc, "类型": kind, "顺利度": roll_smoothness()}
+    include = r.get("纳入上下文")
+    if not isinstance(include, bool):
+        include = True  # 缺省纳入（安全兜底）
+    return {"日期": date, "地点": loc, "类型": kind,
+            "顺利度": roll_smoothness(), "纳入上下文": include}
 
 
 def fast_forward(date: str):
@@ -150,19 +179,16 @@ def fast_forward(date: str):
     world_state.save(data)
 
 
-def run_day(date: str, player_location: str = None) -> dict:
+def run_day(date: str, player_location: str = None, player_region: str = None) -> dict:
     """推演一个游戏日。返回 {date, macro, characters}。"""
     ensure_timeline()
     macro = _trigger_macro(date)
     results = []
     for name in world_state.active_characters():
-        th = world_state.character_thread(name)
-        # 在场豁免：与玩家同地点者由主持人处理，不推演
-        if player_location and th.get("地点") == player_location:
-            continue
-        r = simulate_character(name, date)
+        r = simulate_character(name, date, player_region, player_location)
         if r:
-            world_state.update_character(name, date, r["地点"], r["类型"], r["顺利度"])
+            world_state.update_character(name, date, r["地点"], r["类型"],
+                                         r["顺利度"], include=r["纳入上下文"])
             results.append({"name": name, **r})
     world_state.set_cursor(date)
     return {"date": date, "macro": macro, "characters": results}

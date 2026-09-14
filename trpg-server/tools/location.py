@@ -12,13 +12,35 @@ location.py
     5. 查“附近有什么”返回给 LLM，辅助叙事
 """
 
+import math
+
 from tools.explore import record_position
-from tools.map_query import query_place, query_nearby
+from tools.map_query import DEFAULT_REGION, city_context, query_place, query_nearby
 from tools.state_manager import state
 
 # 扬州地图有效范围（WGS84，略大于瓦片覆盖范围留缓冲）
 LON_MIN, LON_MAX = 118.88, 119.96
 LAT_MIN, LAT_MAX = 32.17, 32.69
+
+
+def _distance_m(lat1, lon1, lat2, lon2):
+    """两点近似距离（米，等距圆柱投影，与 map_query 一致）。"""
+    mlat = 111132.95
+    mlon = 111320.0 * math.cos(math.radians((lat1 + lat2) / 2))
+    return math.hypot((lon2 - lon1) * mlon, (lat2 - lat1) * mlat)
+
+
+def _time_hint(moved_m):
+    """根据移动距离给出耗时提示（时辰粒度很粗，短距离不应推进时辰）。"""
+    if moved_m is None:
+        return ""
+    if moved_m < 300:
+        return "片刻——同一时辰内，无需 update_time"
+    if moved_m < 1500:
+        return "约一刻钟——同一时辰内，通常无需 update_time"
+    if moved_m < 4000:
+        return "半个时辰上下"
+    return "一个时辰以上（较远，考虑拆分多步）"
 
 
 def update_location(place_name=None, lon=None, lat=None, move_mode=None):
@@ -71,10 +93,26 @@ def update_location(place_name=None, lon=None, lat=None, move_mode=None):
     # 3. 写 基本信息.json 的“位置”字段（Python 读改写，不靠 LLM 手写 JSON）
     data = state.load("基本信息", {})
     pos = data.setdefault("位置", {})
+    old_lon, old_lat = pos.get("经度"), pos.get("纬度")
+    old_inside = pos.get("在城内")
+    if (old_inside is None and isinstance(old_lon, (int, float))
+            and isinstance(old_lat, (int, float))):
+        old_inside = city_context(old_lon, old_lat).get("在城内")
     pos["经度"] = round(target_lon, 6)
     pos["纬度"] = round(target_lat, 6)
     pos["地点"] = resolved_name
+    pos["区域"] = DEFAULT_REGION  # 所在城市/区域（之前从不写入，导致恒为旧值）
+    ctx = city_context(target_lon, target_lat)  # 城内/城外 + 距城墙 + 最近城门
+    if ctx:
+        pos.update(ctx)
     state.save("基本信息", data)
+    crossed_wall = (old_inside is not None and ctx.get("在城内") is not None
+                    and old_inside != ctx["在城内"])
+
+    # 移动距离（供主持人判断时间推进是否相称）
+    moved_m = None
+    if isinstance(old_lon, (int, float)) and isinstance(old_lat, (int, float)):
+        moved_m = round(_distance_m(old_lat, old_lon, target_lat, target_lon))
 
     # 4. 记足迹：玩家一到新地方，附近 POI 立即解锁（探索迷雾联动）
     record_position(target_lon, target_lat, resolved_name)
@@ -89,6 +127,20 @@ def update_location(place_name=None, lon=None, lat=None, move_mode=None):
         kind = x.get("kind") or x.get("category") or ""
         nearby_names.append(f"{name}({kind})" if kind else name)
 
+    # 名字回填：坐标移动时，用最近的有名地点作为「地点」（否则会存成坐标字符串，
+    # 导致地图类型查不到、背景/音乐约束失效）。
+    if not place_name:
+        near1 = query_nearby(target_lon, target_lat, radius_km=0.15, limit=5)
+        for x in near1.get("results", []):
+            if x.get("name"):
+                better = x["name"]
+                if better != resolved_name:
+                    data = state.load("基本信息", {})
+                    data.setdefault("位置", {})["地点"] = better
+                    state.save("基本信息", data)
+                    resolved_name = better
+                break
+
     return {
         "success": True,
         "位置": {
@@ -96,6 +148,13 @@ def update_location(place_name=None, lon=None, lat=None, move_mode=None):
             "经度": round(target_lon, 6),
             "纬度": round(target_lat, 6),
             "移动方式": move_mode or "",
+            "在城内": ctx.get("在城内"),
+            "距城墙（米）": ctx.get("距城墙（米）"),
+            "最近城门": ctx.get("最近城门"),
         },
+        "移动距离（米）": moved_m,
+        "耗时提示": _time_hint(moved_m),
+        "城墙穿越": crossed_wall,
+        "提示": "（本次移动穿过了城墙：玩家已进出城，叙述请写明经过城门/城墙）" if crossed_wall else "",
         "附近": nearby_names,
     }

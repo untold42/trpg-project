@@ -20,7 +20,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from engine import read_turns
+from engine import parse_instructions, read_turns
+from tools import world_state
+from tools import character_archive
+from tools.get_character import CHARACTER_DIR
 
 SERVER_DIR = Path(__file__).resolve().parent
 GAME_DATA_DIR = SERVER_DIR / "tools" / "游戏数据"
@@ -39,13 +42,24 @@ _MUTATING = {
 _IC_PREFIX = "梁峰："
 _GM_PREFIX = "玩家的对主持人说的话："
 
+# 接触名单过滤：玩家本人、旁白/系统等非人物发言者
+_PLAYER = "梁峰"
+_NON_CHARACTERS = {"旁白", "系统", "主持人", "你", ""}
+
 
 def _render_user(turn: dict) -> str:
-    """按 mode 区分「角色行动」（IC）与「玩家对主持人的场外话」（OOC）。
+    """按 mode 区分「角色行动」（IC）/「对主持人的场外话」（OOC）/「继续」。
 
     OOC 渲染为【场外】，且**不参与记忆蒸馏**（见 存档流程.md 铁律）。
     """
     s = (turn.get("user") or "").strip()
+    if turn.get("mode") == "continue":
+        return "（静观其变，时间流逝）"
+    if turn.get("mode") == "say":
+        body = s.removeprefix("梁峰开口说：「")
+        if body.endswith("」"):
+            body = body[:-1]
+        return "你说：「" + body + "」"
     if turn.get("mode") == "gm" or s.startswith(_GM_PREFIX):
         return "【场外】" + s.removeprefix(_GM_PREFIX)
     return "你说：" + s.removeprefix(_IC_PREFIX)
@@ -74,6 +88,90 @@ def _render_tools(tool_calls) -> list[str]:
             res = res.get("message") or res.get("error") or json.dumps(res, ensure_ascii=False)
         lines.append(f"（系统：{res}）")
     return lines
+
+
+# 可用于识别“本局登场人物”的档案查询工具（get_character 已替代旧名）
+_CHARACTER_TOOLS = {"get_character", "find_specific_character"}
+
+
+def distilled_char_memory(result: dict) -> dict:
+    """从蒸馏回合取 `char_memory` 记录，按 owner 分组。
+
+    返回 `{owner: [{"time", "kind", "content"}, ...]}`。
+    """
+    out: dict[str, list] = {}
+    for tc in (result or {}).get("tool_calls", []):
+        if tc.get("name") != "DB_add_and_update_tool":
+            continue
+        args = tc.get("arguments") or {}
+        if args.get("collection") != "char_memory":
+            continue
+        owner = str(args.get("owner") or "").strip()
+        content = str(args.get("content") or "").strip()
+        if not owner or not content:
+            continue
+        out.setdefault(owner, []).append({
+            "time": str(args.get("time") or "").strip(),
+            "kind": str(args.get("kind") or "").strip(),
+            "content": content,
+        })
+    return out
+
+
+def distilled_owners(result: dict) -> tuple:
+    """从蒸馏回合取 `char_memory` 的 owner（角色名）。"""
+    return tuple(distilled_char_memory(result).keys())
+
+
+def archived_characters(result: dict) -> set:
+    """从存档蒸馏回合里取 `update_character_archive` 的人物名（本局建档的 NPC）。"""
+    names: set[str] = set()
+    for tc in (result or {}).get("tool_calls", []):
+        if tc.get("name") != "update_character_archive":
+            continue
+        n = (tc.get("arguments") or {}).get("name")
+        if n:
+            names.add(str(n).strip())
+    return names
+
+
+def contacted_characters(turns: list[dict], char_memory: dict | None = None,
+                         archived: set | None = None) -> list[str]:
+    """本局**有实质互动、需要建档**的人物。
+
+    四个确定性来源（不依赖 LLM 判断）：
+      1. 叙事里开口的 `chat` 发言人；
+      2. 主持人查过档案的 `get_character`（取其解析出的规范名）；
+      3. 本局蒸馏进 `char_memory` 的 owner（兼容旧流程）；
+      4. 本局 `update_character_archive` 建过档的人物。
+
+    保留规则：**有静态档案** **或** 在上述来源里出现过（即视为有实质互动）。
+    """
+    owners = set((char_memory or {}).keys())
+    archived = set(archived or ())
+    found: set[str] = set(owners) | archived
+    for turn in turns:
+        for it in parse_instructions(turn.get("assistant_raw")):
+            if isinstance(it, dict) and it.get("type") == "chat":
+                sp = str(it.get("speaker") or "").strip()
+                if sp:
+                    found.add(sp)
+        for tc in turn.get("tool_calls") or []:
+            if tc.get("name") not in _CHARACTER_TOOLS:
+                continue
+            res = tc.get("result")
+            if isinstance(res, dict) and res.get("success") and res.get("name"):
+                found.add(str(res["name"]).strip())
+            else:
+                arg = (tc.get("arguments") or {}).get("name")
+                if arg:
+                    found.add(str(arg).strip())
+    names = [
+        n for n in found
+        if n and n not in _NON_CHARACTERS and n != _PLAYER
+        and ((CHARACTER_DIR / f"{n}.md").is_file() or n in owners or n in archived)
+    ]
+    return sorted(set(names))
 
 
 def build_transcript(turns: list[dict]) -> str:
@@ -149,6 +247,19 @@ def run_save(session, runner) -> dict:
     start, end = _date_range(turns)
     archive = archive_transcript(transcript, start, end)
 
+    # 3b) 活跃名单：把本局接触过的人物写进 角色动态档案/活跃/
+    #     （世界推演只扫这个目录；不写 → 推演空转）
+    char_mem = distilled_char_memory(result)
+    archived = archived_characters(result)
+    promoted = []
+    try:
+        for name in contacted_characters(turns, char_mem, archived):
+            character_archive.ensure_static(name)  # 兼底：确保人人有静态档案
+            if world_state.promote_active(name, start, "玩家接触", char_mem.get(name)):
+                promoted.append(name)
+    except Exception:  # 活跃名单失败不应拖垮存档
+        promoted = []
+
     # 4) 重置会话（玩家状态保留）
     session.reset()
 
@@ -156,6 +267,7 @@ def run_save(session, runner) -> dict:
         "success": True,
         "turns": len(turns),
         "distilled": distilled,
+        "promoted": promoted,
         "archive": archive.name,
         "transcript": str(SAVE_TRANSCRIPT),
     }

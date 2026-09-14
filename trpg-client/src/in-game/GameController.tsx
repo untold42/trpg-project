@@ -10,6 +10,7 @@ import { StaggeredMenu } from "./Staggered Menu";
 import AccordionGallery, { type AccordionGalleryItem } from "./AccordionGallery";
 import { 势力列表 } from "../data/势力介绍";
 import { 默认背景, getBackgroundImage } from "./background";
+import { playMusic, stopMusic } from "./music";
 
 //承接App.tsx
 type GamingProps = {
@@ -129,6 +130,7 @@ async function fetchHistory(): Promise<HistoryView | null> {
 function Gaming({ onBackMenu }: GamingProps) {
     const [showInputGM, setshowInputGM] = useState(false); //展示主持人输入框
     const [showInputAct, setShowInputAct] = useState(false); //展示动作输入框
+    const [showInputSay, setShowInputSay] = useState(false); //展示「说话」（台词）输入框
     const [input, setInput] = useState(""); //输入框输入的内容
     const [history, setHistory] = useState<instruction[]>(story_previous); //拿到llm的回复
     const [showHistory, setShowHistory] = useState(false) //展示历史记录
@@ -141,8 +143,15 @@ function Gaming({ onBackMenu }: GamingProps) {
     const [playerState, setPlayerState] = useState<PlayerState | null>(null); // 玩家真实状态
     const [background, setBackground] = useState<string>(默认背景); // 当前背景（由 UI 事件控制）
     const [historyLines, setHistoryLines] = useState<string[]>([]); // 历史面板（读后端）
+    const [showContinue, setShowContinue] = useState(false); // 「继续」的刻数选项
 
-    // UI 事件旁路：kind:"bg" 切背景；其余预留（music / minigame ...）
+    // 统一处理 /state 返回：更新状态
+    function applyState(s: PlayerState | null) {
+        if (!s) return;
+        setPlayerState(s);
+    }
+
+    // UI 事件旁路：kind:"bg" 切背景；kind:"music" 切音乐；其余预留（minigame ...）
     function handleUiEvents(events: UiEvent[]) {
         for (const ev of events) {
             if (ev.kind === "bg") {
@@ -150,11 +159,16 @@ function Gaming({ onBackMenu }: GamingProps) {
                     String(ev.data.position ?? ""),
                     String(ev.data.time ?? "")
                 ));
+            } else if (ev.kind === "music") {
+                playMusic(String(ev.data.track ?? ""));
             } else {
                 console.debug("[ui]", ev.kind, ev.data);
             }
         }
     }
+
+    // 离开游戏时停止背景音乐
+    useEffect(() => () => stopMusic(), []);
 
     // 存档：调用后端收尾管线（蒸馏→誊写→归档→重置），完成后返回主菜单
     async function triggerSave() {
@@ -180,7 +194,7 @@ function Gaming({ onBackMenu }: GamingProps) {
 
     //与后端的接口，拿到LLM的数据
     // mode: "action"=角色行动（IC）｜"gm"=玩家对主持人的场外话（OOC）
-    async function sendAction(content: string, mode: "action" | "gm") {
+    async function sendAction(content: string, mode: "action" | "say" | "gm" | "continue", ke?: number) {
         const res = await fetch(
             "http://localhost:5000/action",
             {
@@ -188,10 +202,9 @@ function Gaming({ onBackMenu }: GamingProps) {
                 headers: {
                     "Content-Type": "application/json"
                 },
-                body: JSON.stringify({
-                    input: content,
-                    mode
-                })
+                body: JSON.stringify(
+                    ke === undefined ? { input: content, mode } : { input: content, mode, ke }
+                )
             }
         );
 
@@ -209,14 +222,14 @@ function Gaming({ onBackMenu }: GamingProps) {
 
         // 行动会改状态，刷新菜单数值
         const s = await getState();
-        if (s) setPlayerState(s);
+        applyState(s);
     }
 
     // 开局拉一次状态
     useEffect(() => {
         const load = async () => {
             const s = await getState();
-            if (s) setPlayerState(s);
+            applyState(s);
         };
         load();
     }, []);
@@ -263,6 +276,7 @@ function Gaming({ onBackMenu }: GamingProps) {
                 setShowMap(false)
                 setShowGallery(false)
                 setShowData(false)
+                setShowInputSay(false)
                 setReadingIndex(null)
             }
         };
@@ -304,13 +318,36 @@ function Gaming({ onBackMenu }: GamingProps) {
             <div className="background">
                 <GameScene history={history} background={background} />
 
-                <button className="chat-button" onClick={() => { setshowInputGM(!showInputGM); setShowInputAct(false); }}>
+                <button className="chat-button" onClick={() => { setshowInputGM(!showInputGM); setShowInputAct(false); setShowInputSay(false); }}>
                     主持人
                 </button>
 
-                <button className="act-button" onClick={() => { setShowInputAct(!showInputAct); setshowInputGM(false); }}>
+                <button className="act-button" onClick={() => { setShowInputAct(!showInputAct); setshowInputGM(false); setShowInputSay(false); }}>
                     行动
                 </button>
+
+                <button className="say-button" onClick={() => { setShowInputSay(!showInputSay); setShowInputAct(false); setshowInputGM(false); }}>
+                    说话
+                </button>
+
+                <button className="continue-button" onClick={() => setShowContinue(!showContinue)}>
+                    继续
+                </button>
+
+                {showContinue && (
+                    <div className="continue-panel">
+                        {[0, 1, 2, 3, 4].map((k) => (
+                            <button
+                                key={k}
+                                className="continue-opt"
+                                title={k === 0 ? "不推进时间，只看更多场景信息" : `推进 ${k} 刻（约 ${k * 15} 分钟）`}
+                                onClick={() => { sendAction("", "continue", k); setShowContinue(false); }}
+                            >
+                                {k === 0 ? "0刻" : `${k}刻`}
+                            </button>
+                        ))}
+                    </div>
+                )}
 
                 <button className="history-button" onClick={async () => {
                     if (!showHistory) {
@@ -428,6 +465,24 @@ function Gaming({ onBackMenu }: GamingProps) {
                     }}
 
                 />
+                }
+
+                {
+                    showInputSay &&
+                    <textarea
+                        className="dialog-box"
+                        placeholder="梁峰对在场的人说…（台词；NPC 会回应）"
+                        autoFocus
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                                sendAction(input, "say");
+                                setInput("");
+                                setShowInputSay(false);
+                            }
+                        }}
+                    />
                 }
 
                 {

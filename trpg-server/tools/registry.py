@@ -25,14 +25,15 @@ from tools.state import (
 from tools.ability import get_ability
 from tools.file_tools import list_directory, read_file, write_file, edit_file
 from tools.find_specific_expression import check_expression
-from tools.find_specific_character import find_specific_character
+from tools.get_character import get_character
+from tools.character_archive import update_character_archive
 from tools.dice import roll_dice
 from tools.DB import (
     DB_query_tool_in_saving,
     DB_add_and_update_tool,
     DB_query_tool,
 )
-from tools.map_query import query_nearby, query_place, list_map_kinds
+from tools.map_query import query_nearby, query_place, list_map_kinds, update_place_note
 from tools.location import update_location
 from tools.time_weather import update_time, update_weather
 from tools.weather_system import get_weather
@@ -45,7 +46,9 @@ _ENTRIES = [
             "type": "function",
             "function": {
                 "name": "modify_money",
-                "description": "修改玩家的金钱数据，可以增加或减少，单位为文。",
+                "description": "增减玩家的钱（**直接落账**）：增加=收入，减少=支出。"
+                "支出 / 收入都要调它，并在**同一轮叙述里说明金额与事由**；余额不足会整笔拒绝。"
+                "**禁止按时间流逝 / 在场 / \"该记账了\"自动扣费。**",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -57,6 +60,10 @@ _ENTRIES = [
                         "amount": {
                             "type": "integer",
                             "description": "变化量，必须为正整数",
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "这笔钱的事由，如「一壶酒」「卖马所得」，供玩家查账",
                         },
                     },
                     "required": ["operation", "amount"],
@@ -384,22 +391,81 @@ _ENTRIES = [
         check_expression,
     ),
     (
-        "find_specific_character",
+        "get_character",
         {
             "type": "function",
             "function": {
-                "name": "find_specific_character",
-                "description": "查看特定人物的静态人物档案（外貌/身份/性格/武功等）。特定人物登场时先调用。返回档案全文。",
+                "name": "get_character",
+                "description": (
+                    "特定人物登场时先调用：一次读全该人物的档案——"
+                    "静态正典（外貌/身份/性格/身世等）+ 动态近记忆（与梁峰的关系/当前情绪/信息边界）。"
+                    "不含长期深层记忆；若需更早的记忆，再自行调用 DB_query_tool"
+                    "（collection=char_memory, owner=人物名）。"
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "name": {"type": "string", "description": "人物名称"}
+                        "name": {"type": "string", "description": "人物名称（可用全名或绰号）"}
                     },
                     "required": ["name"],
                 },
             },
         },
-        find_specific_character,
+        get_character,
+    ),
+    (
+        "update_character_archive",
+        {
+            "type": "function",
+            "function": {
+                "name": "update_character_archive",
+                "description": (
+                    "【仅存档蒸馏时使用】更新某 NPC 的**动态档案**（近记忆·热）：追加里程碑 / 情感记忆，"
+                    "覆写当前情绪状态与信息边界。**先查静态档案**：已有→只更新动态（静态不覆盖）；"
+                    "没有→用 `static` 字段建静态并建动态。本局有实质互动的 NPC 都要为其调用一次。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "人物规范名（与 char_memory.owner 一致）"},
+                        "static": {
+                            "type": "object",
+                            "description": "首次登场的静态字段（可选）：全名/年纪/籍贯/外貌/身份/说话方式/性格/技能/身世/关系网",
+                        },
+                        "milestone": {
+                            "type": "object",
+                            "properties": {"time": {"type": "string"}, "event": {"type": "string"}},
+                            "description": "§9 里程碑追加一行",
+                        },
+                        "feeling": {
+                            "type": "object",
+                            "properties": {"time": {"type": "string"}, "event": {"type": "string"}, "feeling": {"type": "string"}},
+                            "description": "§10 情感记忆追加一行（从她的视角·具体·身体化）",
+                        },
+                        "recent": {"type": "string", "description": "§9 最近互动（追加一段）"},
+                        "attitude": {"type": "string", "description": "§9 态度（一句话：她把梁峰当成什么）"},
+                        "emotion": {
+                            "type": "object",
+                            "properties": {
+                                "主要情绪": {"type": "string"},
+                                "强度": {"type": "integer"},
+                                "触发源": {"type": "string"},
+                                "距今": {"type": "string"},
+                            },
+                            "description": "§11 当前情绪状态（覆写）",
+                        },
+                        "behaviors": {"type": "array", "items": {"type": "string"}, "description": "§11 行为表现（覆写，3-5 条）"},
+                        "want": {"type": "string", "description": "§11 想要什么（此时此刻·一句话）"},
+                        "volatility": {"type": "string", "description": "§11 挥发性（高/中/低）"},
+                        "known": {"type": "array", "items": {"type": "string"}, "description": "§12 已知"},
+                        "unknown": {"type": "array", "items": {"type": "string"}, "description": "§12 不知"},
+                        "info_attitude": {"type": "string", "description": "§12 对未知部分的态度"},
+                    },
+                    "required": ["name"],
+                },
+            },
+        },
+        update_character_archive,
     ),
     (
         "roll_dice",
@@ -594,6 +660,30 @@ _ENTRIES = [
         list_map_kinds,
     ),
     (
+        "update_place_note",
+        {
+            "type": "function",
+            "function": {
+                "name": "update_place_note",
+                "description": (
+                    "【仅存档蒸馏时使用】把本局在某地点发生的事记一条进该地点的**见闻**"
+                    "（如某人被强暴、某处起过冲突、某桥塌了）。以后任何查询命中该地名都会显示出来。"
+                    "一条一句，写清楚时间/人物/事由；只记值得记住的大事，小事不记。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "place": {"type": "string", "description": "地名（与地图上的名称一致，如「怀茂青楼」）"},
+                        "note": {"type": "string", "description": "发生了什么，一句话"},
+                        "time": {"type": "string", "description": "游戏时间，如 1220-01-16"},
+                    },
+                    "required": ["place", "note"],
+                },
+            },
+        },
+        update_place_note,
+    ),
+    (
         "update_location",
         {
             "type": "function",
@@ -601,7 +691,8 @@ _ENTRIES = [
                 "name": "update_location",
                 "description": "移动玩家的位置。当玩家说要去某地、前往某处、离开当前地点等移动行为时必须调用本工具，不要用文件工具直接改 "
                 "基本信息.json "
-                "的位置字段。可用地名（如“东关街”“文昌阁”“太平坊”），也可直接给经纬度。移动成功后会自动把该处标记为已探索。",
+                "的位置字段。可用地名（如“东关街”“文昌阁”“太平坊”），也可直接给经纬度。移动成功后会自动把该处标记为已探索。"
+                "**只移动玩家明确要去的地方**；返回会给出“移动距离（米）”与“耗时提示”，据此决定叙事与是否 `update_time`（短距离不要推进时辰）。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -639,30 +730,32 @@ _ENTRIES = [
             "function": {
                 "name": "update_time",
                 "description": "修改或推进游戏时间。玩家睡觉、赶路、等待、劳作、活动结束等导致时间流逝时必须调用，不要用文件工具直接改 "
-                "基本信息.json 的时间字段。日期格式 "
-                "YYYY-MM-DD，时辰为十二时辰之一：子时、丑时、寅时、卯时、辰时、巳时、午时、未时、申时、酉时、戌时、亥时。两种用法：1) "
-                "直接设置 date 和/或 hour；2) 用 advance_hours "
-                "推进若干时辰（后端自动算日期与时辰，跨过子时算新一天）。",
+                "基本信息.json 的时间字段。**以十二时辰计，每时辰 8 刻（1 刻 ≈ 15 分钟），不使用 24 小时制。**"
+                "日期格式 YYYY-MM-DD，时辰为十二时辰之一：子时、丑时、寅时、卯时、辰时、巳时、午时、未时、申时、酉时、戌时、亥时。"
+                "两种用法：1) 直接设置 date / shichen / ke；2) 用 advance_shichen（时辰）或 advance_ke（刻）推进"
+                "（8 刻 = 1 时辰，12 时辰 = 1 天，跨过子时算新一天）。短时间流逝用 advance_ke（如过了一刻钟传 advance_ke=1）。",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "date": {
                             "type": "string",
-                            "description": "新日期，格式 "
-                            "YYYY-MM-DD，如 "
-                            "1220-01-16",
+                            "description": "新日期，格式 YYYY-MM-DD，如 1220-01-16",
                         },
-                        "hour": {
+                        "shichen": {
                             "type": "string",
-                            "description": "新时辰，十二时辰之一，如 " "辰时、酉时",
+                            "description": "新时辰，十二时辰之一，如 辰时、酉时",
                         },
-                        "advance_hours": {
+                        "ke": {
                             "type": "integer",
-                            "description": "推进的时辰数（正整数），如 "
-                            "6 "
-                            "表示过了 "
-                            "6 "
-                            "个时辰",
+                            "description": "新刻，0-7（每时辰 8 刻，1 刻 ≈ 15 分钟）",
+                        },
+                        "advance_shichen": {
+                            "type": "integer",
+                            "description": "推进的时辰数（正整数）。12 个时辰 = 1 天；如 6 表示过了 6 个时辰（半天）。",
+                        },
+                        "advance_ke": {
+                            "type": "integer",
+                            "description": "推进的刻数（正整数）。8 刻 = 1 时辰；如 1 表示过了一刻钟（约 15 分钟）。",
                         },
                     },
                     "required": [],
@@ -784,5 +877,10 @@ _ENTRIES = [
 
 
 TOOLS = {name: (schema, fn) for name, schema, fn in _ENTRIES}
-ALL_TOOLS = [schema for _name, schema, _fn in _ENTRIES]
+#: 仅存档蒸馏回合可见的工具（不发给游戏中的主持人，防误用）
+_SAVE_ONLY = {"update_character_archive", "update_place_note"}
+#: 游戏中（正常回合）用
+ALL_TOOLS = [schema for name, schema, _fn in _ENTRIES if name not in _SAVE_ONLY]
+#: 存档蒸馏回合用（含存档专用工具）
+SAVE_TOOLS = [schema for _name, schema, _fn in _ENTRIES]
 TOOLS_MAP = {name: fn for name, _schema, fn in _ENTRIES}

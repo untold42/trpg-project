@@ -93,7 +93,8 @@ def main():
             category      TEXT,
             ancient_kind  TEXT,
             geometry_type TEXT,
-            coords        TEXT NOT NULL
+            coords        TEXT NOT NULL,
+            description   TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_features_map ON features(map_id);
         CREATE INDEX IF NOT EXISTS idx_features_kind ON features(ancient_kind);
@@ -103,6 +104,16 @@ def main():
         CREATE VIRTUAL TABLE features_rtree USING rtree(
             fid, minx, maxx, miny, maxy
         );
+        -- 动态见闻（某地发生过的事）：独立表，**重建时不删**
+        CREATE TABLE IF NOT EXISTS place_notes (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            map_id  TEXT,
+            name    TEXT NOT NULL,
+            note    TEXT NOT NULL,
+            time    TEXT,
+            created TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_place_notes_name ON place_notes(name);
     """)
 
     cur.execute(
@@ -141,14 +152,15 @@ def main():
             o.get("ancient_kind"),
             gtype,
             json.dumps(coords),
+            o.get("description"),
         ))
         # 先用临时占位 fid，插入后再回填 rtree
         batch_rt.append((0, minx, maxx, miny, maxy))
 
     cur.executemany(
         """INSERT INTO features(map_id, oid, name, name_modern, category,
-                                ancient_kind, geometry_type, coords)
-           VALUES(?,?,?,?,?,?,?,?)""",
+                                ancient_kind, geometry_type, coords, description)
+           VALUES(?,?,?,?,?,?,?,?,?)""",
         batch_feat,
     )
 
