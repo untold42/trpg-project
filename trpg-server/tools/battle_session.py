@@ -31,6 +31,7 @@ _lock = threading.RLock()
 _RUNNER: R.BattleRunner | None = None
 _META: dict = {}
 _busy = False   # 防重入：一次只允许一个 submit 在算（否则并发 advance 会狂调小模型）
+_LAST_MUSIC = ""  # 上一场战斗曲，用于避免重复
 
 
 # ------------------------------------------------------------
@@ -98,29 +99,56 @@ def _wrap(st: dict) -> dict:
     return st
 
 
-def start(敌人, 友方=None, 缘由: str = "", 模拟: bool = False) -> dict:
+def demo_terrain() -> dict:
+    """模拟战斗的演示地形（目前仅视觉 + 房屋阻挡）：一条河 + 几栋房 + 几棵树。"""
+    t = {}
+    for x in range(3, 7):
+        t[(x, 2)] = "河流"
+    for xy in ((4, 0), (4, 1), (7, 3)):
+        t[xy] = "房屋"
+    for xy in ((0, 0), (0, 5), (9, 5)):
+        t[xy] = "树"
+    return t
+
+
+def start(敌人, 友方=None, 缘由: str = "", 模拟: bool = False, 地形: dict = None) -> dict:
     """建立战斗并推进到「等玩家输入」或结束。`模拟=True` 时结束不回写玩家状态。"""
-    global _RUNNER, _META
+    global _RUNNER, _META, _LAST_MUSIC
     with _lock:
         tm = _tier_map()
         enemies = _build(敌人, "敌方", tm)
         allies = _build(友方, "友方", tm)
         if not enemies:
             return {"active": False, "error": "没有有效的敌人"}
-        b = B.new_battle(enemies=enemies, allies=allies)
+        if 地形 is None and 模拟:
+            地形 = demo_terrain()          # 模拟战斗默认带演示地形（视觉）
+        b = B.new_battle(enemies=enemies, allies=allies, 地形=地形)
         r = R.BattleRunner(b)
         st = r.start()
         _RUNNER = r
         loc = (game_state.load("基本信息", {}) or {}).get("位置", {}).get("地点", "")
-        _META = {"缘由": 缘由 or "", "模拟": bool(模拟),
-                 "音乐": ui_sim.battle_track_for(present=[c["名字"] for c in enemies],
-                                                 location=loc)}
+        names = [c["名字"] for c in enemies]
+        context = ("敌方：" + "、".join(
+                    c["名字"] + (f"({c.get('梯度','')})" if c.get("梯度") else "")
+                    for c in enemies)
+                   + f"；我方：梁峰等 {1 + len(allies)} 人；"
+                     f"地点：{loc or '未知'}；缘由：{缘由 or '未注明'}。")
+        music = ""
+        try:
+            music = ui_sim.battle_track_model(context, present=names,
+                                              location=loc, avoid=_LAST_MUSIC)
+        except Exception:
+            music = ""
+        if not music:   # 回退：代码选曲（boss 绑定优先 + 通用随机）
+            music = ui_sim.battle_track_for(present=names, location=loc, avoid=_LAST_MUSIC)
+        _LAST_MUSIC = music
+        _META = {"缘由": 缘由 or "", "模拟": bool(模拟), "音乐": music}
         return _wrap(st)
 
 
-def start_battle(敌人, 友方=None, 缘由: str = "") -> dict:
+def start_battle(敌人, 友方=None, 缘由: str = "", 地形: dict = None) -> dict:
     """LLM 工具：判定开战 → 建立战斗并产出 `kind:"battle"` UI 事件。"""
-    st = start(敌人, 友方, 缘由)
+    st = start(敌人, 友方, 缘由, 地形=地形)
     if not st.get("active"):
         return {"success": False, "error": st.get("error", "开战失败")}
     return {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "../styles/Battle.css";
 import { playMusic, stopMusic } from "./music";
+import BattleBoard from "./BattleBoard";
 
 // ---- 与后端 /battle/* 对齐的类型 ----
 export type BattleBuff = { 名称: string; 层数?: number; 剩余回合?: number };
@@ -19,6 +20,7 @@ export type BattleState = {
         回合: number; 宽度: number; 高度: number;
         已结束: boolean; 胜方: string | null; 结束原因: string;
         参战者: BattleCombatant[];
+        地形?: { 格: [number, number]; 类型: string }[];
     };
     最后的思路判定?: { 评价?: string; 修正?: number; 理由?: string; 模型?: string };
     日志?: BattleLog[];
@@ -50,10 +52,13 @@ export default function BattleScene({ initial, onExit }: Props) {
     const logRef = useRef<HTMLDivElement>(null);
 
     const 战场 = state.战场;
-    const W = 战场.宽度, H = 战场.高度;
     const 参战者 = 战场.参战者;
     const player = 参战者.find((c) => c.是玩家);
     const 招式表 = player?.招式 ?? [];
+    const 技能表 = (state.技能 ?? {}) as Record<string, { 射程?: number; 范围?: string; 内力?: number }>;
+    const 选中技能 = 技能表[skill];
+    const 是AOE = !!选中技能 && /^(区域|领域|扇形|直线|圆形)/.test(String(选中技能.范围 ?? ""));
+    const 半径 = (() => { const m = /(\d+)/.exec(String(选中技能?.范围 ?? "")); return m ? parseInt(m[1]) : 1; })();
 
     // 每格上的角色
     const byCell = useMemo(() => {
@@ -94,21 +99,6 @@ export default function BattleScene({ initial, onExit }: Props) {
         } catch { /* 后端没起：忽略 */ }
     }
 
-    // 可达格（仅「移动」时）：空格且切比雪夫距离 ≤ 移动力
-    const reachable = useMemo(() => {
-        const s = new Set<string>();
-        if (!player || action !== "移动") return s;
-        const [px, py] = player.格;
-        const r = player.移动力 ?? (1 + Math.floor((player.轻功 ?? 0) / 30));
-        for (let y = 0; y < H; y++) {
-            for (let x = 0; x < W; x++) {
-                const d = Math.max(Math.abs(x - px), Math.abs(y - py));
-                if (d >= 1 && d <= r && !byCell[cellKey(x, y)]) s.add(cellKey(x, y));
-            }
-        }
-        return s;
-    }, [player, action, byCell, W, H]);
-
     function 选动作(a: ActionName) {
         setAction(a);
         setTarget(""); setCell(null);
@@ -116,6 +106,7 @@ export default function BattleScene({ initial, onExit }: Props) {
     }
 
     function 点格(x: number, y: number) {
+        if (action === "技能" && 是AOE) { setCell([x, y]); return; }   // AOE 中心格：任意格
         if (action === "移动") {
             // 只允许点到空格（不能移到有人处）
             if (!byCell[cellKey(x, y)]) setCell([x, y]);
@@ -134,8 +125,12 @@ export default function BattleScene({ initial, onExit }: Props) {
         if (busy || !state.等待玩家 || 战场.已结束) return;
         const body: Record<string, unknown> = { 动作: action, 思路: thought };
         if (action === "移动") body.目标格 = cell ?? player?.格 ?? [0, 0];
+        if (action === "技能") {
+            body.招式 = skill;
+            if (是AOE) body.目标格 = cell ?? player?.格 ?? [0, 0];
+            else body.目标 = target;
+        }
         if (action === "舞剑" || action === "交流") body.目标 = target;
-        if (action === "技能") { body.招式 = skill; body.目标 = target; }
         setBusy(true); set提示("");
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 90000);  // 90s 超时，不干等
@@ -163,7 +158,7 @@ export default function BattleScene({ initial, onExit }: Props) {
     }
 
     const 判定 = state.最后的思路判定;
-    const 需目标 = action === "舞剑" || action === "技能" || action === "交流";
+    const 需目标 = action === "舞剑" || action === "交流" || (action === "技能" && !是AOE);
 
     return (
         <div className="battle-overlay">
@@ -185,52 +180,22 @@ export default function BattleScene({ initial, onExit }: Props) {
 
             <div className="battle-body">
                 <div className="battle-board">
-                    <div className="battle-grid"
-                        style={{ gridTemplateColumns: `repeat(${W}, 1fr)` }}>
-                        {Array.from({ length: H }).map((_, y) =>
-                            Array.from({ length: W }).map((__, x) => {
-                                const c = byCell[cellKey(x, y)];
-                                const isMoveTarget = action === "移动" && cell?.[0] === x && cell?.[1] === y;
-                                const isReachable = reachable.has(cellKey(x, y));
-                                return (
-                                    <div key={`${x},${y}`}
-                                        className={"battle-cell" + (isMoveTarget ? " sel-cell" : isReachable ? " reachable" : "")}
-                                        onClick={() => 点格(x, y)}>
-                                        {c && (
-                                            <div
-                                                className={"battle-token" +
-                                                    (c.阵营 === "友方" ? " ally" : " enemy") +
-                                                    (c.是玩家 ? " me" : "") +
-                                                    (target === c.名字 ? " sel" : "")}
-                                                onClick={(e) => { e.stopPropagation(); 点人(c.名字); }}
-                                                title={`${c.名字}｜HP ${c.生命}/${c.生命上限}｜内力 ${c.内力}/${c.内力上限}`}>
-                                                <div className="btk-name">
-                                                    {c.名字}{c.防守 ? " ·守" : ""}
-                                                </div>
-                                                <div className="btk-bar hp">
-                                                    <i style={{ width: `${Math.max(0, (c.生命 / Math.max(1, c.生命上限)) * 100)}%` }} />
-                                                </div>
-                                                <div className="btk-bar tp">
-                                                    <i style={{ width: `${Math.max(0, (c.内力 / Math.max(1, c.内力上限)) * 100)}%` }} />
-                                                </div>
-                                                {!!c.buff?.length && (
-                                                    <div className="btk-buffs">
-                                                        {c.buff.map((b, i) => (
-                                                            <span key={i}>{b.名称}{(b.层数 ?? 1) > 1 ? `×${b.层数}` : ""}</span>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })
-                        )}
-                    </div>
+                    <BattleBoard
+                        战场={战场}
+                        action={action}
+                        selectedCell={cell}
+                        target={target}
+                        移动力={player?.移动力 ?? 1}
+                        技能={选中技能}
+                        onCellClick={点格}
+                        onTokenClick={点人}
+                    />
                     <div className="battle-hint">
                         {action === "移动"
                             ? <>移动（移动力 <b>{player?.移动力 ?? "?"}</b> 格）：点金色空格选择目的地；当前：<b>{cell ? `(${cell[0]},${cell[1]})` : "（未选格）"}</b></>
-                            : <>点自己/敌人选择目标。当前选择：<b>{action}</b>{需目标 && <> → {target || "（未选目标）"}</>}</>}
+                            : action === "技能" && 是AOE
+                                ? <>AOE「{skill}」（射程 <b>{选中技能?.射程}</b>、半径 <b>{半径}</b>）：点格子选中心；当前：<b>{cell ? `(${cell[0]},${cell[1]})` : "（未选格）"}</b></>
+                                : <>点自己/敌人选择目标。当前选择：<b>{action}</b>{需目标 && <> → {target || "（未选目标）"}</>}</>}
                     </div>
                     {提示 && <div className="battle-err">{提示}</div>}
                 </div>
@@ -262,7 +227,8 @@ export default function BattleScene({ initial, onExit }: Props) {
                     ))}
                 </div>
                 {action === "技能" && (
-                    <select className="bt-skill" value={skill} onChange={(e) => setSkill(e.target.value)}>
+                    <select className="bt-skill" value={skill}
+                        onChange={(e) => { setSkill(e.target.value); setCell(null); setTarget(""); }}>
                         {招式表.length
                             ? 招式表.map((s) => <option key={s} value={s}>{s}</option>)
                             : <option value="">（无可施招式）</option>}
@@ -271,7 +237,9 @@ export default function BattleScene({ initial, onExit }: Props) {
                 <textarea className="bt-thought" placeholder="思路（可空）：剑路怎么走、步法是否欺诈……写得好会加伤害"
                     value={thought} onChange={(e) => setThought(e.target.value)} />
                 <button className="bt-submit"
-                    disabled={busy || !state.等待玩家 || 战场.已结束 || (action === "移动" && !cell)}
+                    disabled={busy || !state.等待玩家 || 战场.已结束
+                        || (action === "移动" && !cell)
+                        || (action === "技能" && 是AOE && !cell)}
                     onClick={出招}>{busy ? "结算中…" : "出招"}</button>
             </div>
 

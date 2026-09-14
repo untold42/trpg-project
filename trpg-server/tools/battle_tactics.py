@@ -48,7 +48,7 @@ def enumerate_actions(battle: "B.Battle", actor: dict) -> list[dict]:
             if dx == 0 and dy == 0:
                 continue
             x, y = ax + dx, ay + dy
-            if B.in_board(x, y) and not battle.cell_occupied(x, y):
+            if B.in_board(x, y) and not battle.cell_occupied(x, y) and not battle.blocked(x, y):
                 add({"动作": "移动", "目标格": [x, y]})
 
     enemies = [c for c in battle.alive() if c["阵营"] != actor["阵营"]]
@@ -61,21 +61,23 @@ def enumerate_actions(battle: "B.Battle", actor: dict) -> list[dict]:
         sk = B.get_skill(name)
         if not sk or int(sk.get("内力", 0)) > actor["内力"]:
             continue
-        范围 = sk.get("范围", "单体")
+        范围 = str(sk.get("范围", "单体"))
         射程 = int(sk.get("射程", 1) or 1)
-        威力 = int(sk.get("威力", 0) or 0)
         if 范围 == "自身":
             add({"动作": "技能", "招式": name, "目标": ""})
             continue
-        if 范围 == "单体":
-            目标池 = [e for e in enemies if B.distance(actor, e) <= 射程]
-        else:
-            目标池 = battle._skill_targets(actor, None, 范围, 射程)
-        if not 目标池 and 威力 == 0:
+        if 范围 == "全场":
+            add({"动作": "技能", "招式": name, "目标": ""})
             continue
-        for t in 目标池:
-            add({"动作": "技能", "招式": name,
-                 "目标": "" if t is actor else t["名字"]})
+        if battle._is_aoe(范围):                 # AOE：以「格」为中心（枚举各敌方格 + 自身格）
+            for cell in [[e["格"][0], e["格"][1]] for e in enemies] + \
+                        [[actor["格"][0], actor["格"][1]]]:
+                if B.distance(actor, cell) <= 射程:
+                    add({"动作": "技能", "招式": name, "目标格": cell})
+            continue
+        for e in enemies:                        # 单体：选人
+            if B.distance(actor, e) <= 射程:
+                add({"动作": "技能", "招式": name, "目标": e["名字"]})
 
     add({"动作": "防守"})
     for t in battle.alive():                     # 交流（队友 / 对手）—— 已持相应 buff 的不重复

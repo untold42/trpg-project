@@ -24,6 +24,7 @@ import copy
 import json
 import math
 import random
+import re
 from pathlib import Path
 
 from tools.state_manager import state
@@ -37,6 +38,10 @@ _SKILL_TABLE_PATH = _ROOT / "trpg-world" / "招式表.json"
 GRID_W, GRID_H = 10, 6
 ALLIES_START_X = (0, 1)     # 友方起始列（左）
 ENEMIES_START_X = (8, 9)    # 敌方起始列（右）
+
+#: 地形类型 → 是否阻挡移动（河流“凹陷”但可涉水通过）
+TERRAIN_BLOCKING = {"房屋", "墙"}
+TERRAIN_TYPES = ("房屋", "河流", "墙", "树")
 
 SIDES = ("友方", "敌方")
 
@@ -345,8 +350,9 @@ def _position_mod(attacker, defender, battle) -> dict:
 class Battle:
     """一场 n vs n 战斗的完整状态与结算。"""
 
-    def __init__(self, combatants: list, rng: random.Random = None):
+    def __init__(self, combatants: list, rng: random.Random = None, terrain: dict = None):
         self.cs: list[dict] = combatants
+        self.terrain: dict = dict(terrain or {})   # {(x,y): 地形类型}
         self.round = 0
         self.first_side = None
         self.current_side = None
@@ -365,6 +371,7 @@ class Battle:
         """
         b = Battle.__new__(Battle)
         b.cs = copy.deepcopy(self.cs)
+        b.terrain = dict(self.terrain)
         b.round = self.round
         b.first_side = self.first_side
         b.current_side = self.current_side
@@ -395,6 +402,24 @@ class Battle:
             if c["格"] == [x, y]:
                 return c
         return None
+
+    def blocked(self, x: int, y: int) -> bool:
+        """该格是否被地形阻挡（房屋/墙）；河流凹陷但可通过。"""
+        return self.terrain.get((x, y)) in TERRAIN_BLOCKING
+
+    def reachable_cells(self, actor: dict) -> list:
+        """可达空格（切比雪夫 ≤ 移动力，未占用、未被阻挡）——供前端高亮 / AI 枚举。"""
+        ax, ay = actor["格"]
+        r = move_range(actor)
+        out = []
+        for dy in range(-r, r + 1):
+            for dx in range(-r, r + 1):
+                if dx == 0 and dy == 0:
+                    continue
+                x, y = ax + dx, ay + dy
+                if in_board(x, y) and not self.cell_occupied(x, y) and not self.blocked(x, y):
+                    out.append([x, y])
+        return out
 
     def turn_order(self) -> list[dict]:
         return sorted(self.alive(), key=lambda c: c["属性"].get("轻功", 0), reverse=True)
@@ -519,6 +544,8 @@ class Battle:
         # 可达（切比雪夫 ≤ 移动力），且未被占
         if max(abs(tx - x0), abs(ty - y0)) > move_range(actor):
             return None
+        if self.blocked(tx, ty):
+            return None
         occ = self.cell_occupied(tx, ty)
         if occ is not None and occ is not actor:
             return None
@@ -553,9 +580,7 @@ class Battle:
         actor["内力"] -= cost
 
         五行 = skill.get("五行", "无")
-        范围 = skill.get("范围", "单体")
-        射程 = skill.get("射程", 1)
-        targets = self._skill_targets(actor, action.get("目标"), 范围, 射程)
+        targets = self._skill_targets(actor, action, skill)
         if not targets and (skill.get("威力", 0) or 0) > 0:
             return self._fallback_defend(actor, "没有合法目标")
 
@@ -601,20 +626,69 @@ class Battle:
             self.append_log({"类型": "效果", "行动者": actor["名字"], "目标": target["名字"],
                              "文本": f"{target['名字']} 被震得头晕目眩（{wp['会心效果']}）。"})
 
-    def _skill_targets(self, actor, target_name, 范围, 射程):
+    @staticmethod
+    def _area_radius(范围) -> int:
+        """从「区域N / 扇形N / 直线N」里取半径 N。"""
+        m = re.search(r"(\d+)", str(范围))
+        return int(m.group(1)) if m else 1
+
+    @staticmethod
+    def _is_aoe(范围) -> bool:
+        return str(范围).startswith(("区域", "领域", "扇形", "直线", "圆形"))
+
+    def skill_centers(self, actor, skill) -> list:
+        """AOE 技能可选的**中心格**（在射程内、在棋盘内）。"""
+        射程 = int(skill.get("射程", 1) or 0)
+        ax, ay = actor["格"]
+        out = []
+        for dy in range(-射程, 射程 + 1):
+            for dx in range(-射程, 射程 + 1):
+                x, y = ax + dx, ay + dy
+                if in_board(x, y):
+                    out.append([x, y])
+        return out
+
+    def skill_area(self, cell, skill) -> list:
+        """以 cell 为中心、半径 = 范围里的数字，返回受影响的**格**列表（含地形格）。"""
+        n = self._area_radius(skill.get("范围", "区域1"))
+        cx, cy = int(cell[0]), int(cell[1])
+        out = []
+        for dy in range(-n, n + 1):
+            for dx in range(-n, n + 1):
+                x, y = cx + dx, cy + dy
+                if in_board(x, y):
+                    out.append([x, y])
+        return out
+
+    def _skill_targets(self, actor, action, skill) -> list:
+        """解析技能目标，返回受影响的**敌方**参战者：
+          - 单体：选人（目标=名字）
+          - 自身：自己
+          - 全场：所有敌人
+          - 区域/领域/扇形/直线 N：**选格**（目标格）、以它为中心半径 N 内的敌人
+        """
+        范围 = str(skill.get("范围", "单体"))
+        射程 = int(skill.get("射程", 1) or 0)
         enemies = [c for c in self.alive() if c["阵营"] != actor["阵营"]]
         if 范围 == "自身":
             return [actor]
-        if str(范围).startswith("领域"):
-            n = int(str(范围)[2:] or 1)
-            return [c for c in enemies if distance(actor, c) <= n]
         if 范围 == "全场":
             return list(enemies)
-        # 单体（扇形/直线暂按单体处理）
-        t = self.get(target_name or "")
-        if t is None or t["阵营"] == actor["阵营"]:
-            return []
-        if distance(actor, t) > int(射程 or 1):
+        if self._is_aoe(范围):
+            cell = action.get("目标格")
+            if not cell:
+                return []
+            try:
+                cx, cy = int(cell[0]), int(cell[1])
+            except (TypeError, ValueError, IndexError):
+                return []
+            if not in_board(cx, cy) or distance(actor, (cx, cy)) > 射程:
+                return []
+            cells = {(p[0], p[1]) for p in self.skill_area((cx, cy), skill)}
+            return [e for e in enemies if (e["格"][0], e["格"][1]) in cells]
+        # 单体
+        t = self.get(action.get("目标", ""))
+        if t is None or t["阵营"] == actor["阵营"] or distance(actor, t) > 射程:
             return []
         return [t]
 
@@ -800,6 +874,13 @@ class Battle:
         return [self.log[-1]]
 
     # ---- 序列化 / 状态 ----
+    def _player_skills_info(self) -> dict:
+        """玩家可用招式的数值（供前端判断 AOE/单体、射程、范围、内力）。"""
+        p = next((c for c in self.cs if c.get("是玩家")), None)
+        if p is None:
+            return {}
+        return {n: get_skill(n) for n in (p.get("招式") or []) if get_skill(n)}
+
     def state(self) -> dict:
         return {
             "回合": self.round,
@@ -808,6 +889,8 @@ class Battle:
             "已结束": self.ended,
             "胜方": self.winner,
             "结束原因": self.result_reason,
+            "地形": [{"格": [k[0], k[1]], "类型": v} for k, v in self.terrain.items()],
+            "技能": self._player_skills_info(),
             "参战者": [
                 {
                     "名字": c["名字"], "阵营": c["阵营"], "是玩家": c.get("是玩家", False),
@@ -831,18 +914,18 @@ class Battle:
 # ------------------------------------------------------------
 # 便捷构建
 # ------------------------------------------------------------
-def new_battle(enemies: list, allies: list = None, rng=None) -> Battle:
+def new_battle(enemies: list, allies: list = None, rng=None, 地形: dict = None) -> Battle:
     """开一场战斗。玩家固定参战；`allies`/`enemies` 为 npc_combatant 结果列表。"""
     cs = [player_combatant()]
     cs.extend(allies or [])
     cs.extend(enemies or [])
-    _auto_place(cs)
-    return Battle(cs, rng=rng)
+    _auto_place(cs, 地形)
+    return Battle(cs, rng=rng, terrain=地形)
 
 
-def _auto_place(cs: list):
-    """按阵营自动布位：保留不冲突的位置，冲突者顺次填空格。"""
-    used = set()
+def _auto_place(cs: list, terrain: dict = None):
+    """按阵营自动布位：保留不冲突的位置，冲突者顺次填空格（避开阻挡地形）。"""
+    used = {(x, y) for (x, y), t in (terrain or {}).items() if t in TERRAIN_BLOCKING}
     for side, cols in (("友方", ALLIES_START_X), ("敌方", ENEMIES_START_X)):
         free = [(x, y) for x in cols for y in range(GRID_H)]
         for c in [c for c in cs if c["阵营"] == side]:

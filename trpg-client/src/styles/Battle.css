@@ -91,125 +91,24 @@
     padding: 12px 0;
 }
 
+/* ---- 棋盘：居中 + 等轴测（SVG 2.5D）---- */
 .battle-board {
     flex: 1;
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    min-width: 0;
-}
-
-.battle-grid {
-    display: grid;
-    gap: 4px;
-    background: rgba(60, 40, 20, 0.35);
-    padding: 10px;
-    border-radius: 8px;
-    border: 1px solid rgba(216, 180, 90, 0.25);
-}
-
-.battle-cell {
-    aspect-ratio: 3 / 2;
-    background: rgba(255, 240, 210, 0.04);
-    border: 1px solid rgba(216, 180, 90, 0.12);
-    border-radius: 4px;
-    display: flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
+    min-width: 0;
+    min-height: 0;
 }
 
-.battle-cell:hover {
-    background: rgba(216, 180, 90, 0.08);
-}
-
-.battle-cell.sel-cell {
-    outline: 2px solid #e8c86a;
-    background: rgba(216, 180, 90, 0.15);
-}
-
-/* 可达格（选「移动」时高亮） */
-.battle-cell.reachable {
-    background: rgba(216, 180, 90, 0.1);
-    border-color: rgba(216, 180, 90, 0.4);
-}
-
-.battle-cell.reachable:hover {
-    background: rgba(216, 180, 90, 0.22);
-}
-
-/* ---- token（实心矩形占位）---- */
-.battle-token {
+.bb-svg {
     width: 100%;
     height: 100%;
-    border-radius: 4px;
-    padding: 4px 5px;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 3px;
-    overflow: hidden;
-}
-
-.battle-token.ally {
-    background: linear-gradient(180deg, #1e4a6b, #123048);
-    border: 1px solid #4a9fd0;
-}
-
-.battle-token.enemy {
-    background: linear-gradient(180deg, #6b2020, #3a1010);
-    border: 1px solid #d05a4a;
-}
-
-.battle-token.me {
-    box-shadow: 0 0 0 2px #e8c86a inset;
-}
-
-.battle-token.sel {
-    outline: 2px solid #f5e08a;
-}
-
-.btk-name {
-    font-size: 12px;
-    font-weight: 700;
-    color: #fff;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.btk-bar {
-    height: 4px;
-    background: rgba(0, 0, 0, 0.5);
-    border-radius: 2px;
-    overflow: hidden;
-}
-
-.btk-bar.hp i {
+    flex: 1;
+    min-height: 0;
     display: block;
-    height: 100%;
-    background: #4ad06a;
-}
-
-.btk-bar.tp i {
-    display: block;
-    height: 100%;
-    background: #4a9fd0;
-}
-
-.btk-buffs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 2px;
-}
-
-.btk-buffs span {
-    font-size: 9px;
-    background: rgba(0, 0, 0, 0.45);
-    border-radius: 2px;
-    padding: 0 3px;
-    color: #ffd;
+    filter: drop-shadow(0 10px 26px rgba(0, 0, 0, 0.5));
 }
 
 .battle-hint {

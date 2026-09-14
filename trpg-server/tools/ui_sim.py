@@ -223,13 +223,64 @@ def battle_tracks() -> list[str]:
     return _listed(_BATTLE_MANIFEST)
 
 
-def battle_track_for(present=None, location: str = None) -> str:
-    """战斗选曲：命中「绑定」（敌人名 / 地点类型）的专属曲优先，否则用通用战斗曲。
+_BATTLE_BGM_SYSTEM = (
+    "你是武侠战斗的「配乐师」。读战局情境，从给定战斗曲里挑**一首**最贴合的，只输出 JSON。\n"
+    "判断顺序：先看敌我强弱（压制 / 势均力敌 / 劣势 / 绝境），"
+    "再看性质（对决 / 追杀 / 军阵 / 决战 / 苦战 / 牺牲）。\n"
+    "只能选给定清单里的一首；拿不准就选「侠心凛然」。禁止思考、禁止解释。\n/no_think"
+)
+
+
+def battle_track_model(context: str, present=None, location: str = None,
+                       avoid: str = None) -> str:
+    """小模型据战局情境选战斗曲。返回曲名；失败/超时返回 ""（调用方代码兜底）。
+
+    - 只把**适用**曲目给它：通用曲 + 绑定命中（boss 在场）的专属曲。
+    - boss 专属只能命中一首时直接用它，不劳模型。
+    - `avoid`：上一首（在提示里请模型避免）。
+    """
+    listed = battle_tracks()
+    if not listed:
+        return ""
+    binds = music_bindings(_BATTLE_MANIFEST)
+    kind = _kind_of(location) if location else ""
+    names = [str(x).strip() for x in (present or []) if str(x).strip()]
+    适用 = [t for t in listed
+            if not binds.get(t) or _binding_matches(binds.get(t, ""), location, names, kind)]
+    if not 适用:
+        return ""
+    if len(适用) == 1:
+        return 适用[0]
+    # boss 在场（绑定命中）→ 直接给专属曲，不劳模型
+    bound = [t for t in 适用 if binds.get(t)]
+    if bound:
+        return bound[0]
+
+    desc = music_descriptions(_BATTLE_MANIFEST)
+    lines = "\n".join(f"- {t}：{desc.get(t, '')}" for t in 适用)
+    user = (
+        f"战局情境：\n{context}\n\n"
+        f"可选战斗曲（只能选一首）：\n{lines}\n"
+        + (f"（避免重复上一首「{avoid}」）\n" if avoid and avoid in 适用 else "")
+        + "请选一首最贴合的。"
+    )
+    schema = {"type": "object",
+              "properties": {"音乐": {"type": "string", "enum": 适用}},
+              "required": ["音乐"]}
+    r = small_model.ask_json(_BATTLE_BGM_SYSTEM, user, schema, max_tokens=40, timeout=6)
+    t = str((r or {}).get("音乐", "")).strip()
+    return t if t in 适用 else ""
+
+
+def battle_track_for(present=None, location: str = None, avoid: str = None) -> str:
+    """战斗选曲：命中「绑定」（敌人名 / 地点类型）的专属曲优先，否则从**通用战斗曲里随机**。
 
     - `present`：敌方登场人物名（用于 boss 专属曲，如「温夫人」）。
     - `location`：地点名（用于地点绑定，如「千灯楼」）。
+    - `avoid`：上一首，尽量不重复。
     无曲库时返回 ""。
     """
+    import random as _random
     listed = battle_tracks()
     if not listed:
         return ""
@@ -240,8 +291,10 @@ def battle_track_for(present=None, location: str = None) -> str:
         b = binds.get(t, "")
         if b and _binding_matches(b, location, names, kind):
             return t
-    generic = [t for t in listed if not binds.get(t)]
-    return (generic or listed)[0]
+    pool = [t for t in listed if not binds.get(t)] or listed
+    if avoid and len(pool) > 1:
+        pool = [t for t in pool if t != avoid] or pool
+    return _random.choice(pool)
 
 
 def current_shichen() -> str:
