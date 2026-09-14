@@ -5,7 +5,7 @@
 > - 待办规划 → `TODO.md`
 > - 地图生成细节 → `trpg-map/draw_tiles/STATUS.md`
 
-最后更新：**战斗系统 v0.1 已实现**（网格 n vs n · 阶段驱动 · 小/大模型思路判定 · 模拟战斗 · 战斗 BGM；见 `trpg-world/战斗系统.md` / `ARCHITECTURE.md` 第十三节）。此后：记忆层改为**两级**（动态档案为主 + §10 超 20 条 LRU→`char_memory`）；新增**地点见闻**（`place_notes`）与**方位注入**（八方位/城区方位）；前端**去掉 `data/`**、势力/设置改由后端供，并新增**前情回顾加载**（`GET /recap`）；**难度设置**（`难度设置.json`）与**归隐退出**；`游戏数据`/`天气数据`/`归档存档` 已从 `tools/` 搬到 `trpg-server/` 同级；过程日志统一叫 `current.jsonl`。总纲第 5 条 **「硬事实由代码裁决」** 继续贯穿（时间/距离/方位/城内城外/骰值）。
+最后更新：**战斗视觉/地形/AOE 增强**（等轴测棋盘 + 实体系统 + 地形阻挡 + BGM 小模型选曲 + AOE 选格）——战斗系统 v0.1（网格 n vs n · 阶段驱动 · 思路判定 · 模拟战斗 · 战斗 BGM；见 `trpg-world/战斗系统.md` / `ARCHITECTURE.md` 第十三节）。此后：记忆层改为**两级**（动态档案为主 + §10 超 20 条 LRU→`char_memory`）；新增**地点见闻**（`place_notes`）与**方位注入**（八方位/城区方位）；前端**去掉 `data/`**、势力/设置改由后端供，并新增**前情回顾加载**（`GET /recap`）；**难度设置**（`难度设置.json`）与**归隐退出**；`游戏数据`/`天气数据`/`归档存档` 已从 `tools/` 搬到 `trpg-server/` 同级；过程日志统一叫 `current.jsonl`。总纲第 5 条 **「硬事实由代码裁决」** 继续贯穿（时间/距离/方位/城内城外/骰值）。
 
 > ⚠️ **交接必读（第十二节）**：如果你是从一份旧会话接手，先看第十二节「当前进度与下一步」；
 > 并注意：`trpg-server` 的代码改动**必须重启后端**才生效（改规则 md 则免重启）。
@@ -253,7 +253,19 @@ cp -r tiles/{11..16} ../../trpg-client/public/tiles/
 
 ## 十二、交接：当前进度与下一步
 
-### 本轮做了什么（最近一次开发）
+### ⭐ 最近一轮：战斗视觉 / 地形 / AOE
+
+> 提交 `756ef1a`（+ 本次修复提交）；**均未 push**（本地领先 `origin/main`）。
+
+- **等轴测棋盘**（`in-game/BattleBoard.tsx`）：居中 SVG 2.5D；视点在南，**玩家西南 / 敌人东北**；深度排序（x+y 大者先画）。
+- **实体系统**：人物 = 三角锥+球；房屋/墙 = 长方体；河流 = 凹陷蓝色长方体；树 = 树干+绿锥。
+- **地形**：`Battle.terrain` + `blocked()`（**房屋/墙阻挡**，河可涉水）+ `reachable_cells()`；`state()["地形"]`；模拟战斗带演示地形（河+房+树）。
+- **BGM 小模型选曲**：`ui_sim.battle_track_model()`（**boss 绑定直取**，其余交小模型按「情绪+战况」选；失败回退代码随机）；3 首 boss 曲（王二壮/赵逵/刘鄂）从叙事清单**搬到战斗清单**。
+- **技能 AOE 选格子**：`battle.py` 的 `skill_centers/skill_area/_is_aoe`；AOE = 以所选「格」为中心、半径 N 内的敌人；前端点格 + 区域预览（蓝=可选中心，橙=命中区）。
+- **修复**：① `state.技能` → **`state.战场.技能`**（层级写错 → AOE 完全没生效）② 橙色区域被蓝色中心格盖住（绘制顺序）③ **`会心阈值` 未实现**（洞察的暴击加成是空的，现会心线 90→75）④ 自身增益技前端提示。
+- **技能速记**：舞剑=普攻不耗内力；水天一色=自身·洞察（命中+30 / 会心线−15，2回合）；生生流转=自身·蓄力（≤3层，水行伤害招每层×1.33）；胧/冰=**选格 AOE**。
+
+### 更早一轮（战斗系统 v0.1 及之前）
 - **战斗系统 v0.1**：网格 n vs n（10×6，切比雪夫）+ **阶段制**（先手方→后手方）；6 动作（移动/舞剑/防守/技能（五行）/交流（队友或对手）/撤退）；HP/TP·五行相克·**武器类型**（利器流血 / 钝器眩晕 / 徒手）/ Buff（10 基础 + 蓄力/穿甲）；**思路判定小/大模型可切**，且**模型只出「评价」、修正由代码映射**（±10，只作用于伤害）；NPC 走小模型（每侧 1 次调用，幻觉降级）；`start_battle` 工具 + `/battle/*` 路由；2D 俯视桌面**矩形 token** 前端；**环境设定「模拟战斗」**；**战斗 BGM**（boss 绑定专属曲）。详见 `trpg-world/战斗系统.md`。
 - **UI 事件管线 ⑧**：bg/music 全由小模型选（`ui_sim.py`）——场景按 `场景映射.md` 地点类型约束；音乐分 `音乐清单.md`（叙事）/`战斗音乐清单.md`（战斗）双清单；专属曲按 `曲名｜绑定` 触发；默认底色曲 `山中好岁月`；**只放一遍不循环**；换曲门槛=换背景或当前曲失效。
 - **时间加「刻」**（1 时辰=8 刻）；「继续」按钮可选 **0–4 刻**（0=不推进时间、只看信息）。
@@ -273,15 +285,20 @@ cp -r tiles/{11..16} ../../trpg-client/public/tiles/
 
 ### ⚠️ 重启后才生效
 `trpg-server` 代码（本轮）：`main.py`（新路由 `/settings`）/ `tools/difficulty_settings.py` / `tools/recap.py` / `tools/factions.py` / `tools/state_manager.py` / `tools/map_query.py` / `tools/location.py` / `tools/weather_system.py` / `tools/file_tools.py` / `engine.py` / `save_pipeline.py` / `llm.py`；以及前端（`App` / `Menu` / `GameController` / `GameScene` / css）。
-> 战斗系统新增/改动：`main.py`（`/battle/*` 路由）/ `tools/battle.py` / `battle_runner.py` / `battle_ai.py` / `battle_session.py` / `battle_settings.py` / `registry.py`（`start_battle`）/ `ui_events.py`（`battle`）/ `ui_sim.py`（战斗选曲）；前端 `in-game/battle.tsx` / `styles/Battle.css` / `out-game/Menu.tsx` / `GameController.tsx`。
+> 战斗系统新增/改动：`main.py`（`/battle/*` 路由）/ `tools/battle.py` / `battle_runner.py` / `battle_ai.py` / `battle_tactics.py` / `battle_session.py` / `battle_settings.py` / `registry.py`（`start_battle`）/ `ui_events.py`（`battle`）/ `ui_sim.py`（战斗选曲）；前端 `in-game/battle.tsx` / `in-game/BattleBoard.tsx` / `styles/Battle.css` / `out-game/Menu.tsx` / `GameController.tsx`。
 > ⚠️ **只跑一个 `python main.py`**（开了两个会抢 5000 端口 / 一个跑旧代码，表现为"改了没生效"）。
 
 ### 下一步优先级（建议）
-1. **战斗 v0.2**：NPC 配招式 / 扇形直线范围 / 地形 / 借机攻击 / 受击方五行（见 TODO §四）。
-2. **大跨度时间流逝规则**：`总览.md` 补"住店只是订房，不等于睡到天亮"（规则热更免重启）。**很小**。
+1. **战斗路线 B（深化为真战棋）** —— 见 `trpg-world/战斗系统.md §10` / `TODO.md §四`：
+   - ① **地形机制**：掩体减伤、高地命中加成、深水不可涉、地形进入**寻路 + 移动预览**（Dijkstra/A*）
+   - ② **借机攻击 / 控制区(ZOC)**、**目标多样化**（护送/坚守/夺旗/斩首）
+   - ③ **技能体系**：NPC 按档案配 `招式`；玩家多行招式 / 融合技
+   - ④ **动画 + 音效**：给 `移动` 日志补 `从/到` → 前端**日志队列顺序播放** → 飘伤害数字/闪红 → `sfx.ts`（`assets/音效/`）
+   - ⑤ 更多数值维度（暴击/格挡/护甲/破甲）、战果写回世界状态
+2. **大跨度时间流逝规则**（`总览.md`，热更免重启）。**很小**。
 3. **§8.4 点选行程耗时**（以「刻」为单位、速度取决于体力/轻功）。
 4. **属性养成**（`update_ability` / `train_skill`）——轻功前置。
-5. 大工程（均**未动**）：**§九 信息边界（两段式调用）**、**§十 知识库层**。
+5. 大工程（均**未动**）：**§九 信息边界**、**§十 知识库层**。
 
 > 暂缓：`history` 滑动窗口 / 摘要 —— 用户称模型上下文足够大，**暂不需要**（长局/成本敏感时再评估）。
 
@@ -310,6 +327,7 @@ cp -r tiles/{11..16} ../../trpg-client/public/tiles/
 | `trpg-server/tools/recap.py` | 前情回顾（大模型浓缩 + 小模型选 bg/音乐） |
 | `trpg-server/tools/battle.py` | 战斗数值核心（网格/动作/命中伤害/五行/武器/Buff/胜负，纯代码） |
 | `trpg-server/tools/battle_tactics.py` | NPC 代码战术层（L2 Utility + L3 前瞻） |
+| `trpg-client/src/in-game/BattleBoard.tsx` | 等轴测棋盘 + 实体系统（SVG 2.5D） |
 | `trpg-server/tools/battle_runner.py` | 战斗阶段驱动（回合阶段机 + 战局快照） |
 | `trpg-server/tools/battle_ai.py` | 战斗 AI（思路判定 + 阵营决策） |
 | `trpg-server/tools/battle_session.py` | 当前战斗单例 + 梯度查表 + 结束写回 |

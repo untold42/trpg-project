@@ -273,9 +273,9 @@ export default function BattleBoard({
                     const base = (x + y) % 2 ? "#2b2118" : "#332a1e";
                     let fill = base;
                     if (isReach) fill = "#6b5a2a";
-                    if (areaCells.has(k)) fill = "#7a3a1a";
-                    if (aoeCenters.has(k)) fill = "#3d4a6b";
-                    if (isSel) fill = "#e8c86a";
+                    if (aoeCenters.has(k)) fill = "#33456b";        // 可选中心格（蓝）
+                    if (areaCells.has(k)) fill = "#c2601f";         // 将命中区域（橙，盖在中心格之上）
+                    if (isSel) fill = "#e8c86a";                      // 已选中心（金）
                     return (
                         <polygon key={`g${k}`} points={pts(tileQuad(x, y))}
                             fill={fill} stroke="#5b4a2c" strokeWidth={0.8}

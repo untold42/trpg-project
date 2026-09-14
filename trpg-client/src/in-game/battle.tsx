@@ -21,6 +21,7 @@ export type BattleState = {
         已结束: boolean; 胜方: string | null; 结束原因: string;
         参战者: BattleCombatant[];
         地形?: { 格: [number, number]; 类型: string }[];
+        技能?: Record<string, { 射程?: number; 范围?: string; 内力?: number; 威力?: number; 五行?: string; 效果?: string[] }>;
     };
     最后的思路判定?: { 评价?: string; 修正?: number; 理由?: string; 模型?: string };
     日志?: BattleLog[];
@@ -55,9 +56,10 @@ export default function BattleScene({ initial, onExit }: Props) {
     const 参战者 = 战场.参战者;
     const player = 参战者.find((c) => c.是玩家);
     const 招式表 = player?.招式 ?? [];
-    const 技能表 = (state.技能 ?? {}) as Record<string, { 射程?: number; 范围?: string; 内力?: number }>;
+    const 技能表 = state.战场.技能 ?? {};
     const 选中技能 = 技能表[skill];
     const 是AOE = !!选中技能 && /^(区域|领域|扇形|直线|圆形)/.test(String(选中技能.范围 ?? ""));
+    const 是自身 = !!选中技能 && String(选中技能.范围 ?? "") === "自身";
     const 半径 = (() => { const m = /(\d+)/.exec(String(选中技能?.范围 ?? "")); return m ? parseInt(m[1]) : 1; })();
 
     // 每格上的角色
@@ -158,7 +160,7 @@ export default function BattleScene({ initial, onExit }: Props) {
     }
 
     const 判定 = state.最后的思路判定;
-    const 需目标 = action === "舞剑" || action === "交流" || (action === "技能" && !是AOE);
+    const 需目标 = action === "舞剑" || action === "交流" || (action === "技能" && !是AOE && !是自身);
 
     return (
         <div className="battle-overlay">
@@ -195,7 +197,9 @@ export default function BattleScene({ initial, onExit }: Props) {
                             ? <>移动（移动力 <b>{player?.移动力 ?? "?"}</b> 格）：点金色空格选择目的地；当前：<b>{cell ? `(${cell[0]},${cell[1]})` : "（未选格）"}</b></>
                             : action === "技能" && 是AOE
                                 ? <>AOE「{skill}」（射程 <b>{选中技能?.射程}</b>、半径 <b>{半径}</b>）：点格子选中心；当前：<b>{cell ? `(${cell[0]},${cell[1]})` : "（未选格）"}</b></>
-                                : <>点自己/敌人选择目标。当前选择：<b>{action}</b>{需目标 && <> → {target || "（未选目标）"}</>}</>}
+                                : action === "技能" && 是自身
+                                    ? <>自身增益技「{skill}」：不需选目标，直接出招</>
+                                    : <>点自己/敌人选择目标。当前选择：<b>{action}</b>{需目标 && <> → {target || "（未选目标）"}</>}</>}
                     </div>
                     {提示 && <div className="battle-err">{提示}</div>}
                 </div>

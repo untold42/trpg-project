@@ -61,12 +61,12 @@ ACTIONS = ["移动", "舞剑", "防守", "技能", "交流", "撤退"]
 MOVE_ENUM = ["原地", "前进1", "后退1", "侧移1", "斜移1"]
 
 #: 命中档位 → 伤害系数
-def _hit_tier(最终: int):
+def _hit_tier(最终: int, crit: int = 90):
     if 最终 < 20:
         return None, 0.0           # 未命中
     if 最终 < 60:
         return "命中", 0.8
-    if 最终 < 90:
+    if 最终 < crit:
         return "命中", 1.0
     return "会心", 1.5
 
@@ -736,7 +736,8 @@ class Battle:
         攻buff命中 = _buff_mod(actor, "命中")
         pos = _position_mod(actor, target, self)
         最终 = self.rng.randint(1, 100) + 命中修正 + int(攻buff命中) + pos["命中"]
-        档位, dmg_k = _hit_tier(最终)
+        crit = 90 + int(_buff_mod(actor, "会心阈值"))   # 洞察等降低会心门槛
+        档位, dmg_k = _hit_tier(最终, crit)
         if 档位 is None:
             self.append_log({"类型": "攻击", "行动者": actor["名字"], "目标": target["名字"],
                              "招式": skill.get("名称", ""), "结果": {"命中": False, "掷骰": 最终},

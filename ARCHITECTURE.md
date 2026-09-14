@@ -783,6 +783,11 @@ begin_round（定先手 + DoT + 内力回复）
 - 战斗 BGM：`ui_sim.battle_track_for()`（boss 绑定优先，否则通用战斗曲）。
 - 实测：武器系数（利器 16 / 钝器 13 / 徒手 12）、流血上限 3、蓄力 3 层 ×2、背袭/夹击、防守 40% 减伤、思路判定小/大模型均顶住注入、梯度查表（`武力排名.md`，55 人）。
 - 修复：循环导入（`battle_ai` 惰性导入 `llm`）、函数 `state()` 遮蔽单例（改 `game_state`）、背袭方向、移动后朝向、蓄力未定义、自动布位。
+- **棋盘视觉**：等轴测 `BattleBoard.tsx`（居中 SVG、玩家西南/敌人东北）；实体系统（人物=锥+球、房/墙=长方体、河=凹陷、树）。
+- **地形**：`Battle.terrain` + `blocked()`（房屋/墙阻挡）+ `reachable_cells()` + `state()["地形"]`；模拟战斗带演示地形。
+- **BGM 选曲**：`ui_sim.battle_track_model()`（boss 绑定直取 + 小模型按「情绪+战况」选 + 代码回退）；3 首 boss 曲移入战斗清单。
+- **AOE 选格子**：`skill_centers/skill_area/_is_aoe`；`state()["技能"]`；前端点格 + 区域预览。
+- **修复**：`state.技能`→`state.战场.技能`（AOE 前端全失效）、橙色区域被蓝盖住、`会心阈值` 未实现（洞察暴击加成）。
 - **NPC AI**：默认走**代码战术层**（`battle_tactics`：枚举 + 打分 + 一回合前瞻）；`TRPG_BATTLE_AI=model` 切回小模型。
   4B 曾把攻击目标填成自己 → 弃用其选招；代码 AI 能逼近 / 包抄背袭 / 夹击 / 集火 / 残血撤，`0.02s/回合`。
 - **小模型 10s 硬超时**：`ask_json`（流式 + 看门狗）超时 `stream.cancel()` 真中断并返回 None；`TRPG_SMALL_TIMEOUT` 可调。
