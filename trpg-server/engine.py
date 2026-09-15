@@ -27,11 +27,13 @@ import json
 import re
 import threading
 import time
+from collections import deque
 from pathlib import Path
 
 from tools.folder_to_prompt import folder_to_prompt  # noqa: F401  (供 main 使用)
 from tools.state_manager import state
-from tools.time_weather import KE_CN
+from tools.game_clock import clock
+from tools import derived
 from tools.ui_events import UI_EVENTS_KEY, music_event
 from tools import world_state
 from tools import world_worker
@@ -67,26 +69,39 @@ def _rules_text(folder: str) -> str:
 # ------------------------------------------------------------
 # 上下文素材
 # ------------------------------------------------------------
-def snapshot_state() -> str:
-    """现拼当前机械状态（游戏数据/*.json）为一段文本。不含 游戏存档.md。
-
-    特殊处理：
-      - **世界状态**：按「纳入上下文」裁剪人物线程（只裁**注入**，不裁存储）；
-      - **不进 LLM 上下文的文件**（`足迹`）：从前端 `/state` 仍可读到，
-        但**不发给大模型**，避免探索足迹白占上下文。
-    """
+def state_dict() -> dict:
+    """现拼的机械状态 dict（排除 足迹 / 时钟；世界状态已按上下文裁剪）。"""
+    clock.sync_state()  # 连续时钟 → 基本信息.时间（仅刻变化时落盘）
+    derived.sync()      # 上限对齐属性（体力→生命上限、內力→精力上限）
     snapshot = state.snapshot()
-    if not snapshot:
-        return "（暂无状态数据）"
     if "世界状态" in snapshot:
         snapshot["世界状态"] = world_state.context_view()
-    for _skip in ("足迹",):
+    for _skip in ("足迹", "时钟"):
         snapshot.pop(_skip, None)
+    return snapshot
+
+
+def render_state(snapshot: dict) -> str:
+    """把状态 dict 渲染成发给 LLM 的文本块。"""
+    if not snapshot:
+        return "（暂无状态数据）"
     blocks = []
     for name in sorted(snapshot):
         body = json.dumps(snapshot[name], ensure_ascii=False, indent=2)
         blocks.append(f"===== {name}.json =====\n{body}")
     return "\n\n".join(blocks)
+
+
+def snapshot_state() -> str:
+    """现拼当前机械状态（游戏数据/*.json）为一段文本。不含 游戏存档.md。
+
+    特殊处理：
+      - **世界状态**：按「纳入上下文」裁剪人物线程（只裁**注入**，不裁存储）；
+      - **连续时钟**：先把派生时刻写回 `基本信息.时间`（保证 LLM 看到的是最新时间）；
+      - **不进 LLM 上下文的文件**（`足迹` / `时钟`）：从前端 `/state` 仍可读到，
+        但**不发给大模型**（足迹白占上下文；时钟只有一个裸秒数，徒增困惑）。
+    """
+    return render_state(state_dict())
 
 
 def load_previous_story() -> str:
@@ -98,13 +113,8 @@ def load_previous_story() -> str:
 
 
 def current_game_time() -> str:
-    """当前游戏内时间（日期 + 时辰 + 刻），形如 '1220-01-15 酉时二刻'。"""
-    t = (state.load("基本信息", {}) or {}).get("时间", {}) or {}
-    ke = t.get("刻", 0)
-    ke_txt = ""
-    if isinstance(ke, int) and ke > 0:
-        ke_txt = KE_CN.get(ke, str(ke)) + "刻"
-    return f"{t.get('日期', '')} {t.get('时辰', '')}{ke_txt}".strip()
+    """当前游戏内时间（**刻级**，日期 + 时辰 + 刻），形如 '1220-01-15 酉时二刻'。"""
+    return clock.render()
 
 
 # 「时间权威」检测：叙述里出现明确的时间推进标记（用于提醒 LLM 补 update_time）
@@ -227,6 +237,10 @@ class GameSession:
         self.previous_story = load_previous_story()
         self.pending_time_note = ""  # 「时间权威」提醒：下一轮注入，补上 update_time 后清除
         self.pending_notes: list[str] = []  # 其他系统提醒（下一轮注入一次）
+        #: 状态栈（**长度上限 2**）：每轮末 append 本轮结束时的状态。
+        #: 下一轮把栈顶（=上一轮的状态）与现场现拼的「当前状态」一起发给 LLM ——
+        #: 只维护两份、不累积（栈顶之外的旧状态自动被 deque 挤掉）。
+        self.state_stack: deque = deque(maxlen=2)
         self.last_bg = None       # 上次发给前端的背景 (position, time)，用于去重
         self.last_music = None    # 上次发给前端的音乐 track
         self._lock = threading.RLock()
@@ -246,6 +260,7 @@ class GameSession:
         保证「放弃本轮」也能把世界推演一起回滚。
         """
         with self._lock:
+            clock.persist()  # 先把连续时钟冻结落盘，保证快照里的时钟是最新值
             snap = state.snapshot()
             snap.setdefault("世界状态", world_state.default())
             path = self._snapshot_path()
@@ -263,6 +278,7 @@ class GameSession:
             return False
         for name, value in data.items():
             state.save(name, value)
+        clock.reload()  # 时钟也随快照回滚
         return True
 
     # ---- 日志 / 恢复 ----
@@ -307,6 +323,7 @@ class GameSession:
             self.history = []
             self.pending_time_note = ""
             self.pending_notes = []
+            self.state_stack.clear()
             self.last_bg = None
             self.last_music = None
             if self.log_path.exists():
@@ -326,6 +343,7 @@ class GameSession:
             self.history = []
             self.pending_time_note = ""
             self.pending_notes = []
+            self.state_stack.clear()
             self.last_bg = None
             self.last_music = None
             if self.log_path.exists():
@@ -357,8 +375,8 @@ class GameSession:
     def build_messages(self, tool_msgs: list[dict] | None = None) -> list[dict]:
         """组装本次发往 LLM 的 messages。
 
-        结构：[规则, 前情?, ...history, ...本轮工具消息, 时间提醒?, 当前状态]
-        状态放末尾（稳定前缀利于上下文缓存），且每次现拼、只出现一份。
+        结构：[规则, 前情?, ...history, ...本轮工具消息, 时间提醒?, 上一轮状态?, 当前状态]
+        状态放末尾（稳定前缀利于上下文缓存）；**只保留两份**：栈顶（上一轮）+ 现拼当前。
         """
         msgs = self._system_messages() + self.history + list(tool_msgs or [])
         if self.pending_time_note:
@@ -371,12 +389,19 @@ class GameSession:
                 "role": "system",
                 "content": "===== 系统提醒 =====\n" + "\n".join(self.pending_notes),
             })
+        if self.state_stack:
+            # 栈顶 = 上一轮的状态；与现拼的「当前状态」一起给出，让模型**自行对比**
+            # 时间 / 地点 / 数值的变化（探索时时间在流动、玩家在走动，无需代码计算差值）
+            msgs.append({
+                "role": "system",
+                "content": "===== 上一轮状态（供对比：时间 / 地点 / 数值发生了什么变化）=====\n"
+                           + render_state(self.state_stack[-1]),
+            })
         msgs.append({
             "role": "system",
             "content": "===== 当前状态 =====\n" + snapshot_state(),
         })
         return msgs
-
 
 # ------------------------------------------------------------
 # 回合运行
@@ -422,7 +447,12 @@ class TurnRunner:
         每条为 {"type": "ui"|"chat"|"narration", ...}
         """
         with self._lock:
-            return self._run(user_input, mode)
+            # LLM 请求窗口：暂停连续时钟（生成/工具耗时不计入游戏时间），返回后恢复
+            clock.pause("turn")
+            try:
+                return self._run(user_input, mode)
+            finally:
+                clock.resume("turn")
 
     # ---- 内部 ----
     def _run(self, user_input: str, mode: str = "action") -> list[dict]:
@@ -494,6 +524,8 @@ class TurnRunner:
         # 世界推演：检测跨天并入队（异步，不阻塞玩家）
         world_worker.on_turn_end()
         session.pending_notes = []  # 系统提醒只注入一次
+        # 状态栈入栈本轮结束时的状态（长度上限 2，旧的自然被挤掉）
+        session.state_stack.append(state_dict())
         # 统一事件流：UI 事件（小模型 + 工具）在前，LLM 的叙事指令在后
         return scene_ui + ui_events + events
 
@@ -505,6 +537,15 @@ class TurnRunner:
         注入《存档流程》规则 + 本局记录，跑工具循环（LLM 调数据库工具）。
         返回 {"content": 最终文本, "tool_calls": [...]}
         """
+        with self._lock:
+            # 存档蒸馏也是 LLM 请求：期间冻结时钟
+            clock.pause("save")
+            try:
+                return self._run_save(transcript, rules)
+            finally:
+                clock.resume("save")
+
+    def _run_save(self, transcript: str, rules: str) -> dict:
         with self._lock:
             base = [
                 {"role": "system", "content": rules},
@@ -544,11 +585,16 @@ class TurnRunner:
     def _say_time_guard(self, mode: str, name: str, arguments: dict):
         """台词 / 场外回合的时间护栏（机械执行规则 12）。
 
-        `mode` 为 `say`（对 NPC 的台词）或 `gm`（场外话）时，只允许 ≤ `SAY_MAX_KE` 刻的
-        `advance_ke`；任何「设置日期 / 时辰 / 刻」或更大的推进都驳回（返回错误结果）。
+        `mode` 为 `say` / `gm` 时：`sleep` 一律驳回；`update_time` 只允许 ≤ `SAY_MAX_KE` 刻的
+        `advance_ke`，任何「设置日期 / 时辰 / 刻」或更大的推进都驳回。
         正常（无需拦截）返回 `None`。
         """
-        if mode not in ("say", "gm") or name != "update_time":
+        if mode not in ("say", "gm"):
+            return None
+        if name == "sleep":
+            print(f"[say] 驳回{mode}回合的 sleep：{arguments}")
+            return {"success": False, "error": self._SAY_TIME_BLOCK.format(max_ke=self.SAY_MAX_KE)}
+        if name != "update_time":
             return None
         adv_sh = arguments.get("advance_shichen") or 0
         adv_ke = arguments.get("advance_ke") or 0

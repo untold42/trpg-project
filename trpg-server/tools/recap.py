@@ -20,6 +20,7 @@ from pathlib import Path
 
 import llm
 from tools import ui_sim
+from tools.game_clock import clock, render_era
 from tools.state_manager import state
 
 _GAME_DATA = Path(__file__).resolve().parent.parent / "游戏数据"
@@ -40,9 +41,9 @@ _PROMPT = """你是 TRPG 的主持人。玩家即将继续游戏，请把《上�
 
 def _current_context() -> str:
     b = state.load("基本信息", {}) or {}
-    t = b.get("时间", {}) or {}
     p = b.get("位置", {}) or {}
-    return (f"当前游戏时间：{t.get('日期', '')} {t.get('时辰', '')}{('，' + str(t.get('刻')) + '刻') if t.get('刻') else ''}；"
+    # 年号/时辰刻由时钟统一渲染（与注入 LLM 的状态块同源）
+    return (f"当前游戏时间：{render_era(clock.civil())}；"
             f"玩家当前所在地：{p.get('地点', '')}。")
 
 

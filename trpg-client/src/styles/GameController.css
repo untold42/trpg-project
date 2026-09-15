@@ -27,6 +27,13 @@
     z-index: 100;
 }
 
+/* 探索模式：整屏地图（低于按钮 100 / 古钟 90，高于叙事层） */
+.explore-map {
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+}
+
 /* 历史记录按钮 */
 .history-button {
     position: absolute;

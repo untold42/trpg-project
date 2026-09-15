@@ -10,7 +10,12 @@ registry.py
 
 新增工具只需在 _ENTRIES 里加一行，不必再同时改 llm.py 与 main.py。
 （本文件由 _gen_registry.py 从旧 llm.py / main.py 生成，之后请手工维护。）
+
+注意：`_DISABLED` 里的工具（调试用文件工具）**不下发给 LLM**、也不可被调用；
+代码仍保留（`tools/file_tools.py`），设 `TRPG_FILE_TOOLS=1` 可临时启用。
 """
+
+import os
 
 from tools.money import modify_money, get_money
 from tools.bag import modify_item, add_item, remove_item, get_inventory
@@ -36,6 +41,8 @@ from tools.DB import (
 from tools.map_query import query_nearby, query_place, list_map_kinds, update_place_note
 from tools.location import update_location
 from tools.time_weather import update_time, update_weather
+from tools.time_flow import rest as sleep_time
+from tools.modes import resume_exploration
 from tools.weather_system import get_weather
 from tools.event_dice import daily_event_dice, travel_event_dice
 from tools.battle_session import start_battle
@@ -734,7 +741,8 @@ _ENTRIES = [
                 "基本信息.json 的时间字段。**以十二时辰计，每时辰 8 刻（1 刻 ≈ 15 分钟），不使用 24 小时制。**"
                 "日期格式 YYYY-MM-DD，时辰为十二时辰之一：子时、丑时、寅时、卯时、辰时、巳时、午时、未时、申时、酉时、戌时、亥时。"
                 "两种用法：1) 直接设置 date / shichen / ke；2) 用 advance_shichen（时辰）或 advance_ke（刻）推进"
-                "（8 刻 = 1 时辰，12 时辰 = 1 天，跨过子时算新一天）。短时间流逝用 advance_ke（如过了一刻钟传 advance_ke=1）。",
+                "（8 刻 = 1 时辰，12 时辰 = 1 天，跨过子时算新一天）。短时间流逝用 advance_ke（如过了一刻钟传 advance_ke=1）。"
+                "注意：时间流逝会消耗精力（夜时辰子/丑/寅算熬夜，扣得更多）；若玩家是**睡觉**，请改用 `sleep` 工具（会恢复精力）。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -764,6 +772,42 @@ _ENTRIES = [
             },
         },
         update_time,
+    ),
+    (
+        "sleep",
+        {
+            "type": "function",
+            "function": {
+                "name": "sleep",
+                "description": "玩家睡觉 / 打盹 / 过夜：推进时间并按睡眠**恢复精力**"
+                "（与熬夜相反——熬夜是时间自然流逝、按夜时辰扣精力）。玩家明说睡下、歇息、过夜时调用。"
+                "默认睡 4 个时辰（8 小时）。睡醒后时间已推进，跨日会触发天气与世界推演，**无需再调 update_time**。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "shichen": {
+                            "type": "integer",
+                            "description": "睡几个时辰（1 时辰 = 2 小时；1-12，默认 4 = 8 小时）。",
+                        },
+                    },
+                    "required": [],
+                },
+            },
+        },
+        sleep_time,
+    ),
+    (
+        "resume_exploration",
+        {
+            "type": "function",
+            "function": {
+                "name": "resume_exploration",
+                "description": "玩家离开当前场景、回到大地图（探索模式）自由行动时调用。"
+                "调用后玩家可在地图上自行走动；不要在本轮替玩家叙述他去了哪里。",
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        },
+        resume_exploration,
     ),
     (
         "update_weather",
@@ -933,8 +977,18 @@ _ENTRIES = [
 TOOLS = {name: (schema, fn) for name, schema, fn in _ENTRIES}
 #: 仅存档蒸馏回合可见的工具（不发给游戏中的主持人，防误用）
 _SAVE_ONLY = {"update_character_archive", "update_place_note"}
+
+#: **已禁用**：代码保留，但不下发给 LLM、也不可被调用。
+#: 调试用文件工具——正式规则禁止 LLM 直接读写文件（游戏数据只走专用接口）。
+#: 设 `TRPG_FILE_TOOLS=1` 可临时启用（仅供开发调试）。
+_DISABLED = set() if os.environ.get("TRPG_FILE_TOOLS") == "1" else {
+    "list_directory", "read_file", "write_file", "edit_file",
+}
+
 #: 游戏中（正常回合）用
-ALL_TOOLS = [schema for name, schema, _fn in _ENTRIES if name not in _SAVE_ONLY]
+ALL_TOOLS = [schema for name, schema, _fn in _ENTRIES
+             if name not in _SAVE_ONLY and name not in _DISABLED]
 #: 存档蒸馏回合用（含存档专用工具）
-SAVE_TOOLS = [schema for _name, schema, _fn in _ENTRIES]
-TOOLS_MAP = {name: fn for name, _schema, fn in _ENTRIES}
+SAVE_TOOLS = [schema for name, schema, _fn in _ENTRIES if name not in _DISABLED]
+#: 名称 -> 实现（已禁用的不入表：即使 LLM 幻觉调用也无法执行）
+TOOLS_MAP = {name: fn for name, _schema, fn in _ENTRIES if name not in _DISABLED}

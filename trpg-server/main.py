@@ -4,8 +4,11 @@ from llm import send_messages
 
 # 需要单独用到的非工具函数
 from tools.explore import read_player_position, record_position
+from tools.location import update_location
 from tools.accident import accident
 from tools.state_manager import state
+from tools.game_clock import clock
+from tools import time_flow
 from tools.factions import list_factions
 from tools.recap import build_recap
 from tools.difficulty_settings import get_settings, set_difficulty
@@ -31,6 +34,18 @@ session = GameSession(rules_dir="../trpg-world/主持人")
 runner = TurnRunner(session, send_messages, TOOLS_MAP)
 
 # chroma 记忆库由 tools/mem_store.py 懒加载（首次读写记忆时才连）
+
+
+def _best_effort(*fns):
+    """依次执行副作用（落盘 / 联动）；单个失败只记日志，不影响请求返回。
+
+    典型失败：Windows 下文件被外部程序（编辑器 / 杀软 / 另一个实例）占用。
+    """
+    for fn in fns:
+        try:
+            fn()
+        except Exception as e:   # noqa: BLE001 — 副作用不阻断读取型接口
+            print(f"[best-effort] {getattr(fn, '__name__', fn)} 失败：{e}")
 
 
 # 玩家位置/探索接口见 tools/explore.py（读取 游戏数据/基本信息.json 与 足迹.json）
@@ -60,7 +75,29 @@ def get_explored():
 @app.route("/state", methods=["GET"])
 def get_player_state():
     """玩家真实状态（金钱 / 状态 / 背包 / 属性 / 基本信息）。前端菜单读这个，不再写死。"""
+    _best_effort(clock.maybe_persist, time_flow.pump)   # 时间流逝 → 精力 / 跨日联动（失败不 500）
     return jsonify(state.snapshot())
+
+
+@app.route("/clock", methods=["GET"])
+def get_clock():
+    """连续时钟锚点。前端据此**本地插值**驱动古钟（不必每帧轮询后端）。"""
+    _best_effort(clock.maybe_persist, time_flow.pump)   # 前端每 60s 轮询一次，顺便落实跨时辰/跨日
+    return jsonify(clock.anchor())
+
+
+@app.route("/clock/pause", methods=["POST"])
+def pause_clock():
+    """暂停时钟（菜单 / 历史记录 / 失焦）。"""
+    clock.pause("client")
+    return jsonify(clock.anchor())
+
+
+@app.route("/clock/resume", methods=["POST"])
+def resume_clock():
+    """恢复时钟。"""
+    clock.resume("client")
+    return jsonify(clock.anchor())
 
 
 @app.route("/factions", methods=["GET"])
@@ -80,6 +117,39 @@ def set_settings_route():
     """修改设置（目前：难度）。请求体 {\"难度\": \"普通\"}。"""
     data = request.json or {}
     return jsonify(set_difficulty(data.get("难度", "")))
+
+
+# ------------------------------------------------------------
+# 探索 → 叙事：把光标的「从哪到哪」交给主持人
+# ------------------------------------------------------------
+def _apply_move(coord) -> str:
+    """探索模式：前端带上光标坐标 → 更新玩家位置，返回给主持人的【移动】提醒。
+
+    硬事实（从哪到哪 / 距离 / 耗时）由代码给（总纲第 5 条），模型只叙事。
+    坐标来自前端光标；「上一个位置」以后端已存的 位置 为准（单一真相源）。
+    """
+    if not isinstance(coord, dict):
+        return ""
+    lon, lat = coord.get("lon"), coord.get("lat")
+    if not (isinstance(lon, (int, float)) and isinstance(lat, (int, float))):
+        return ""
+    pos = (state.load("基本信息", {}) or {}).get("位置", {}) or {}
+    from_place = pos.get("地点") or ""
+    mv = update_location(lon=lon, lat=lat, move_mode="探索")
+    if not mv.get("success"):
+        return ""
+    to_place = (mv.get("位置") or {}).get("地点") or ""
+    dist = mv.get("移动距离（米）")
+    if from_place and to_place and from_place != to_place:
+        msg = f"梁峰自「{from_place}」来到「{to_place}」"
+    elif to_place:
+        msg = f"梁峰此刻在「{to_place}」"
+    else:
+        return ""
+    if dist:
+        msg += f"，相距约 {dist} 米"
+    hint = mv.get("耗时提示") or ""
+    return "【移动】" + msg + "。" + (f"（{hint}）" if hint else "")
 
 
 # ------------------------------------------------------------
@@ -119,7 +189,8 @@ def battle_action_route():
     action = {k: data[k] for k in ("动作", "目标", "移动", "招式", "目标格")
               if data.get(k) is not None}
     st = battle_session.submit(action, data.get("思路", ""))
-    if isinstance(st, dict) and st.get("结果"):
+    # 只有**正式**战斗才把结果注入下一轮叙事；模拟战斗不得污染游戏（session 是全局单例）
+    if isinstance(st, dict) and st.get("结果") and not st.get("模拟"):
         runner.session.pending_notes.append("【战斗结果】" + _battle_note(st["结果"]))
     return jsonify(st)
 
@@ -213,6 +284,11 @@ def action():
     if mode not in ("action", "say", "gm", "continue"):
         mode = "action"
 
+    # 探索模式：前端带上光标坐标 → 更新玩家位置，并把「从哪到哪」作为系统提醒注入本轮
+    note = _apply_move(data.get("坐标"))
+    if note:
+        runner.session.pending_notes.append(note)
+
     # 意外机制：只作用于角色行动
     if mode == "action" and accident():
         raw += "(意外：梁峰行动失败)"
@@ -231,6 +307,7 @@ def action():
     else:
         text = "玩家的对主持人说的话：" + raw
     events = runner.run(text, mode)
+    time_flow.pump()   # 回合结束后结算时间流逝（精力 / 跨日）
     return jsonify(events)
 
 

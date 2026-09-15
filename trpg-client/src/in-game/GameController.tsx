@@ -10,6 +10,12 @@ import AccordionGallery, { type AccordionGalleryItem } from "./AccordionGallery"
 import { 默认背景, getBackgroundImage } from "./background";
 import { playMusic, stopMusic } from "./music";
 import BattleScene, { type BattleState } from "./battle";
+import Clock from "./Clock";
+import { fetchClock, requestClockSync } from "./useGameClock";
+
+// 游戏内步速（米/游戏秒）——真实速度 = 步速 × 时钟倍率，
+// 这样「游戏内步行速度」保持真实（时间快 15 倍 → 标记也要快 15 倍地跑）
+const BASE_WALK_MPS = 1.4;
 
 // 承接App.tsx
 type GamingProps = {
@@ -175,6 +181,16 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     const [showContinue, setShowContinue] = useState(false); // 「继续」的刻数选项
     const [battleState, setBattleState] = useState<BattleState | null>(null); // 战斗界面（可阻塞）
 
+    // ---- 状态机：explore（整屏地图）/ narrative（对话+立绘+时钟）/ battle（战棋）----
+    // 进入叙事由玩家输入发动；退出叙事由主持人裁定（工具 resume_exploration → kind:"mode"）
+    const [gameMode, setGameMode] = useState<"explore" | "narrative" | "battle">("explore");
+    // 光标位置：cursorRef = 实时真相（WASD 每帧写）；cursor = 停下来时的快照（用于迷雾轨迹）
+    const [cursor, setCursor] = useState<{ lon: number; lat: number } | null>(null);
+    const cursorRef = useRef<{ lon: number; lat: number } | null>(null);
+    const prevCursorRef = useRef<{ lon: number; lat: number } | null>(null); // 上一次「输入」时的位置
+    const cursorTrailRef = useRef<{ lon: number; lat: number }[]>([]);        // 光标轨迹（即时揭示迷雾）
+    const [clockRate, setClockRate] = useState(15);                           // 时钟倍率（移动速度随它缩放）
+
     // 统一处理 /state 返回：更新状态
     function applyState(s: PlayerState | null) {
         if (!s) return;
@@ -194,6 +210,10 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
             } else if (ev.kind === "battle") {
                 // 战斗界面（可阻塞）：data 即 /battle/state 的结构
                 setBattleState(ev.data as unknown as BattleState);
+            } else if (ev.kind === "mode") {
+                // 模式切换（主持人裁定）：回探索 / 进叙事
+                const m = String(ev.data.mode ?? "");
+                if (m === "explore" || m === "narrative") setGameMode(m);
             } else {
                 console.debug("[ui]", ev.kind, ev.data);
             }
@@ -225,9 +245,29 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         onBackMenu();
     }
 
+    // WASD 移动停下 → 同步快照 + 记轨迹
+    // （**不能用点击瞬移**：玩家只能一步步走；点地图仍可看 POI 信息，但不移动玩家）
+    function handleExploreStop(p: { lon: number; lat: number }) {
+        setCursor(p);
+        const trail = cursorTrailRef.current;
+        trail.push(p);
+        if (trail.length > 200) trail.splice(0, trail.length - 200);
+    }
+
     //与后端的接口，拿到LLM的数据
     // mode: "action"=角色行动（IC）｜"gm"=玩家对主持人的场外话（OOC）
     async function sendAction(content: string, mode: "action" | "say" | "gm" | "continue", ke?: number) {
+        const wasExplore = gameMode === "explore";
+        const body: Record<string, unknown> =
+            ke === undefined ? { input: content, mode } : { input: content, mode, ke };
+        // 探索模式：带上光标坐标（当前 + 上一次）→ 后端更新位置并告知主持人「从哪到哪」
+        const cur = cursorRef.current;
+        if (wasExplore && cur) {
+            body.坐标 = { lon: cur.lon, lat: cur.lat };
+            const prev = prevCursorRef.current;
+            if (prev) body.上一坐标 = { lon: prev.lon, lat: prev.lat };
+            prevCursorRef.current = cur;
+        }
         const res = await fetch(
             "http://localhost:5000/action",
             {
@@ -235,9 +275,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                 headers: {
                     "Content-Type": "application/json"
                 },
-                body: JSON.stringify(
-                    ke === undefined ? { input: content, mode } : { input: content, mode, ke }
-                )
+                body: JSON.stringify(body)
             }
         );
 
@@ -252,10 +290,14 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         );
         handleUiEvents(uiEvents);
         setHistory(prev => [...prev, ...narrative]);
+        // 探索模式下输入 → 进入叙事（若主持人同时裁定回探索，上行的 mode 事件会覆盖）
+        if (wasExplore) setGameMode("narrative");
 
         // 行动会改状态，刷新菜单数值
         const s = await getState();
         applyState(s);
+        // 「LLM 请求窗口」期间后端暂停了时钟 → 重新校准古钟插值，避免多算
+        requestClockSync();
     }
 
     // 开局拉一次状态
@@ -266,6 +308,30 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         };
         load();
     }, []);
+
+    // 时钟倍率（移动速度随它缩放）
+    useEffect(() => {
+        fetchClock().then((a) => { if (a?.倍率) setClockRate(a.倍率); }).catch(() => { });
+    }, []);
+
+    // 进入探索模式：光标对齐后端已存的玩家位置
+    useEffect(() => {
+        if (gameMode !== "explore") return;
+        let alive = true;
+        fetch("http://localhost:5000/location")
+            .then((r) => r.json())
+            .then((d) => {
+                if (!alive) return;
+                if (typeof d.lon === "number" && typeof d.lat === "number") {
+                    const p = { lon: d.lon, lat: d.lat };
+                    cursorRef.current = p;
+                    setCursor(p);
+                    prevCursorRef.current = p;
+                }
+            })
+            .catch(() => { /* 后端没起：忽略 */ });
+        return () => { alive = false; };
+    }, [gameMode]);
 
     // 拉势力画廊（GET /factions）；进入游戏时播放前情回顾选定的音乐
     useEffect(() => {
@@ -281,6 +347,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
             setHistoryLines(h.lines);
             if (h.active && h.tail.length > 0) {
                 setHistory(h.tail);
+                setGameMode("narrative");   // 续玩：先回到上一幕（叙事），而不是直接丢到地图
             }
         };
         load();
@@ -369,7 +436,28 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
 
         return (
             <div className="background">
-                <GameScene key="game" history={history} background={background} />
+                {/* 叙事层：探索模式下 display:none；可见时用 `contents`，让包装层**不产生盒子**
+                    （嵌套 .background 的 16:9 布局才不被多出的一层破坏） */}
+                <div style={{ display: gameMode === "explore" ? "none" : "contents" }}>
+                    <GameScene key="game" history={history} background={background} />
+                </div>
+
+                {/* 探索层：整屏 zoom18 地图，光标代表玩家 */}
+                {gameMode === "explore" && (
+                    <div className="explore-map">
+                        <GameMap
+                            zoom={18}
+                            playerOverride={cursor}
+                            extraFootprints={cursorTrailRef.current}
+                            wasd
+                            posRef={cursorRef}
+                            speedMps={BASE_WALK_MPS * clockRate}
+                            onPositionChange={handleExploreStop}
+                        />
+                    </div>
+                )}
+
+                <Clock paused={showHistory} />
 
                 {battleState && (
                     <BattleScene

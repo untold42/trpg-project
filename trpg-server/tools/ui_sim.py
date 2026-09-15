@@ -130,26 +130,74 @@ def scene_kind_map() -> dict:
     return out
 
 
-def _kind_of(location: str) -> str:
-    """查玩家所在地点的地图类型（`ancient_kind`）；查不到返回 ""。"""
-    if not location:
-        return ""
+#: 明显的「城外 / 荒野 / 乡村」场景——玩家在城内时一律排除（防「人在城里被切到乡村」）
+_WILD_SCENES = {
+    "乡村", "田野", "森林", "山野", "山路", "山顶", "荒郊野岭", "雪山", "小岛",
+    "寨子", "前线战场", "杏花林",
+}
+
+
+def _player_inside_city():
+    """玩家是否在城内（读 基本信息.位置.在城内）；未知返回 None。"""
     try:
-        from tools.map_query import query_place
-        rows = (query_place(name=location, limit=1) or {}).get("results") or []
-        return (rows[0].get("kind") or "") if rows else ""
+        from tools.state_manager import state
+        v = ((state.load("基本信息", {}) or {}).get("位置", {}) or {}).get("在城内")
+        return v if isinstance(v, bool) else None
     except Exception:
-        return ""
+        return None
+
+
+def _kind_of(location: str) -> str:
+    """玩家所在地点的地图类型（`ancient_kind`）。
+
+    **路网要素（坊巷 / 大街 / 官道）没有名字**，按名查不到 → 退回「玩家坐标附近的
+    最近有类型要素」。都不行返回 ""（此时不做场景限制，但有城内的安全网）。
+    """
+    # ① 按地名查（如「怀茂青楼」→ 青楼）
+    if location:
+        try:
+            from tools.map_query import query_place
+            rows = (query_place(name=location, limit=1) or {}).get("results") or []
+            if rows:
+                k = (rows[0].get("kind") or "").strip()
+                if k:
+                    return k
+        except Exception:
+            pass
+    # ② 退回玩家坐标附近（路网地名查不到时的主路径）
+    try:
+        from tools.map_query import query_nearby
+        from tools.state_manager import state
+        pos = (state.load("基本信息", {}) or {}).get("位置", {}) or {}
+        lon, lat = pos.get("经度"), pos.get("纬度")
+        if isinstance(lon, (int, float)) and isinstance(lat, (int, float)):
+            rows = (query_nearby(lon, lat, radius_km=0.1, limit=4) or {}).get("results") or []
+            for x in rows:
+                k = (x.get("kind") or "").strip()
+                if k:
+                    return k
+    except Exception:
+        pass
+    return ""
 
 
 def scene_candidates(location: str = None) -> list[str]:
-    """本地点允许的背景场景集合；地点类型未映射则返回全部场景。"""
+    """本地点允许的背景场景集合。
+
+    - 地点类型已映射 → **只在该类内选**；
+    - 未映射 → 全部场景，但**玩家在城内时排除荒野 / 乡村**（安全网）；
+    - 城外 / 未知则不限制。
+    """
     all_scenes = scene_keys()
     mapped = scene_kind_map().get(_kind_of(location))
     if mapped:
         allowed = [s for s in all_scenes if s in mapped]
         if allowed:
             return allowed
+    if _player_inside_city() is True:
+        urban = [s for s in all_scenes if s not in _WILD_SCENES]
+        if urban:
+            return urban
     return all_scenes
 
 

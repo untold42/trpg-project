@@ -97,22 +97,34 @@ def _profile(name: str, max_chars: int = 700) -> str:
 
 
 def ensure_timeline():
-    """把作者的 宏观时间线.json 种进 世界状态.定时线（只种一次）。
+    """把作者的 宏观时间线.json **合并**进 世界状态.定时线。
 
-    种进 世界状态（而非直接读文件）是为了让"已触发"标记也能随开局快照回滚。
+    - 种进 世界状态（而非直接读文件）→「已触发」标记能随开局快照回滚；
+    - **增量合并**：作者后来新增的条目按 `(date, text)` 去重补入，已有条目
+      （含其「已触发」状态）原样保留 —— 这样**扩充时间线能对已有存档生效**，且不丢进度。
     """
-    data = world_state.load()
-    if data.get("定时线"):
-        return
     try:
         raw = json.loads(TIMELINE_FILE.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return
-    data["定时线"] = [
-        {"date": e.get("date", ""), "text": e.get("text", ""), "已触发": False}
-        for e in raw if isinstance(e, dict)
-    ]
-    world_state.save(data)
+    if not isinstance(raw, list):
+        return
+    data = world_state.load()
+    timeline = data.setdefault("定时线", [])
+    known = {(str(e.get("date", "")), str(e.get("text", ""))) for e in timeline}
+    added = 0
+    for e in raw:
+        if not isinstance(e, dict):
+            continue
+        date, text = str(e.get("date", "")).strip(), str(e.get("text", "")).strip()
+        if not date or not text or (date, text) in known:
+            continue
+        timeline.append({"date": date, "text": text, "已触发": False})
+        known.add((date, text))
+        added += 1
+    if added:
+        timeline.sort(key=lambda x: str(x.get("date", "")))
+        world_state.save(data)
 
 
 def _trigger_macro(date: str) -> list[dict]:

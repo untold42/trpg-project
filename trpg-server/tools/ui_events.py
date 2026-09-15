@@ -27,13 +27,15 @@ ui_events.py
 kind 清单（协议）：
     bg        data: {position: 场景名, time: 时辰}   切背景
     music     data: {track: 曲名}                    切/停背景音乐
+    battle    data: {...}                            开战斗（战棋）
+    mode      data: {mode: "explore"|"narrative"}     切换游戏模式（探索 / 叙事）
     minigame  data: {game, sessionId, ...}           开小游戏（可阻塞叙事，预留）
 """
 
 UI_EVENTS_KEY = "_ui_events"
 
 #: 已定义的 UI 事件 kind（新增 kind 请同时改前端 types/gametype.ts）
-KINDS = ("bg", "music", "battle", "minigame")
+KINDS = ("bg", "music", "battle", "mode", "minigame")
 
 
 def ui_event(kind: str, **data) -> dict:
@@ -49,3 +51,11 @@ def bg_event(position: str, time: str) -> dict:
 def music_event(track: str) -> dict:
     """切背景音乐：track = 前端 音乐/ 下的曲名（不含扩展名）。"""
     return ui_event("music", track=track)
+
+
+def mode_event(mode: str) -> dict:
+    """切换游戏模式：mode = "explore"（大地图）| "narrative"（对话/立绘）。
+
+    战斗不用本事件（走 `kind:"battle"`）。
+    """
+    return ui_event("mode", mode=mode)

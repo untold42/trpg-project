@@ -96,6 +96,7 @@ def _wrap(st: dict) -> dict:
     st["active"] = True
     st["缘由"] = _META.get("缘由", "")
     st["音乐"] = _META.get("音乐", "")
+    st["模拟"] = bool(_META.get("模拟"))   # 供 main.py 判断：模拟战不得注入游戏叙事
     return st
 
 

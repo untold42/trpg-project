@@ -1,0 +1,175 @@
+/* ===== 古钟 HUD（左上角）===== */
+/* 见 README.md 第十节：十二时辰环 + 指针 + 刻刻度 + 昼夜弧 + 日期 */
+
+/* 位置 / 层级 / 尺寸——改这四个变量即可：
+     --clock-top / --clock-right / --clock-bottom / --clock-left  定位（auto = 不参与）
+     --clock-z      层级（低于 100 会被右侧按钮盖住；高于 500 会盖住画廊）
+     --clock-size   直径 */
+.game-clock {
+    --clock-top: 80px;
+    --clock-right: auto;
+    --clock-bottom: auto;
+    --clock-left: 25px;
+    --clock-z: 90;
+    --clock-size: 190px;
+
+    position: fixed;
+    top: var(--clock-top);
+    right: var(--clock-right);
+    bottom: var(--clock-bottom);
+    left: var(--clock-left);
+    z-index: var(--clock-z);
+    width: var(--clock-size);
+    pointer-events: none;
+    user-select: none;
+    font-family: "Source Han Serif TC", "思源宋体", serif;
+    filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.55));
+    transition: opacity 0.4s ease, filter 0.4s ease;
+}
+
+/* 暂停 / 战中：压暗表示时光停驻 */
+.game-clock.status-paused,
+.game-clock.status-accruing {
+    opacity: 0.72;
+    filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.55)) saturate(0.6);
+}
+
+.game-clock.status-disabled {
+    display: none;
+}
+
+.clock-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+/* ---- 盘面 ---- */
+.clock-plate {
+    fill: url(#clockPlate);
+}
+
+.clock-rim {
+    fill: none;
+    stroke: url(#clockGold);
+    stroke-width: 2.4;
+}
+
+.clock-rim-inner {
+    fill: none;
+    stroke: rgba(216, 180, 90, 0.35);
+    stroke-width: 0.8;
+}
+
+/* ---- 刻刻度 ---- */
+.tick {
+    stroke: rgba(216, 180, 90, 0.42);
+    stroke-width: 0.9;
+    stroke-linecap: round;
+}
+
+.tick-major {
+    stroke: rgba(244, 226, 168, 0.9);
+    stroke-width: 1.7;
+}
+
+/* ---- 十二时辰 ---- */
+.shichen {
+    fill: rgba(245, 239, 224, 0.62);
+    font-size: 10px;
+    letter-spacing: 0.5px;
+    transition: fill 0.5s ease;
+}
+
+.shichen.cur {
+    fill: #f4e2a8;
+    font-size: 11.5px;
+    font-weight: 700;
+}
+
+/* ---- 昼夜弧 + 日月 ---- */
+.arc {
+    fill: none;
+    stroke-width: 1;
+    stroke-dasharray: 2 3;
+}
+
+.arc-day {
+    stroke: rgba(232, 176, 92, 0.5);
+}
+
+.arc-night {
+    stroke: rgba(140, 168, 210, 0.4);
+}
+
+.celestial {
+    transition: opacity 0.6s ease;
+}
+
+.sun {
+    fill: #f6cf6b;
+    filter: drop-shadow(0 0 4px rgba(246, 207, 107, 0.9));
+}
+
+.moon {
+    fill: #d9e2f2;
+    filter: drop-shadow(0 0 4px rgba(217, 226, 242, 0.8));
+}
+
+/* ---- 指针 ---- */
+.clock-hand {
+    /* 旋转由 rAF 直接设 transform 属性 */
+    will-change: transform;
+}
+
+.hand {
+    stroke: url(#clockGold);
+    stroke-width: 1.6;
+    stroke-linecap: round;
+}
+
+.hand-tip {
+    fill: #f6e6b4;
+    filter: drop-shadow(0 0 3px rgba(246, 230, 180, 0.9));
+}
+
+/* ---- 中心 ---- */
+.clock-hub {
+    fill: #1c1209;
+    stroke: url(#clockGold);
+    stroke-width: 1.6;
+}
+
+.hub-char {
+    fill: #f4e2a8;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+/* ---- 文字 ---- */
+.clock-caption {
+    margin-top: -6px;
+    text-align: center;
+    color: #f5efe0;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.clock-ke {
+    font-size: 17px;
+    letter-spacing: 2px;
+    color: #f4e2a8;
+}
+
+.clock-date {
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: rgba(245, 239, 224, 0.7);
+    margin-top: 1px;
+}
+
+.clock-status {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: rgba(216, 180, 90, 0.85);
+    margin-top: 2px;
+}

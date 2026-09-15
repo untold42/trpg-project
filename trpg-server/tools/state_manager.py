@@ -21,6 +21,7 @@ state_manager.py
 import json
 import os
 import threading
+import time
 
 
 class StateManager:
@@ -32,20 +33,44 @@ class StateManager:
         return os.path.join(self.data_dir, f"{name}.json")
 
     def load(self, name, default=None):
-        """读 游戏数据/{name}.json。文件不存在/损坏时返回 default。"""
-        try:
-            with open(self._path(name), "r", encoding="utf-8") as f:
-                return json.load(f)
-        except (OSError, json.JSONDecodeError):
-            return default
+        """读 游戏数据/{name}.json。文件不存在/损坏时返回 default。
+
+        **加锁**：Windows 下 `open()` 不共享 delete，若读的同时另一线程
+        `os.replace` 覆盖同名文件，会报 WinError 5（拒绝访问）。
+        """
+        with self._lock:
+            try:
+                with open(self._path(name), "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except (OSError, json.JSONDecodeError):
+                return default
 
     def save(self, name, data):
-        """原子写：先写 .tmp 再 os.replace 替换，避免写一半崩溃损坏 JSON。"""
+        """原子写（先写临时文件再 os.replace）。
+
+        并发安全：
+          - 读写用同一把 RLock **串行化**（Flask 多线程同时读写同一文件会 WinError 5）；
+          - 临时文件名**唯一**（pid + 线程 id），避免多线程抢同一个 .tmp；
+          - Windows 下 replace 可能被杀软 / 编辑器短暂占用 → **重试**几次。
+        """
         path = self._path(name)
-        tmp = path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, path)
+        with self._lock:
+            tmp = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            last_err = None
+            for attempt in range(6):
+                try:
+                    os.replace(tmp, path)
+                    return
+                except PermissionError as e:   # WinError 5：目标被占用
+                    last_err = e
+                    time.sleep(0.05 * (attempt + 1))
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            raise last_err
 
     def update(self, name, fn):
         """读-改-写一体：fn(data) 返回新 data。"""
