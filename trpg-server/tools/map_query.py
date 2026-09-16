@@ -166,6 +166,19 @@ def _notes_map(conn, names) -> dict:
     return out
 
 
+def notes_for(name: str) -> list:
+    """某地名的动态见闻（place_notes），按写入顺序。"""
+    if not name:
+        return []
+    conn = _connect()
+    try:
+        return _notes_map(conn, [name]).get(name, [])
+    except Exception:
+        return []
+    finally:
+        conn.close()
+
+
 def _attach_notes(conn, results):
     """把静态 description 与动态见闻合并进结果的 `description`（并附 `notes`）。"""
     nmap = _notes_map(conn, [r.get("name") for r in results])

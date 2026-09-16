@@ -176,13 +176,13 @@ _ENTRIES = [
             "type": "function",
             "function": {
                 "name": "modify_hunger",
-                "description": "修改玩家的饥饿度。时间流逝或进食后需更新。",
+                "description": "修改玩家的饥饿度（0~100 数值）。参数是**增减量**（不是绝对值）：正数=进食/增加，负数=减少。参考：饱餐一餐 +40，小食/干粮 +15，宴席 +60。时间流逝的消耗由系统自动扣减，无需手动。",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "hunger": {
-                            "type": "string",
-                            "enum": ["饱足", "正常", "空腹", "饥饿", "濒饿"],
+                            "type": "integer",
+                            "description": "增减量（如 +40 / -20）",
                         }
                     },
                     "required": ["hunger"],

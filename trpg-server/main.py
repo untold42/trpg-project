@@ -11,6 +11,7 @@ from tools.game_clock import clock
 from tools import time_flow
 from tools.factions import list_factions
 from tools.recap import build_recap
+from tools.place_recall import recall_place
 from tools.difficulty_settings import get_settings, set_difficulty
 
 # 工具注册表（schema + 实现的单一真相源）
@@ -19,7 +20,7 @@ from tools import battle_session
 from tools.battle_settings import THOUGHT_MODEL_OPTIONS, get_thought_model, set_thought_model
 
 # 引擎（回合运行 + 会话 + 过程日志）
-from engine import GameSession, TurnRunner, continue_cue
+from engine import GameSession, TurnRunner, continue_cue, observe_cue, OBSERVE_NOTE
 
 # 存档收尾管线
 from save_pipeline import run_save
@@ -245,6 +246,12 @@ def get_recap():
         return jsonify({"has_recap": False, "error": str(e)})
 
 
+@app.route("/recall", methods=["GET"])
+def recall():
+    """地点「回忆」：place_notes（本局见闻）+ gm_memory（客观记忆）Top2。"""
+    return jsonify(recall_place(request.args.get("place", ""), n=2))
+
+
 @app.route("/history", methods=["GET"])
 def get_history():
     """当前本局的历史（单一真相源：current.jsonl）。
@@ -279,9 +286,9 @@ def save():
 def action():
     data = request.json or {}
     raw = data.get("input", "")
-    # mode: "action"=角色行动｜"say"=对 NPC 说的话（IC 台词）｜"gm"=对主持人的场外话（OOC）｜"continue"=继续
+    # mode: action=角色行动｜say=台词｜gm=场外话｜continue=继续｜observe=驻足观察（不切叙事）
     mode = data.get("mode", "action")
-    if mode not in ("action", "say", "gm", "continue"):
+    if mode not in ("action", "say", "gm", "continue", "observe"):
         mode = "action"
 
     # 探索模式：前端带上光标坐标 → 更新玩家位置，并把「从哪到哪」作为系统提醒注入本轮
@@ -303,6 +310,10 @@ def action():
         text = continue_cue(ke)
     elif mode == "say":
         text = "梁峰开口说：「" + raw + "」"
+    elif mode == "observe":
+        text = observe_cue(raw)
+        # 要求走系统提醒（不写进 history / 存档）
+        runner.session.pending_notes.append(OBSERVE_NOTE)
     elif mode == "action":
         text = "梁峰：" + raw
     else:

@@ -20,7 +20,7 @@ from pathlib import Path
 
 from tools.game_clock import clock, SHICHEN, SECONDS_PER_SHICHEN
 from tools.state_manager import state
-from tools import derived
+from tools import derived, hunger
 
 CONFIG_FILE = Path(__file__).resolve().parent.parent / "时间影响.json"
 
@@ -151,6 +151,7 @@ def pump() -> dict:
     ev = clock.take_crossings()
     if ev["shichen_indices"]:
         _drain_tp(ev["shichen_indices"])
+        hunger.drain(ev["shichen_indices"])   # 饥饿随时间缓慢下降
     if ev["days"] > 0:
         _on_new_day(ev["date"])
     return ev
@@ -166,6 +167,7 @@ def rest(shichen: int = 4) -> dict:
     pump()                                   # 先结算清醒时段（含熬夜扣精力）
     clock.advance(n * SECONDS_PER_SHICHEN)   # 睡过去
     ev = clock.take_crossings()              # 睡过的时辰不再按清醒扣
+    hunger.drain(ev["shichen_indices"])      # 但饥饿照掉（睡觉也会饿）
     gain = _recover_tp(ev["shichen"] or n)
     if ev["days"] > 0:
         _on_new_day(ev["date"])

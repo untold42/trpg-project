@@ -253,6 +253,81 @@
     opacity: .85;
 }
 
+/* 地点「回忆」面板（place_notes + gm_memory Top2） */
+.recall-panel {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 260;
+
+    width: min(560px, 70%);
+    max-height: 62%;
+    display: flex;
+    flex-direction: column;
+    padding: 18px 22px;
+    box-sizing: border-box;
+
+    background: rgba(18, 12, 8, .94);
+    border: 1px solid rgba(216, 180, 90, .6);
+    border-radius: 10px;
+    color: #f5efe0;
+    font-family: "Source Han Serif TC", "思源宋体", serif;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, .6);
+}
+
+.recall-title {
+    color: #e8c877;
+    font-size: 22px;
+    margin-bottom: 12px;
+}
+
+.recall-body {
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.recall-item {
+    font-size: 17px;
+    line-height: 1.7;
+    padding-left: 10px;
+    border-left: 2px solid rgba(216, 180, 90, .5);
+}
+
+.recall-note {
+    border-left-color: #7a1f1f;
+    opacity: .9;
+}
+
+.recall-time {
+    color: #b9ac90;
+    font-size: 13px;
+    margin-right: 8px;
+}
+
+.recall-empty {
+    color: #b9ac90;
+}
+
+.recall-close {
+    align-self: flex-end;
+    margin-top: 14px;
+    padding: 6px 18px;
+    font-family: inherit;
+    font-size: 16px;
+    color: #f5efe0;
+    background: transparent;
+    border: 1px solid #8a6a3a;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.recall-close:hover {
+    border-color: #c9a25a;
+}
+
 /* 历史记录按钮 */
 .history-button {
     position: absolute;
@@ -471,7 +546,7 @@
     border: none;
     z-index: 100;
     color: white;
-    font-size: 22px;
+    font-size: 20px;
 }
 
 /* 数据面板（金钱/背包/属性/状态） */

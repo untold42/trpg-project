@@ -31,6 +31,7 @@ type Ring = Pt[];
 type Poly = { rings: Ring[]; bb: BBox };
 type Line = { pts: Pt[]; bb: BBox };
 type BBox = [number, number, number, number]; // [minLon, minLat, maxLon, maxLat]
+type Gate = { lon: number; lat: number; hours: string };
 
 type Index = {
   water: Poly[];
@@ -39,9 +40,29 @@ type Index = {
   roadGrid: Map<string, number[]>;
   wall: Pt[];
   wallBB: BBox | null;
-  gates: Pt[];
+  gates: Gate[];
   bridges: Pt[];
 };
+
+// ---- 当前游戏时辰（由 GameController 通过 setShichen 同步）----
+let CUR_SHICHEN = -1;
+const SHICHEN_NAMES = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"];
+
+/** 同步当前时辰（城门开闭判断用） */
+export function setShichen(i: number): void {
+  CUR_SHICHEN = i;
+}
+
+/** 时段字符串（如「卯-申」「全天」）在 shichen 是否开放 */
+function isOpenHours(hours: string, shichen: number): boolean {
+  if (!hours || hours === "全天" || shichen < 0) return true;
+  const parts = hours.split("-");
+  if (parts.length !== 2) return true;
+  const s = SHICHEN_NAMES.indexOf(parts[0].trim());
+  const e = SHICHEN_NAMES.indexOf(parts[1].trim());
+  if (s < 0 || e < 0) return true;
+  return s <= e ? (shichen >= s && shichen <= e) : (shichen >= s || shichen <= e);
+}
 
 let IDX: Index | null = null;
 let LOADING: Promise<void> | null = null;
@@ -150,7 +171,7 @@ function polyRings(coords: unknown): Ring[] {
 function build(features: GeoJSONFeature[]): Index {
   const water: Poly[] = [];
   const roads: Line[] = [];
-  const gates: Pt[] = [];
+  const gates: Gate[] = [];
   const bridges: Pt[] = [];
   let wall: Pt[] = [];
   const waterGrid = new Map<string, number[]>();
@@ -186,7 +207,9 @@ function build(features: GeoJSONFeature[]): Index {
         g.type === "LineString" ? [g.coordinates as number[][]] : (g.coordinates as number[][][]);
       if (lines[0]) wall = lines[0] as Pt[];
     } else if (t === "gate" && g.type === "Point") {
-      gates.push(g.coordinates as Pt);
+      const co = g.coordinates as Pt;
+      const hours = String((f.properties as { hours?: string } | null)?.hours || "");
+      gates.push({ lon: co[0], lat: co[1], hours });
     } else if (t === "bridge" && g.type === "Point") {
       bridges.push(g.coordinates as Pt);
     }
@@ -272,8 +295,11 @@ export function isWalkable(lon: number, lat: number): boolean {
   }
 
   const nearGate = (): boolean => {
+    // 城门通道：25m 内 **且城门开着** 才算能过（城中城门默认 卯-申，闭门后走不了）
     for (const g of idx.gates) {
-      if (distM(lon, lat, g[0], g[1]) <= GATE_R) return true;
+      if (distM(lon, lat, g.lon, g.lat) <= GATE_R && isOpenHours(g.hours, CUR_SHICHEN)) {
+        return true;
+      }
     }
     return false;
   };

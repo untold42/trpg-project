@@ -7,11 +7,19 @@ def _load_state():
     return state.load("状态", {})
 
 
-def modify_hunger(hunger: str):
-    data = _load_state()
-    data["饥饿"] = hunger
+def modify_hunger(hunger: int):
+    """修改饥饿度（**0~100 数值**）。正数=进食/增加，负数=减少。"""
+    from tools import hunger as H
+    data = H.sync()
+    try:
+        delta = int(hunger)
+    except (TypeError, ValueError):
+        return "饥饿修改量必须是整数（正=增加/进食，负=减少）。"
+    new = H.clamp(H.coerce(data.get("饥饿", 50)) + delta)
+    data["饥饿"] = H._store(new)
+    data["饥饿挡位"] = H.level_of(new)
     state.save("状态", data)
-    return f"成功将饥饿度修改为{hunger}"
+    return f"成功修改饥饿度：{data['饥饿']}/100（{data['饥饿挡位']}）"
 
 
 def modify_health(health: str):

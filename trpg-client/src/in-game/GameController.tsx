@@ -12,6 +12,7 @@ import { playMusic, stopMusic } from "./music";
 import BattleScene, { type BattleState } from "./battle";
 import Clock from "./Clock";
 import { fetchClock, requestClockSync, useWorldTime } from "./useGameClock";
+import { setShichen } from "./walkable";
 
 // 游戏内步速（米/游戏秒）——真实速度 = 步速 × 时钟倍率，
 // 这样「游戏内移动速度」与时间保持一致（时间快 15 倍 → 标记也快 15 倍地跑）。
@@ -110,6 +111,12 @@ type PlayerState = {
 
 type UiEvent = Extract<instruction, { type: "ui" }>;
 type NarrativeLine = Extract<instruction, { type: "chat" } | { type: "narration" }>;
+// 地点「回忆」结果
+ type RecallInfo = {
+    place: string;
+    notes: { time?: string; note: string }[];
+    memories: { content: string; time?: string }[];
+};
 
 // 把 unknown 安全地转成可显示文本
 function show(v: unknown): string | number {
@@ -191,6 +198,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     }, [galleryItems]);
     const [showContinue, setShowContinue] = useState(false); // 「继续」的刻数选项
     const [battleState, setBattleState] = useState<BattleState | null>(null); // 战斗界面（可阻塞）
+    const [recallInfo, setRecallInfo] = useState<RecallInfo | null>(null);   // 地点回忆面板
     // 探索模式的叙事浮层（#3）：从叙事切回探索时，本轮 GM 的话在地图上看不见
     const [exploreLines, setExploreLines] = useState<NarrativeLine[]>([]);
     const [exploreIdx, setExploreIdx] = useState(0);
@@ -240,6 +248,24 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         return mode;
     }
 
+    // 点击 POI 弹窗的动作：进入（切叙事）/ 观察（留探索，浮层看）/ 回忆（RAG Top2）
+    async function handlePlaceAction(place: string, act: string) {
+        if (!place) return;
+        if (act === "enter") {
+            sendAction(`进入「${place}」`, "action");
+        } else if (act === "observe") {
+            sendAction(place, "observe", undefined, true);
+        } else if (act === "recall") {
+            try {
+                const r = await fetch(`http://localhost:5000/recall?place=${encodeURIComponent(place)}`);
+                const d = await r.json();
+                setRecallInfo({ place, notes: d.notes || [], memories: d.memories || [] });
+            } catch {
+                setRecallInfo({ place, notes: [], memories: [] });
+            }
+        }
+    }
+
     // 离开游戏时停止背景音乐
     useEffect(() => () => stopMusic(), []);
 
@@ -274,7 +300,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
 
     //与后端的接口，拿到LLM的数据
     // mode: "action"=角色行动（IC）｜"gm"=玩家对主持人的场外话（OOC）
-    async function sendAction(content: string, mode: "action" | "say" | "gm" | "continue", ke?: number) {
+    async function sendAction(content: string, mode: "action" | "say" | "gm" | "continue" | "observe", ke?: number, keepExplore = false) {
         const wasExplore = gameMode === "explore";
         const body: Record<string, unknown> =
             ke === undefined ? { input: content, mode } : { input: content, mode, ke };
@@ -313,7 +339,12 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
             const base = historyRef.current.length;   // 本轮新增叙事在 history 中的起点
             setHistory(prev => [...prev, ...narrative]);
             // 目标模式：主持人裁定（mode 事件）优先；否则探索中输入 → 叙事，叙事中 → 保持叙事
-            const nextMode: "explore" | "narrative" = uiMode ?? "narrative";
+            // 硬约束：**探索模式下只有「行动 / 台词」能进入叙事**；
+            // 场外话（gm）/「继续」/观察 都留在探索（回复走探索浮层）
+            const switchesToNarrative = mode === "action" || mode === "say";
+            const nextMode: "explore" | "narrative" = keepExplore
+                ? "explore"
+                : (uiMode ?? (wasExplore && !switchesToNarrative ? "explore" : "narrative"));
             setGameMode(nextMode);
             // 探索→叙事：让对话框直接跳到本轮叙事的第一句（而不是留在探索前的旧位置）
             if (nextMode === "narrative" && wasExplore && narrative.length) {
@@ -353,6 +384,9 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     useEffect(() => {
         fetchClock().then((a) => { if (a?.倍率) setClockRate(a.倍率); }).catch(() => { });
     }, []);
+
+    // 当前时辰同步给碰撞模块（城门开闭：卯-申 之外走不了城门）
+    useEffect(() => { setShichen(shichen); }, [shichen]);
 
     // 进入探索模式：光标对齐后端已存的玩家位置
     useEffect(() => {
@@ -424,6 +458,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                 setShowData(false)
                 setShowInputSay(false)
                 setShowContinue(false)
+                setRecallInfo(null)
                 setReadingIndex(null)
             }
         };
@@ -480,7 +515,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                   .join(" · ")
             : "空";
         const 属性文本 = `体力 ${show(基础.体力)} · 内力 ${show(基础.内力)} · 剑法 ${show(基础.剑法)} · 轻功 ${show(基础.轻功)}`;
-        const 状态文本 = `生命 ${show(状态.生命值)}/${show(状态.生命上限)} · 精力 ${show(状态.精力值)}/${show(状态.精力上限)} · 饥饿 ${show(状态.饥饿)} · 伤势 ${show(状态.伤势)}`;
+        const 状态文本 = `生命 ${show(状态.生命值)}/${show(状态.生命上限)} · 精力 ${show(状态.精力值)}/${show(状态.精力上限)} · 饥饿 ${show(状态.饥饿)}/100（${show(状态.饥饿挡位)}） · 伤势 ${show(状态.伤势)}`;
 
         return (
             <div className="background">
@@ -504,6 +539,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                             posRef={cursorRef}
                             speedMps={BASE_WALK_MPS * clockRate}
                             runMult={RUN_MULT}
+                            onPlaceAction={handlePlaceAction}
                             onPositionChange={handleExploreStop}
                         />
                     </div>
@@ -598,7 +634,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                 {
                 showMap && (
                     <div className="game-map">
-                        {/* 菜单地图 = 总览图：不启用探索迷雾，全部 POI 都画出来 */}
+                        {/* 菜单地图 = 总览图：不启用探索迷雾，全部 POI 都画出来；**不带进入/观察/回忆按钮** */}
                         <GameMap isNight={isNight} shichen={shichen} showAllIcons />
                         <button className="map-close" onClick={() => setShowMap(false)}>返回</button>
                     </div>
@@ -653,8 +689,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
 
                 {
                 showData && (
-                    <div className="data-box">
-                        <section className="sm-stat-block">
+                    <div className="data-box">                        <section className="sm-stat-block">
                             <h3 className="sm-stat-title">金钱</h3>
                             <div className="sm-stat-body">{金钱文本}</div>
                         </section>
@@ -673,6 +708,30 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                     </div>
                 )
                 }
+
+                {recallInfo && (
+                    <div className="recall-panel">
+                        <div className="recall-title">回忆 · {recallInfo.place}</div>
+                        <div className="recall-body">
+                            {recallInfo.memories.map((m, i) => (
+                                <div className="recall-item" key={`m${i}`}>
+                                    {m.time && <span className="recall-time">{m.time}</span>}
+                                    {m.content}
+                                </div>
+                            ))}
+                            {recallInfo.notes.map((n, i) => (
+                                <div className="recall-item recall-note" key={`n${i}`}>
+                                    {n.time && <span className="recall-time">{n.time}</span>}
+                                    {n.note}
+                                </div>
+                            ))}
+                            {!recallInfo.memories.length && !recallInfo.notes.length && (
+                                <div className="recall-empty">（对此地毫无印象）</div>
+                            )}
+                        </div>
+                        <button className="recall-close" onClick={() => setRecallInfo(null)}>关闭</button>
+                    </div>
+                )}
 
                 <StaggeredMenu position="left" menuLabel="菜单" accentColor="#c0392b" closeOnContentClick>
                     <button className="sm-menu-item" onClick={triggerSave}>存档游戏</button>

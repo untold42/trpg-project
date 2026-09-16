@@ -52,6 +52,36 @@ body,
     margin-top: 3px;
 }
 
+.ink-popup .ink-hours {
+    font-size: 13px;
+    color: #7a5a2f;
+    margin-top: 4px;
+    letter-spacing: .5px;
+}
+
+/* 地点弹窗里的动作按钮（进入 / 观察 / 回忆） */
+.ink-popup .ink-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+}
+.ink-popup .ink-act {
+    flex: 1;
+    padding: 5px 0;
+    font-family: "Source Han Serif TC", "Songti SC", serif;
+    font-size: 14px;
+    color: #f5efe0;
+    background: #7a1f1f;
+    border: 1px solid #c9b68a;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+}
+.ink-popup .ink-act:hover {
+    background: #a3352b;
+    color: #fff;
+}
+
 /* ===== 地图图标（美术未就位时的兜底圆点） ===== */
 .ink-icon {
     background: transparent;

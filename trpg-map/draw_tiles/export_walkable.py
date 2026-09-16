@@ -104,15 +104,19 @@ def main():
         add("wall", {"type": gt, "coordinates": round_coords(json.loads(ct))})
 
     # ---- 城门（按坐标去重：custom/historic 各存了一份）----
+    _cols = [r[1] for r in conn.execute("PRAGMA table_info(features)")]
+    _hours = "hours" if "hours" in _cols else "NULL"
     seen = set()
-    for name, gt, ct in conn.execute(
-            "SELECT name, geometry_type, coords FROM features WHERE ancient_kind='城门'"):
+    for name, gt, ct, hours in conn.execute(
+            f"SELECT name, geometry_type, coords, {_hours} "
+            "FROM features WHERE ancient_kind='城门'"):
         co = json.loads(ct)
         key = (name, round(co[0], 5), round(co[1], 5))
         if key in seen:
             continue
         seen.add(key)
-        add("gate", {"type": gt, "coordinates": round_coords(co)}, name=name)
+        add("gate", {"type": gt, "coordinates": round_coords(co)},
+            name=name, hours=(hours or ""))
 
     # ---- 桥 / 浮桥 ----
     for name, gt, ct in conn.execute(

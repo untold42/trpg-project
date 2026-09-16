@@ -49,6 +49,10 @@ interface ClickableLayerProps {
   hideIcons?: boolean;
   /** 诊断开关（?nohit=1）：不渲染命中层 */
   hideHit?: boolean;
+  /** 点击 POI 弹窗里的动作（进入 / 观察 / 回忆） */
+  onPlaceAction?: (place: string, act: string) => void;
+  /** 弹窗是否显示动作按钮（**只在探索地图**为 true） */
+  showActions?: boolean;
 }
 
 interface ClickableProps {
@@ -235,12 +239,11 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function buildPopupHtml(props: ClickableProps): string {
+function buildPopupHtml(props: ClickableProps, showActions = false): string {
   const name = props.name || "无名";
   const parts: string[] = [];
 
   parts.push(`<div class="ink-title">${escapeHtml(name)}</div>`);
-
   const badges: string[] = [];
   if (props.kind && props.kind !== props.name) {
     badges.push(`<span class="ink-badge">${escapeHtml(props.kind)}</span>`);
@@ -259,8 +262,29 @@ function buildPopupHtml(props: ClickableProps): string {
     );
   }
 
+  // 操作按钮（进入 / 观察 / 回忆）——**只在探索地图**显示（showActions），点击由 ClickableLayer 统一监听
+  if (props.hours && props.hours !== "全天") {
+    parts.push(`<div class="ink-hours">开放：${escapeHtml(props.hours)}</div>`);
+  }
+  if (showActions) {
+    const esc = escapeHtml(name);
+    const canEnter = !NO_ENTER_KINDS.has(props.kind || "");
+    const btns = [
+      canEnter ? `<button class="ink-act" data-place="${esc}" data-act="enter">进入</button>` : "",
+      `<button class="ink-act" data-place="${esc}" data-act="observe">观察</button>`,
+      `<button class="ink-act" data-place="${esc}" data-act="recall">回忆</button>`,
+    ].filter(Boolean).join("");
+    parts.push(`<div class="ink-actions">${btns}</div>`);
+  }
+
   return `<div class="ink-popup-body">${parts.join("")}</div>`;
 }
+
+/** 不适合「进入」的地点类型（山水 / 路网 / 城墙等） */
+const NO_ENTER_KINDS = new Set([
+  "山", "湖", "林", "洲", "坊", "坊巷", "大街", "官道", "城墙", "城门",
+  "桥", "浮桥", "钟鼓楼", "高台", "坟地", "义冢", "村", "镇",
+]);
 
 /* ================= 不可见矢量命中层 ================= */
 
@@ -275,10 +299,10 @@ function clickStyle(feature?: Feature): L.PathOptions {
   return { stroke: false, fill: true, fillColor: "#000000", fillOpacity: 0 };
 }
 
-function onEachFeature(feature: Feature, layer: L.Layer): void {
+function onEachFeature(feature: Feature, layer: L.Layer, showActions = false): void {
   const props = feature.properties as ClickableProps | null;
   if (props?.name) {
-    layer.bindPopup(buildPopupHtml(props), { className: "ink-popup" });
+    layer.bindPopup(buildPopupHtml(props, showActions), { className: "ink-popup" });
   }
 }
 
@@ -302,12 +326,15 @@ function pointToLayer(_feature: Feature, latlng: L.LatLng): L.CircleMarker {
  *   3. `data` 变化时**不重建图层**，只按当前视口重新 diff（mode="data"）。
  */
 function HitLayer({
-  data, extents,
+  data, extents, showActions = false,
 }: {
   data: FeatureCollection;
   extents: Map<Feature, FeatureExtent | null>;
+  showActions?: boolean;
 }) {
   const map = useMap();
+  const showActionsRef = useRef(showActions);
+  showActionsRef.current = showActions;
 
   // 用 ref 读最新值，让图层生命周期完全不依赖 data / extents
   const dataRef = useRef(data); dataRef.current = data;
@@ -373,7 +400,7 @@ function HitLayer({
     optionsRef.current = {
       style: clickStyle,
       pointToLayer,
-      onEachFeature,
+      onEachFeature: (f, l) => onEachFeature(f, l, showActionsRef.current),
       renderer: L.canvas(),        // renderer 也只建一次
     };
     const group = L.layerGroup().addTo(map);
@@ -500,7 +527,7 @@ function iconPosition(f: Feature, p: ClickableProps): L.LatLng | null {
   return null;
 }
 
-function IconsLayer({ data, isNight, shichen }: { data: FeatureCollection; isNight: boolean; shichen: number }) {
+function IconsLayer({ data, isNight, shichen, showActions = false }: { data: FeatureCollection; isNight: boolean; shichen: number; showActions?: boolean }) {
   const map = useMap();
 
   // 图标键集合：用**签名**稳定引用，否则 data 一变就重新 preload + 额外一次渲染
@@ -622,7 +649,7 @@ function IconsLayer({ data, isNight, shichen }: { data: FeatureCollection; isNig
       }
 
       const marker = L.marker(pos, { icon, title: p.name });
-      marker.bindPopup(buildPopupHtml(p), { className: "ink-popup" });
+      marker.bindPopup(buildPopupHtml(p, showActions), { className: "ink-popup" });
       marker.addTo(group);
       rendered.set(f, marker);
     }
@@ -688,7 +715,27 @@ export default function ClickableLayer({
   focus = null,
   hideIcons = false,
   hideHit = false,
+  onPlaceAction,
+  showActions = false,
 }: ClickableLayerProps) {
+  const map = useMap();
+  const actRef = useRef(onPlaceAction);
+  actRef.current = onPlaceAction;
+
+  // 弹窗里的「进入 / 观察 / 回忆」按钮：统一监听（弹窗是 HTML 字符串，不是 React 节点）
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      const el = (e.target as HTMLElement)?.closest?.(".ink-act") as HTMLElement | null;
+      if (!el) return;
+      const place = el.getAttribute("data-place") || "";
+      const act = el.getAttribute("data-act") || "";
+      map.closePopup();
+      actRef.current?.(place, act);
+    };
+    document.addEventListener("click", h);
+    return () => document.removeEventListener("click", h);
+  }, [map]);
+
   const [features, setFeatures] = useState<Feature[] | null>(null);
 
   useEffect(() => {
@@ -784,8 +831,8 @@ export default function ClickableLayer({
 
   return (
     <>
-      {!hideHit && <HitLayer data={data} extents={extents} />}
-      {!hideIcons && <IconsLayer data={data} isNight={isNight} shichen={shichen} />}
+      {!hideHit && <HitLayer data={data} extents={extents} showActions={showActions} />}
+      {!hideIcons && <IconsLayer data={data} isNight={isNight} shichen={shichen} showActions={showActions} />}
     </>
   );
 }

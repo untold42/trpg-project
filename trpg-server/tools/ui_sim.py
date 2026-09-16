@@ -181,24 +181,54 @@ def _kind_of(location: str) -> str:
     return ""
 
 
-def scene_candidates(location: str = None) -> list[str]:
-    """本地点允许的背景场景集合。
+def scene_candidates(location: str = None, indoor: bool = False) -> list[str]:
+    """本地点允许的背景场景集合（**每个类型只给 2~4 个**，候选越少越不乱选）。
 
-    - 地点类型已映射 → **只在该类内选**；
-    - 未映射 → 全部场景，但**玩家在城内时排除荒野 / 乡村**（安全网）；
-    - 城外 / 未知则不限制。
+    - 地点类型已映射（`场景映射.md`）→ 只在该类内选；
+    - 未映射 → 用 `室内` / `室外` **小兜底组**（按叙事判断），而不是放开全部 49 个；
+    - 城内安全网：排除荒野 / 乡村。
     """
     all_scenes = scene_keys()
-    mapped = scene_kind_map().get(_kind_of(location))
-    if mapped:
-        allowed = [s for s in all_scenes if s in mapped]
+    mapping = scene_kind_map()
+    kind = _kind_of(location)
+    if kind and mapping.get(kind):
+        allowed = [s for s in all_scenes if s in mapping[kind]]
         if allowed:
-            return allowed
+            return allowed[:5]
+    group = mapping.get("室内" if indoor else "室外")
+    if group:
+        allowed = [s for s in all_scenes if s in group]
+        if allowed:
+            return allowed[:6]
     if _player_inside_city() is True:
         urban = [s for s in all_scenes if s not in _WILD_SCENES]
         if urban:
             return urban
     return all_scenes
+
+
+#: 叙事里表示「进/出/移动」的词——只有出现这些才允许换背景（场景状态机，见 engine）
+_SCENE_SWITCH_RE = re.compile(
+    r"推门|进门|进了|走入|走进|踏入|步入|迈入|跨进|入内|进屋|上楼|登上|拾级|进入|"
+    r"来到|走到|行至|前往|抵达|回到|返回|赶到|出了|出门|走出|离开|下楼|退出|"
+    r"跨出|迈出|转过|拐进|拐过|穿过|穿出|上到|下到|出了门|走出去|走进来|退到|移步"
+)
+
+#: 叙事里表示「在屋内」的词——用于未映射地点类型时的室内/室外兜底组
+_INDOOR_RE = re.compile(
+    r"屋里|屋内|房内|房中|室内|堂内|殿内|内室|雅间|厢房|楼上|楼内|帐内|"
+    r"进了|推门|入内|屋中|铺内|店内|厅内|阁内|舱内|洞里|洞中"
+)
+
+
+def looks_indoor(text: str) -> bool:
+    """叙事看起来发生在室内（用于兜底分组）。"""
+    return bool(_INDOOR_RE.search(text or ""))
+
+
+def scene_switch_signal(text: str) -> bool:
+    """叙事里有没有「进/出/移动」的动作——没有就不该换背景（防抖）。"""
+    return bool(_SCENE_SWITCH_RE.search(text or ""))
 
 
 def _parse_music(path: Path) -> dict:
@@ -372,7 +402,7 @@ def generate(narration: str, location: str = None,
     """
     if not ENABLED or not narration.strip():
         return []
-    scenes = scene_candidates(location)
+    scenes = scene_candidates(location, indoor=looks_indoor(narration))
     tracks = narrative_tracks(location, present)
     scene_desc = scene_descriptions()
     music_desc = music_descriptions()

@@ -34,6 +34,7 @@ from tools.folder_to_prompt import folder_to_prompt  # noqa: F401  (供 main 使
 from tools.state_manager import state
 from tools.game_clock import clock
 from tools import derived
+from tools import hunger
 from tools.ui_events import UI_EVENTS_KEY, music_event, bg_event
 from tools import world_state
 from tools import world_worker
@@ -74,6 +75,7 @@ def state_dict() -> dict:
     """现拼的机械状态 dict（排除 足迹 / 时钟；世界状态已按上下文裁剪）。"""
     clock.sync_state()  # 连续时钟 → 基本信息.时间（仅刻变化时落盘）
     derived.sync()      # 上限对齐属性（体力→生命上限、內力→精力上限）
+    hunger.sync()       # 饥饿归一化为 0~100 并回写挡位
     snapshot = state.snapshot()
     if "世界状态" in snapshot:
         snapshot["世界状态"] = world_state.context_view()
@@ -189,6 +191,19 @@ def continue_cue(ke: int = 2) -> str:
 CONTINUE_CUE = continue_cue(2)  # 默认（兼容）
 
 
+def observe_cue(place: str) -> str:
+    """「观察」按钮：玩家输入（短）。真正的要求走 `OBSERVE_NOTE` 系统提醒。"""
+    p = (place or "").strip() or "此处"
+    return f"梁峰在「{p}」近旁驻足察看。"
+
+
+#: 「观察」回合的系统提醒（只注入本轮，不写进 history / 存档）
+OBSERVE_NOTE = (
+    "本轮是「观察」：只给 1~3 句**简短**的可观察细节（外观、声响、气味、进出的人）；"
+    "**不进入、不与 NPC 长谈、不推进时间、不替梁峰决定下一步**。"
+)
+
+
 def read_turns(log_path) -> list[dict]:
     """读取 current.jsonl（跳过写了一半的坏行）。"""
     turns = []
@@ -223,6 +238,8 @@ def history_lines(turns: list[dict]) -> list[str]:
         s = (turn.get("user") or "").strip()
         if turn.get("mode") == "continue":
             lines.append("（静观其变，时间流逝）")
+        elif turn.get("mode") == "observe":
+            lines.append("（驻足观察）")
         elif turn.get("mode") == "say":
             body = s.removeprefix(_SAY_PREFIX)
             if body.endswith(_SAY_SUFFIX):
@@ -266,6 +283,7 @@ class GameSession:
         #: 只维护两份、不累积（栈顶之外的旧状态自动被 deque 挤掉）。
         self.state_stack: deque = deque(maxlen=2)
         self.last_bg = None       # 上次发给前端的背景 (position, time)，用于去重
+        self.last_bg_location = None  # 上次换背景时的地点（场景状态机用）
         self.last_music = None    # 上次发给前端的音乐 track
         self._lock = threading.RLock()
         self._restore()
@@ -349,6 +367,7 @@ class GameSession:
             self.pending_notes = []
             self.state_stack.clear()
             self.last_bg = None
+            self.last_bg_location = None
             self.last_music = None
             if self.log_path.exists():
                 self.log_path.unlink()
@@ -369,6 +388,7 @@ class GameSession:
             self.pending_notes = []
             self.state_stack.clear()
             self.last_bg = None
+            self.last_bg_location = None
             self.last_music = None
             if self.log_path.exists():
                 self.log_path.unlink()
@@ -623,7 +643,7 @@ class TurnRunner:
         `advance_ke`，任何「设置日期 / 时辰 / 刻」或更大的推进都驳回。
         正常（无需拦截）返回 `None`。
         """
-        if mode not in ("say", "gm"):
+        if mode not in ("say", "gm", "observe"):
             return None
         if name == "sleep":
             print(f"[say] 驳回{mode}回合的 sleep：{arguments}")
@@ -687,7 +707,21 @@ class TurnRunner:
         )
         if not text.strip():
             return []
+        # 场景状态机只用「旁白」判断（NPC 台词里的“我出门了”不算玩家移动）
+        narration_text = "".join(
+            str(it.get("content", ""))
+            for it in events
+            if isinstance(it, dict) and it.get("type") == "narration"
+        )
         loc = world_state.current_location()
+        # D. 只有「强制 / 首次 / 地点变化 / 叙事出现进出门·移动」才允许换背景；否则保持当前
+        loc_changed = bool(loc) and loc != self.session.last_bg_location
+        allow_bg = (
+            force
+            or self.session.last_bg is None
+            or loc_changed
+            or ui_sim.scene_switch_signal(narration_text)
+        )
         prev_scene = (self.session.last_bg or (None, None))[0]
         # 本轮登场人物（chat 说话者）——专属曲绑定据此判定，非仅提及
         present = {
@@ -714,8 +748,10 @@ class TurnRunner:
         if bg_ev:
             data = bg_ev.get("data") or {}
             key = (data.get("position"), data.get("time"))
-            if force or key != self.session.last_bg:
+            # allow_bg=False 时不接受新背景（保持当前）；force 时连相同背景也重发
+            if force or (key != self.session.last_bg and allow_bg):
                 self.session.last_bg = key
+                self.session.last_bg_location = loc
                 scene_changed = True
                 out.append(bg_ev)
         elif force:
@@ -724,6 +760,7 @@ class TurnRunner:
             if fb:
                 d = fb.get("data") or {}
                 self.session.last_bg = (d.get("position"), d.get("time"))
+                self.session.last_bg_location = loc
                 scene_changed = True
                 out.append(fb)
 

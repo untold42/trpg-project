@@ -56,6 +56,10 @@ def _render_user(turn: dict) -> str:
     s = (turn.get("user") or "").strip()
     if turn.get("mode") == "continue":
         return "梁峰：（静观其变，时间流逝）"
+    if turn.get("mode") == "observe":
+        _, _, rest = s.partition("「")
+        name = rest.partition("」")[0] if rest else ""
+        return f"梁峰：（驻足观察「{name}」）" if name else "梁峰：（驻足观察）"
     if turn.get("mode") == "say":
         body = s.removeprefix("梁峰开口说：「")
         if body.endswith("」"):

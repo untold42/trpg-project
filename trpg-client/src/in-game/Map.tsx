@@ -419,13 +419,15 @@ export type GameMapProps = {
   shichen?: number;
   /** 总览模式：**不启用探索迷雾**，全部 POI 都画（菜单里的地图用） */
   showAllIcons?: boolean;
+  /** 点击 POI 弹窗里的动作（进入 / 观察 / 回忆） */
+  onPlaceAction?: (place: string, act: string) => void;
 };
 
 function GameMap({
   zoom = 16, playerOverride, onMove, extraFootprints, footprintVersion, focus,
   lockZoom = false,
   wasd, posRef, speedMps = 20, runMult = 2.5, onPositionChange,
-  isNight = false, showAllIcons = false, shichen = -1,
+  isNight = false, showAllIcons = false, shichen = -1, onPlaceAction,
 }: GameMapProps = {}) {
   const [player, setPlayer] = useState<PlayerPos | null>(null);
   const [footprints, setFootprints] = useState<Footprint[] | null>(null);
@@ -523,6 +525,8 @@ function GameMap({
         noFog={showAllIcons || NO_FOG}
         hideIcons={NO_ICONS}
         hideHit={NO_HIT}
+        onPlaceAction={onPlaceAction}
+        showActions={!!onPlaceAction}
       />
 
       {wasd && posRef ? (
