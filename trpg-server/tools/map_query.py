@@ -20,6 +20,8 @@ import sqlite3
 import shapely.geometry as sg
 from shapely.ops import nearest_points, transform
 
+from tools.place_hours import hours_for, is_open, now_shichen_index
+
 # trpg-server 的上一级是 trpg-project；空间库在 trpg-map/draw_tiles/db/ 下
 SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_FILE = os.path.abspath(os.path.join(
@@ -56,6 +58,14 @@ def _ensure_place_schema(conn):
         cols = [r[1] for r in conn.execute("PRAGMA table_info(features)")]
         if "description" not in cols:
             conn.execute("ALTER TABLE features ADD COLUMN description TEXT")
+        if "hours" not in cols:
+            # 懒迁移：新增「营业时间」列并按 ancient_kind 回填（单一真相源：trpg-world/营业时间.json）
+            conn.execute("ALTER TABLE features ADD COLUMN hours TEXT")
+            rows = conn.execute("SELECT fid, ancient_kind FROM features").fetchall()
+            conn.executemany(
+                "UPDATE features SET hours=? WHERE fid=?",
+                [(hours_for(k), fid) for fid, k in rows],
+            )
         conn.execute(
             """CREATE TABLE IF NOT EXISTS place_notes (
                    id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -205,6 +215,7 @@ def query_nearby(lon, lat, radius_km=1.0, kind=None, category=None, limit=20):
         return (x * m_per_deg_lon, y * M_PER_DEG_LAT)
 
     pt_m = sg.Point(lon * m_per_deg_lon, lat * M_PER_DEG_LAT)
+    now_i = now_shichen_index()
 
     results = []
     for name, akind, cat, gtype, coords_txt, name_modern, desc in cur.execute(sql, params):
@@ -228,6 +239,8 @@ def query_nearby(lon, lat, radius_km=1.0, kind=None, category=None, limit=20):
             "lat": round(np_m.y / M_PER_DEG_LAT, 6),
             "distance_km": round(d_m / 1000.0, 3),
             "name_modern": name_modern,
+            "营业时间": hours_for(akind),
+            "现在": ("营业" if is_open(hours_for(akind), now_i) else "打烊"),
             "_base_desc": desc,
         })
     _attach_notes(conn, results)
@@ -241,6 +254,35 @@ def query_nearby(lon, lat, radius_km=1.0, kind=None, category=None, limit=20):
         "center": {"lon": lon, "lat": lat, "radius_km": radius_km},
         "results": results,
     }
+
+
+def nearby_places_brief(lon, lat, radius_km=0.6, limit=12):
+    """供 LLM 的「附近实名地点」摘要：只取**有名字**的要素，带方位 + 距离（米）。
+
+    用于「地名必须真实」——每轮注入，让主持人有真实地名可用、不生造。
+    """
+    try:
+        res = query_nearby(lon, lat, radius_km=radius_km, limit=80)
+    except Exception:
+        return []
+    out = []
+    now_i = now_shichen_index()
+    for r in res.get("results", []):
+        name = r.get("name")
+        if not name:
+            continue
+        item = {"name": name, "kind": r.get("kind") or ""}
+        rlon, rlat = r.get("lon"), r.get("lat")
+        if isinstance(rlon, (int, float)) and isinstance(rlat, (int, float)):
+            item["方位"] = bearing_name(lon, lat, rlon, rlat)
+            item["距玩家（米）"] = round(distance_m(lon, lat, rlon, rlat))
+        hours = hours_for(r.get("kind"))
+        item["营业时间"] = hours
+        item["现在"] = "营业" if is_open(hours, now_i) else "打烊"
+        out.append(item)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def query_place(name=None, kind=None, category=None, limit=20):
@@ -270,6 +312,7 @@ def query_place(name=None, kind=None, category=None, limit=20):
     sql += " LIMIT ?"
     params.append(limit)
 
+    now_i = now_shichen_index()
     results = []
     for name2, akind, cat, gtype, coords_txt, name_modern, desc in cur.execute(sql, params):
         geom = _shape(gtype, coords_txt)
@@ -282,6 +325,8 @@ def query_place(name=None, kind=None, category=None, limit=20):
             "lon": rp[0] if rp else None,
             "lat": rp[1] if rp else None,
             "name_modern": name_modern,
+            "营业时间": hours_for(akind),
+            "现在": ("营业" if is_open(hours_for(akind), now_i) else "打烊"),
             "_base_desc": desc,
         })
     _attach_notes(conn, results)

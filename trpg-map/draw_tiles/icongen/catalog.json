@@ -5,8 +5,19 @@
   "groups": [],
   "zones": [],
   "notes": [],
-  "count": 165,
+  "count": 186,
   "source": "bespoke",
+  "group": "—",
+  "zone": "—"
+ },
+ "village": {
+  "icon": "village",
+  "kinds": [],
+  "groups": [],
+  "zones": [],
+  "notes": [],
+  "count": 136,
+  "source": "archetype",
   "group": "—",
   "zone": "—"
  },
@@ -26,7 +37,7 @@
    "酒楼：正店酒楼",
    "酒肆：小店沽酒"
   ],
-  "count": 122,
+  "count": 130,
   "source": "archetype",
   "group": "饮食",
   "zone": "core"
@@ -144,7 +155,7 @@
   "notes": [
    "茶坊：茶馆，宋称茶坊/茶肆"
   ],
-  "count": 84,
+  "count": 92,
   "source": "archetype",
   "group": "饮食",
   "zone": "general"
@@ -342,16 +353,26 @@
   "group": "—",
   "zone": "—"
  },
- "village": {
-  "icon": "village",
-  "kinds": [],
-  "groups": [],
-  "zones": [],
-  "notes": [],
-  "count": 48,
+ "theater": {
+  "icon": "theater",
+  "kinds": [
+   "瓦舍",
+   "勾栏"
+  ],
+  "groups": [
+   "百戏娱乐"
+  ],
+  "zones": [
+   "core"
+  ],
+  "notes": [
+   "瓦舍：宋时大型游艺场，勾栏居其中",
+   "勾栏：瓦舍中的戏棚，杂剧/傀儡/说唱"
+  ],
+  "count": 45,
   "source": "archetype",
-  "group": "—",
-  "zone": "—"
+  "group": "百戏娱乐",
+  "zone": "core"
  },
  "bridge": {
   "icon": "bridge",
@@ -375,37 +396,92 @@
   "group": "行旅",
   "zone": "water/general"
  },
- "theater": {
-  "icon": "theater",
-  "kinds": [
-   "瓦舍",
-   "勾栏"
-  ],
-  "groups": [
-   "百戏娱乐"
-  ],
-  "zones": [
-   "core"
-  ],
-  "notes": [
-   "瓦舍：宋时大型游艺场，勾栏居其中",
-   "勾栏：瓦舍中的戏棚，杂剧/傀儡/说唱"
-  ],
-  "count": 39,
-  "source": "archetype",
-  "group": "百戏娱乐",
-  "zone": "core"
- },
  "town": {
   "icon": "town",
   "kinds": [],
   "groups": [],
   "zones": [],
   "notes": [],
-  "count": 33,
+  "count": 42,
   "source": "archetype",
   "group": "—",
   "zone": "—"
+ },
+ "jiaofang": {
+  "icon": "jiaofang",
+  "kinds": [
+   "教坊"
+  ],
+  "groups": [
+   "风月"
+  ],
+  "zones": [
+   "core"
+  ],
+  "notes": [
+   "教坊：官/私乐舞教习之所，习曲舞、应宴演"
+  ],
+  "count": 34,
+  "source": "bespoke",
+  "group": "风月",
+  "zone": "core"
+ },
+ "gamble": {
+  "icon": "gamble",
+  "kinds": [
+   "赌坊"
+  ],
+  "groups": [
+   "市井娱乐"
+  ],
+  "zones": [
+   "core"
+  ],
+  "notes": [
+   "赌坊：博戏场所（宋代禁赌，多为暗坊）"
+  ],
+  "count": 32,
+  "source": "archetype",
+  "group": "市井娱乐",
+  "zone": "core"
+ },
+ "go": {
+  "icon": "go",
+  "kinds": [
+   "棋馆"
+  ],
+  "groups": [
+   "百戏娱乐"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "棋馆：弈棋/博戏清谈之所"
+  ],
+  "count": 32,
+  "source": "archetype",
+  "group": "百戏娱乐",
+  "zone": "general"
+ },
+ "huafang": {
+  "icon": "huafang",
+  "kinds": [
+   "画舫"
+  ],
+  "groups": [
+   "风月"
+  ],
+  "zones": [
+   "water"
+  ],
+  "notes": [
+   "画舫：水上歌舫/伎船，泊于河湖之间"
+  ],
+  "count": 32,
+  "source": "archetype",
+  "group": "风月",
+  "zone": "water"
  },
  "market": {
   "icon": "market",
@@ -517,6 +593,25 @@
   "group": "礼用",
   "zone": "edge"
  },
+ "story": {
+  "icon": "story",
+  "kinds": [
+   "书场"
+  ],
+  "groups": [
+   "百戏娱乐"
+  ],
+  "zones": [
+   "core"
+  ],
+  "notes": [
+   "书场：说书/评话/诸宫调场子"
+  ],
+  "count": 30,
+  "source": "archetype",
+  "group": "百戏娱乐",
+  "zone": "core"
+ },
  "grave": {
   "icon": "grave",
   "kinds": [
@@ -538,63 +633,6 @@
   "group": "信仰",
   "zone": "edge"
  },
- "huafang": {
-  "icon": "huafang",
-  "kinds": [
-   "画舫"
-  ],
-  "groups": [
-   "风月"
-  ],
-  "zones": [
-   "water"
-  ],
-  "notes": [
-   "画舫：水上歌舫/伎船，泊于河湖之间"
-  ],
-  "count": 28,
-  "source": "archetype",
-  "group": "风月",
-  "zone": "water"
- },
- "gamble": {
-  "icon": "gamble",
-  "kinds": [
-   "赌坊"
-  ],
-  "groups": [
-   "市井娱乐"
-  ],
-  "zones": [
-   "core"
-  ],
-  "notes": [
-   "赌坊：博戏场所（宋代禁赌，多为暗坊）"
-  ],
-  "count": 25,
-  "source": "archetype",
-  "group": "市井娱乐",
-  "zone": "core"
- },
- "go": {
-  "icon": "go",
-  "kinds": [
-   "棋馆"
-  ],
-  "groups": [
-   "百戏娱乐"
-  ],
-  "zones": [
-   "general"
-  ],
-  "notes": [
-   "棋馆：弈棋/博戏清谈之所"
-  ],
-  "count": 25,
-  "source": "archetype",
-  "group": "百戏娱乐",
-  "zone": "general"
- },
  "pawn": {
   "icon": "pawn",
   "kinds": [
@@ -609,7 +647,7 @@
   "notes": [
    "当铺：质库/解库，抵押借贷"
   ],
-  "count": 25,
+  "count": 28,
   "source": "archetype",
   "group": "金融",
   "zone": "core"
@@ -633,6 +671,25 @@
   "group": "饮食",
   "zone": "general"
  },
+ "qinglou": {
+  "icon": "qinglou",
+  "kinds": [
+   "青楼"
+  ],
+  "groups": [
+   "风月"
+  ],
+  "zones": [
+   "core"
+  ],
+  "notes": [
+   "青楼：以色艺为主的妓馆（夜夜笙歌处）"
+  ],
+  "count": 24,
+  "source": "bespoke",
+  "group": "风月",
+  "zone": "core"
+ },
  "dye": {
   "icon": "dye",
   "kinds": [
@@ -652,61 +709,42 @@
   "group": "百工",
   "zone": "water"
  },
- "story": {
-  "icon": "story",
+ "stage": {
+  "icon": "stage",
   "kinds": [
-   "书场"
+   "戏台"
   ],
   "groups": [
    "百戏娱乐"
   ],
   "zones": [
-   "core"
+   "general"
   ],
   "notes": [
-   "书场：说书/评话/诸宫调场子"
+   "戏台：露台/乐棚，社戏庙会演出"
   ],
-  "count": 23,
+  "count": 17,
   "source": "archetype",
   "group": "百戏娱乐",
-  "zone": "core"
+  "zone": "general"
  },
- "jiaofang": {
-  "icon": "jiaofang",
+ "martial": {
+  "icon": "martial",
   "kinds": [
-   "教坊"
+   "武馆"
   ],
   "groups": [
-   "风月"
+   "军武"
   ],
   "zones": [
    "core"
   ],
   "notes": [
-   "教坊：官/私乐舞教习之所，习曲舞、应宴演"
+   "武馆：拳脚器械教习之所"
   ],
-  "count": 22,
-  "source": "bespoke",
-  "group": "风月",
-  "zone": "core"
- },
- "qinglou": {
-  "icon": "qinglou",
-  "kinds": [
-   "青楼"
-  ],
-  "groups": [
-   "风月"
-  ],
-  "zones": [
-   "core"
-  ],
-  "notes": [
-   "青楼：以色艺为主的妓馆（夜夜笙歌处）"
-  ],
-  "count": 18,
-  "source": "bespoke",
-  "group": "风月",
+  "count": 15,
+  "source": "archetype",
+  "group": "军武",
   "zone": "core"
  },
  "smith": {
@@ -729,6 +767,30 @@
   "source": "archetype",
   "group": "百工",
   "zone": "general"
+ },
+ "gate": {
+  "icon": "gate",
+  "kinds": [
+   "城门",
+   "城楼",
+   "钟鼓楼"
+  ],
+  "groups": [
+   "城防"
+  ],
+  "zones": [
+   "edge",
+   "core"
+  ],
+  "notes": [
+   "城门：城郭门",
+   "城楼：城门上之楼",
+   "钟鼓楼：报时"
+  ],
+  "count": 13,
+  "source": "archetype",
+  "group": "城防",
+  "zone": "edge/core"
  },
  "incense": {
   "icon": "incense",
@@ -766,44 +828,6 @@
   "count": 12,
   "source": "archetype",
   "group": "百工",
-  "zone": "general"
- },
- "martial": {
-  "icon": "martial",
-  "kinds": [
-   "武馆"
-  ],
-  "groups": [
-   "军武"
-  ],
-  "zones": [
-   "core"
-  ],
-  "notes": [
-   "武馆：拳脚器械教习之所"
-  ],
-  "count": 12,
-  "source": "archetype",
-  "group": "军武",
-  "zone": "core"
- },
- "stage": {
-  "icon": "stage",
-  "kinds": [
-   "戏台"
-  ],
-  "groups": [
-   "百戏娱乐"
-  ],
-  "zones": [
-   "general"
-  ],
-  "notes": [
-   "戏台：露台/乐棚，社戏庙会演出"
-  ],
-  "count": 12,
-  "source": "archetype",
-  "group": "百戏娱乐",
   "zone": "general"
  },
  "fortune": {
@@ -881,30 +905,6 @@
   "source": "archetype",
   "group": "行旅",
   "zone": "water"
- },
- "gate": {
-  "icon": "gate",
-  "kinds": [
-   "城门",
-   "城楼",
-   "钟鼓楼"
-  ],
-  "groups": [
-   "城防"
-  ],
-  "zones": [
-   "edge",
-   "core"
-  ],
-  "notes": [
-   "城门：城郭门",
-   "城楼：城门上之楼",
-   "钟鼓楼：报时"
-  ],
-  "count": 8,
-  "source": "archetype",
-  "group": "城防",
-  "zone": "edge/core"
  },
  "water": {
   "icon": "water",

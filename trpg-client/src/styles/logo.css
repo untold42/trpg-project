@@ -1,8 +1,8 @@
 .logo_position {
     position: absolute;
-    bottom: 150px;
-    left: 150px;
-    width: 550px;
+    bottom: 100px;
+    left: 130px;
+    width: 570px;
     animation: logo_move 2s ease-out forwards;
 }
 

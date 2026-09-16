@@ -42,6 +42,30 @@ FRONTEND_PUBLIC = os.path.abspath(
     )
 )
 
+# 营业时间：单一真相源 trpg-world/营业时间.json（kind → 时段）
+PROJECT_DIR = os.path.dirname(os.path.dirname(BASE_DIR))  # trpg-project/
+_HOURS_JSON = os.path.join(PROJECT_DIR, "trpg-world", "营业时间.json")
+_HOURS_CACHE = None
+
+
+def hours_for_kind(kind):
+    """某 ancient_kind 的营业时间（如 '卯-酉' / '全天'）。"""
+    global _HOURS_CACHE
+    if _HOURS_CACHE is None:
+        default, mapping = "全天", {}
+        try:
+            with open(_HOURS_JSON, encoding="utf-8") as f:
+                data = json.load(f)
+            default = data.get("默认") or "全天"
+            for h, kinds in (data.get("时段") or {}).items():
+                for k in kinds or []:
+                    mapping[k] = h
+        except Exception:
+            pass
+        _HOURS_CACHE = (mapping, default)
+    m, d = _HOURS_CACHE
+    return m.get(kind, d) if kind else d
+
 MAX_POINTS = 50000          # 超过这个坐标数的要素跳过
 SKIP_CATEGORIES = {"boundary"}  # 行政边界不参与点击
 SKIP_KINDS = {"民居"}          # 民居不进入前端可点层（瓦片上仍显示建筑）
@@ -217,6 +241,7 @@ def main():
             "name": name,
             "kind": o.get("ancient_kind") or "",
             "category": cat,
+            "hours": hours_for_kind(o.get("ancient_kind")),
         }
         _group = GROUP_BY_KIND.get(o.get("ancient_kind"))
         if _group:

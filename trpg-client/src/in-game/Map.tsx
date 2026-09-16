@@ -8,6 +8,7 @@ import "leaflet/dist/leaflet.css";
 
 import ClickableLayer from "./ClickableLayer";
 import { mapStats } from "./mapStats";
+import { loadWalkable, isWalkable } from "./walkable";
 
 // 地图可活动范围 = 瓦片实际覆盖的经纬度矩形（西南角 → 东北角）
 // 与 trpg-map/城市.py 的 frame_bbox("扬州") 一致（画框 100.7×56.6 km）
@@ -35,6 +36,25 @@ const playerIcon = L.divIcon({
 
 /** 调试 HUD：**暂时硬编码为开**（诊断完改回 URL 开关） */
 const DEBUG_HUD = true;
+
+/**
+ * 逐层开关（诊断用，见 `交接-地图性能.md` §7.3）。
+ * 一次只关一层，最快定位卡顿来源：
+ *   ?noicons=1  关掉图标层（DOM marker）
+ *   ?nohit=1    关掉命中层（Canvas 矢量层）
+ *   ?nopan=1    关掉相机跟随（玩家仍会移动，只是镜头不动）
+ *   ?nofog=1    关掉迷雾（全部要素可见）
+ * 例： http://localhost:5173/?noicons=1
+ */
+const _Q = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+const NO_ICONS = _Q.has("noicons");
+const NO_HIT = _Q.has("nohit");
+const NO_PAN = _Q.has("nopan");
+const NO_FOG = _Q.has("nofog");
+/** ?nowalk=1：关掉体积碰撞（调试用） */
+const NO_WALK = _Q.has("nowalk");
+/** ?nonight=1：关掉黑夜滤镜 / 图标发光 */
+const NO_NIGHT = _Q.has("nonight");
 
 /**
  * 地图错误边界。
@@ -88,19 +108,34 @@ function ClickToMove({ onMove }: { onMove?: (p: { lon: number; lat: number }) =>
 }
 
 /**
+ * 黑夜滤镜：把瓦片染成深蓝。
+ *
+ * 用 **CSS filter 直接作用在瓦片层**（`.leaflet-tile-pane`）—— 不依赖
+ * mix-blend-mode 的层叠上下文（实测在 Leaflet 的 pane 里不生效）。
+ * 滤镜链：去色 → 压暗 → 染蓝 → 加饱和度。
+ * 配方在 `GameController.css` 的 `.leaflet-container.is-night .leaflet-tile-pane`。
+ *
+ * 图标 / 棋子在 markerPane，不受影响，继续发光。
+ */
+
+/**
  * WASD 连续移动（命令式：**不触发 React 重渲染**）。
  * - 位置真相在 `posRef`（每帧读写）；玩家标记用原生 L.marker，逐帧 setLatLng + 相机跟随；
  * - 输入框聚焦时不拦截 WASD（打字不移动）；
  * - 松开按键时回调 `onStop(pos)`，把位置同步给父组件（迷雾轨迹 / 行动坐标）。
  */
 function ExploreControls({
-  posRef, speedMps, runMult, onStop, radiusKm,
+  posRef, speedMps, runMult, onStop, radiusKm, noPan = false, walkable,
 }: {
   posRef: MutableRefObject<{ lon: number; lat: number } | null>;
   speedMps: number;
   runMult: number;
   onStop: (p: { lon: number; lat: number }) => void;
   radiusKm: number;
+  /** 只移动玩家、不移动镜头（?nopan=1） */
+  noPan?: boolean;
+  /** 可走判定（返回 false 则被挡）；不传 = 不做碰撞 */
+  walkable?: (lon: number, lat: number) => boolean;
 }) {
   const map = useMap();
   const markerRef = useRef<L.Marker | null>(null);
@@ -191,6 +226,7 @@ function ExploreControls({
       if (frameMs > worstRef.current) worstRef.current = frameMs;
       const p = posRef.current;
       let runningNow = false;
+      let blockedNow = false;
       if (p) {
         if (!markerRef.current) {
           markerRef.current = L.marker([p.lat, p.lon], { icon: playerIcon, title: "当前位置" }).addTo(map);
@@ -212,7 +248,16 @@ function ExploreControls({
           let lon = p.lon + ((dx / len) * dist) / mPerDegLon;
           lat = Math.max(SW[0], Math.min(NE[0], lat));
           lon = Math.max(SW[1], Math.min(NE[1], lon));
-          posRef.current = { lon, lat };
+          // 体积碰撞（水域 / 城墙）：不能走就沿障碍滑动（先试只动 x，再试只动 y）
+          const tryMove = (tlon: number, tlat: number) => {
+            if (!walkable || walkable(tlon, tlat)) {
+              posRef.current = { lon: tlon, lat: tlat };
+              return true;
+            }
+            return false;
+          };
+          const moved = tryMove(lon, lat) || tryMove(lon, p.lat) || tryMove(p.lon, lat);
+          blockedNow = !moved && !!walkable;
         }
         const cur = posRef.current!;
 
@@ -235,9 +280,12 @@ function ExploreControls({
           markerRef.current.setLatLng([cur.lat, cur.lon]);
         }
 
-        // 奔跑的视觉反馈（棋子描边变色）
+        // 奔跑 / 被挡 的视觉反馈（棋子描边变色）
         const el = markerRef.current.getElement();
-        if (el) el.classList.toggle("is-running", running);
+        if (el) {
+          el.classList.toggle("is-running", running);
+          el.classList.toggle("is-blocked", blockedNow);
+        }
 
         // 相机：把玩家保持在视口**内圈（30% 边距）**以内。
         //
@@ -267,6 +315,9 @@ function ExploreControls({
         if (mb.getNorth() >= NE[0] - EPS && panY < 0) panY = 0;
         if (mb.getWest() <= SW[1] + EPS && panX < 0) panX = 0;
         if (mb.getEast() >= NE[1] - EPS && panX > 0) panX = 0;
+
+        // ?nopan=1：只走人、不动镜头（用于区分「卡在相机」还是「卡在渲染」）
+        if (noPan) { panX = 0; panY = 0; }
 
         if (panX || panY) {
           // ⚠️ 必须取整！
@@ -318,7 +369,8 @@ function ExploreControls({
             `FPS ${fps.toFixed(0)}   最差帧 ${worst.toFixed(0)}ms   z${map.getZoom()}   跑:${runningNow ? "是" : "否"}\n` +
             `玩家 ${q ? q.lat.toFixed(5) + ", " + q.lon.toFixed(5) : "（未定位）"}\n` +
             `图标 ${mapStats.icons}  命中 ${mapStats.hits}  可见 ${mapStats.visible}\n` +
-            `命中重绘 ${mapStats.hitMs.toFixed(1)}ms  图标重绘 ${mapStats.iconMs.toFixed(1)}ms`;
+            `命中重绘 ${mapStats.hitMs.toFixed(1)}ms  图标重绘 ${mapStats.iconMs.toFixed(1)}ms\n` +
+            `关:${[NO_ICONS && "图标", NO_HIT && "命中", NO_PAN && "相机", NO_FOG && "迷雾"].filter(Boolean).join("/") || "无"}`;
         }
       }
 
@@ -331,7 +383,7 @@ function ExploreControls({
       markerRef.current?.remove();
       markerRef.current = null;
     };
-  }, [map, posRef, speedMps, runMult]);
+  }, [map, posRef, speedMps, runMult, noPan, walkable]);
 
   return null;
 }
@@ -363,6 +415,8 @@ export type GameMapProps = {
   onPositionChange?: (p: { lon: number; lat: number }) => void;
   /** 是否夜晚（由游戏时钟裁决）：决定图标取 <键>/night.png 还是 <键>/day.png */
   isNight?: boolean;
+  /** 当前时辰索引（0=子…11=亥）：决定打烊的地点夜里不亮灯 */
+  shichen?: number;
   /** 总览模式：**不启用探索迷雾**，全部 POI 都画（菜单里的地图用） */
   showAllIcons?: boolean;
 };
@@ -371,7 +425,7 @@ function GameMap({
   zoom = 16, playerOverride, onMove, extraFootprints, footprintVersion, focus,
   lockZoom = false,
   wasd, posRef, speedMps = 20, runMult = 2.5, onPositionChange,
-  isNight = false, showAllIcons = false,
+  isNight = false, showAllIcons = false, shichen = -1,
 }: GameMapProps = {}) {
   const [player, setPlayer] = useState<PlayerPos | null>(null);
   const [footprints, setFootprints] = useState<Footprint[] | null>(null);
@@ -405,6 +459,11 @@ function GameMap({
     };
   }, []);
 
+  // 体积碰撞数据（水域 / 城墙 / 城门 / 桥 / 路）——只加载一次，模块级缓存
+  useEffect(() => {
+    loadWalkable();
+  }, []);
+
   // 合并「后端足迹 + 本次行走轨迹」。
   // ⚠️ cursorTrail 是**原地 push** 的（数组引用不变），所以必须靠 footprintVersion
   //    触发重算；否则这里的 useMemo 永远不会更新，迷雾就不会揭开。
@@ -431,6 +490,7 @@ function GameMap({
   return (
     <MapErrorBoundary>
       <MapContainer
+      className={isNight && !NO_NIGHT ? "is-night" : undefined}
       center={shownPlayer ? [shownPlayer.lat, shownPlayer.lon] : DEFAULT_CENTER}
       zoom={zoom}
       minZoom={lockZoom ? zoom : 12}
@@ -459,7 +519,10 @@ function GameMap({
         focus={focus}
         radiusKm={radiusKm}
         isNight={isNight}
-        noFog={showAllIcons}
+        shichen={shichen}
+        noFog={showAllIcons || NO_FOG}
+        hideIcons={NO_ICONS}
+        hideHit={NO_HIT}
       />
 
       {wasd && posRef ? (
@@ -468,6 +531,8 @@ function GameMap({
           speedMps={speedMps}
           runMult={runMult}
           radiusKm={radiusKm}
+          noPan={NO_PAN}
+          walkable={NO_WALK ? undefined : isWalkable}
           onStop={onPositionChange ?? (() => { })}
         />
       ) : (

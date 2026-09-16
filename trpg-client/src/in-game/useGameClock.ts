@@ -185,3 +185,28 @@ export function useIsNight(): boolean {
     }, []);
     return isNight;
 }
+
+/** 当前游戏时间：昼夜 + 时辰索引（供地图图标：夜色发光 + 打烊判断） */
+export type WorldTime = { isNight: boolean; shichen: number };
+
+export function useWorldTime(): WorldTime {
+    const [t, setT] = useState<WorldTime>({ isNight: false, shichen: -1 });
+    useEffect(() => {
+        let alive = true;
+        const tick = () => {
+            fetchClock()
+                .then((a) => {
+                    if (!alive || !a) return;
+                    setT({
+                        isNight: isNightFromSeconds(a.游戏秒),
+                        shichen: civilFromSeconds(a.游戏秒).时辰索引,
+                    });
+                })
+                .catch(() => { /* 后端没起来 → 保持日间 */ });
+        };
+        tick();
+        const iv = window.setInterval(tick, 60000);
+        return () => { alive = false; window.clearInterval(iv); };
+    }, []);
+    return t;
+}

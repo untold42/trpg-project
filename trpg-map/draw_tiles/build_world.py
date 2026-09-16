@@ -197,6 +197,42 @@ MODERN_NAME_MARKERS = (
 def _is_modern_name(name):
     return any(m in name for m in MODERN_NAME_MARKERS)
 
+
+# 有名字的天然要素 → 山水 kind（供地图图标 / 知识库）
+_NATURE_KIND = (
+    ("山", ("山", "冈", "岡", "峰", "岭", "嶺", "丘", "岗", "嶂", "岩")),
+    ("洲", ("洲", "渚")),
+    ("林", ("林",)),
+    ("园", ("园", "苑")),
+    ("湖", ("湖", "荡", "蕩", "漾", "潭", "池", "淀")),
+)
+# 水域只认「湖」类关键词（避免「沿山河」被“山”吃掉、「枣林水库」被“林”吃掉）
+_WATER_KIND_KEYS = ("湖", "荡", "蕩", "漾", "潭", "池", "淀", "水库", "水庫")
+
+
+def _nature_kind(name, cat, tags):
+    if not name:
+        return None
+    if cat in ("water", "waterway"):
+        return "湖" if any(k in name for k in _WATER_KIND_KEYS) else None
+    if cat in ("natural", "landuse"):
+        for kind, keys in _NATURE_KIND:
+            if any(k in name for k in keys):
+                return kind
+    return None
+
+
+def _with_nature_kind(o, cat, tags):
+    """给有名字的天然要素补 ancient_kind（不改已有 kind）。"""
+    if o.get("ancient_kind"):
+        return o
+    k = _nature_kind(o.get("name"), cat, tags)
+    if not k:
+        return o
+    o = dict(o)
+    o["ancient_kind"] = k
+    return o
+
 # 官署 / 城防 / 礼用等直接以 kind 为名（不加前缀）
 PLAIN_KINDS = {
     "州衙", "县衙", "巡检司", "牢狱", "粮仓", "税场", "城门", "城楼",
@@ -336,11 +372,13 @@ class WorldBuilder:
             tags = o.get("tags") or {}
             name = o.get("name")
             if cat in ("water", "waterway"):
+                o = _with_nature_kind(o, cat, tags)
                 keep.append(o)
                 self._collect_water(o, water_geoms)
             elif cat == "natural":
                 if name and _is_modern_name(name):
                     continue
+                o = _with_nature_kind(o, cat, tags)
                 keep.append(o)
                 self._collect_water(o, water_geoms)
             elif cat == "landuse" and tags.get("landuse") in (
@@ -349,6 +387,7 @@ class WorldBuilder:
             ):
                 if name and _is_modern_name(name):
                     continue
+                o = _with_nature_kind(o, cat, tags)
                 keep.append(o)
             elif name and cat in ("historic", "tourism"):
                 kind = ANCHOR_KIND.get(name)

@@ -285,6 +285,7 @@ def action():
         mode = "action"
 
     # 探索模式：前端带上光标坐标 → 更新玩家位置，并把「从哪到哪」作为系统提醒注入本轮
+    from_explore = bool(data.get("坐标"))
     note = _apply_move(data.get("坐标"))
     if note:
         runner.session.pending_notes.append(note)
@@ -306,7 +307,7 @@ def action():
         text = "梁峰：" + raw
     else:
         text = "玩家的对主持人说的话：" + raw
-    events = runner.run(text, mode)
+    events = runner.run(text, mode, from_explore)
     time_flow.pump()   # 回合结束后结算时间流逝（精力 / 跨日）
     return jsonify(events)
 

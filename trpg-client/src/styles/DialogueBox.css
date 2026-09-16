@@ -4,16 +4,38 @@
   bottom: 0;
   width: 90%;
   height: 25%;
+
+  /* ── 调对话框底图（不影响文字）──
+     只改这三个变量即可：
+       --dlg-x / --dlg-y ：图片整体位移（右 / 下为正，可负）
+       --dlg-scale       ：图片整体缩放（1 = 原始大小）
+     底图由下面的 ::before 绘制 —— background 图会被裁在元素框内、
+     且 background-size:100% 100% 时 position 无效，所以必须用伪元素才能自由调。 */
+  --dlg-x: 90px;
+  --dlg-y: 0px;
+  --dlg-scale: 1;
+}
+
+/* 对话框底图（独立图层，与文字解耦） */
+.dialogue-box::before {
+  content: "";
+  position: absolute;
+  inset: 0;
   background-image: url("../assets/ui/对话框.png");
+  background-repeat: no-repeat;
   background-position: center;
   background-size: 100% 100%;
-  background-repeat: no-repeat;
+  transform: translate(var(--dlg-x), var(--dlg-y)) scale(var(--dlg-scale));
+  transform-origin: center;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .dialogue-content {
   position: absolute;
+  z-index: 1;            /* 确保文字压在底图之上 */
   top: 10%;
-  left: 20%;
+  left: 17%;
   display: grid;
   grid-template-columns: 180px 1fr;
   align-items: baseline;
@@ -26,7 +48,7 @@
   white-space: nowrap;
 
   font-family: "STXingkai", "KaiTi", "楷体", cursive;
-  font-size: 56px;
+  font-size: 52px;
 
   background: linear-gradient(to right, #d8b45a, #fff8d6);
   -webkit-background-clip: text;
@@ -37,7 +59,7 @@
   margin-left: 20px;
   color: white;
   font-family: "Source Han Serif TC", "思源宋体", serif;
-  font-size: 24px;
+  font-size: 22px;
 }
 
 .dialogue-character {

@@ -5,4 +5,7 @@
   width: 100vw;
   height: 100vh;
   background-color: black;
+  /* 窗口比 16:9 更高时，.background 会高出窗口（见 Background.css），
+     这里裁掉溢出，避免出现滚动条 / 元素被顶出可视区 */
+  overflow: hidden;
 }

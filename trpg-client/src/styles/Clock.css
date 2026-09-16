@@ -6,12 +6,12 @@
      --clock-z      层级（低于 100 会被右侧按钮盖住；高于 500 会盖住画廊）
      --clock-size   直径 */
 .game-clock {
-    --clock-top: 80px;
+    --clock-top: 70px;
     --clock-right: auto;
     --clock-bottom: auto;
     --clock-left: 25px;
     --clock-z: 90;
-    --clock-size: 190px;
+    --clock-size: 210px;
 
     position: fixed;
     top: var(--clock-top);

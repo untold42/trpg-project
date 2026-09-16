@@ -11,7 +11,7 @@ import { 默认背景, getBackgroundImage } from "./background";
 import { playMusic, stopMusic } from "./music";
 import BattleScene, { type BattleState } from "./battle";
 import Clock from "./Clock";
-import { fetchClock, requestClockSync, useIsNight } from "./useGameClock";
+import { fetchClock, requestClockSync, useWorldTime } from "./useGameClock";
 
 // 游戏内步速（米/游戏秒）——真实速度 = 步速 × 时钟倍率，
 // 这样「游戏内移动速度」与时间保持一致（时间快 15 倍 → 标记也快 15 倍地跑）。
@@ -109,6 +109,7 @@ type PlayerState = {
 };
 
 type UiEvent = Extract<instruction, { type: "ui" }>;
+type NarrativeLine = Extract<instruction, { type: "chat" } | { type: "narration" }>;
 
 // 把 unknown 安全地转成可显示文本
 function show(v: unknown): string | number {
@@ -147,6 +148,10 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     const [showInputSay, setShowInputSay] = useState(false); //展示台词输入框
     const [input, setInput] = useState(""); //输入框输入的内容
     const [history, setHistory] = useState<instruction[]>([]); //拿到llm的回复
+    const historyRef = useRef<instruction[]>([]); // 同步 history 长度（探索→叙事断点用）
+    historyRef.current = history;
+    // 叙事层对话框的起始句下标：探索→叙事时跳到**本轮叙事的第一句**
+    const [sceneStart, setSceneStart] = useState(0);
     // 前情回顾（进入游戏后先播，点击推进完才进正常游戏；null = 无回顾）
     const [recap, setRecap] = useState<instruction[] | null>(
         initialRecap && initialRecap.length ? initialRecap : null
@@ -186,6 +191,9 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     }, [galleryItems]);
     const [showContinue, setShowContinue] = useState(false); // 「继续」的刻数选项
     const [battleState, setBattleState] = useState<BattleState | null>(null); // 战斗界面（可阻塞）
+    // 探索模式的叙事浮层（#3）：从叙事切回探索时，本轮 GM 的话在地图上看不见
+    const [exploreLines, setExploreLines] = useState<NarrativeLine[]>([]);
+    const [exploreIdx, setExploreIdx] = useState(0);
 
     // ---- 状态机：explore（整屏地图）/ narrative（对话+立绘+时钟）/ battle（战棋）----
     // 进入叙事由玩家输入发动；退出叙事由主持人裁定（工具 resume_exploration → kind:"mode"）
@@ -195,7 +203,8 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     const cursorRef = useRef<{ lon: number; lat: number } | null>(null);
     const prevCursorRef = useRef<{ lon: number; lat: number } | null>(null); // 上一次「输入」时的位置
     const [clockRate, setClockRate] = useState(15);                           // 时钟倍率（移动速度随它缩放）
-    const isNight = useIsNight();                                            // 昼夜：决定地图图标取 day / night
+    const [sending, setSending] = useState(false);                            // LLM 请求进行中（时钟冻结）
+    const { isNight, shichen } = useWorldTime();                            // 昼夜 + 时辰：地图夜色 + 打烊不亮灯
 
     // 统一处理 /state 返回：更新状态
     function applyState(s: PlayerState | null) {
@@ -203,8 +212,9 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         setPlayerState(s);
     }
 
-    // UI 事件旁路：kind:"bg" 切背景；kind:"music" 切音乐；其余预留（minigame ...）
-    function handleUiEvents(events: UiEvent[]) {
+    // UI 事件旁路：kind:"bg" 切背景；kind:"music" 切音乐；kind:"mode" 返回给调用方定模式
+    function handleUiEvents(events: UiEvent[]): "explore" | "narrative" | null {
+        let mode: "explore" | "narrative" | null = null;
         for (const ev of events) {
             if (ev.kind === "bg") {
                 setBackground(getBackgroundImage(
@@ -219,11 +229,15 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
             } else if (ev.kind === "mode") {
                 // 模式切换（主持人裁定）：回探索 / 进叙事
                 const m = String(ev.data.mode ?? "");
-                if (m === "explore" || m === "narrative") setGameMode(m);
+                if (m === "explore" || m === "narrative") {
+                    mode = m;
+                    setGameMode(m);
+                }
             } else {
                 console.debug("[ui]", ev.kind, ev.data);
             }
         }
+        return mode;
     }
 
     // 离开游戏时停止背景音乐
@@ -272,36 +286,58 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
             if (prev) body.上一坐标 = { lon: prev.lon, lat: prev.lat };
             prevCursorRef.current = cur;
         }
-        const res = await fetch(
-            "http://localhost:5000/action",
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(body)
+        // 发请求前先冻住古钟（连网/等回复这段时间不计入游戏时间）
+        setSending(true);
+        try {
+            const res = await fetch(
+                "http://localhost:5000/action",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(body)
+                }
+            );
+
+            const response: instruction[] = await res.json();
+
+            // 统一事件流：大模型叙事（chat/narration）进对话，UI 事件走旁路
+            const narrative = response.filter(
+                (item): item is NarrativeLine => item.type === "chat" || item.type === "narration"
+            );
+            const uiEvents = response.filter(
+                (item): item is UiEvent => item.type === "ui"
+            );
+            const uiMode = handleUiEvents(uiEvents);
+            const base = historyRef.current.length;   // 本轮新增叙事在 history 中的起点
+            setHistory(prev => [...prev, ...narrative]);
+            // 目标模式：主持人裁定（mode 事件）优先；否则探索中输入 → 叙事，叙事中 → 保持叙事
+            const nextMode: "explore" | "narrative" = uiMode ?? "narrative";
+            setGameMode(nextMode);
+            // 探索→叙事：让对话框直接跳到本轮叙事的第一句（而不是留在探索前的旧位置）
+            if (nextMode === "narrative" && wasExplore && narrative.length) {
+                setSceneStart(base);
             }
-        );
+            // 回到探索时，本轮 GM 的叙事在地图上看不见 → 用浮层显示（#3）
+            if (nextMode === "explore" && narrative.length) {
+                setExploreLines(narrative);
+                setExploreIdx(0);
+            } else if (nextMode === "narrative") {
+                setExploreLines([]);
+                setExploreIdx(0);
+            }
 
-        const response: instruction[] = await res.json();
-
-        // 统一事件流：大模型叙事（chat/narration）进对话，UI 事件走旁路
-        const narrative = response.filter(
-            (item) => item.type === "chat" || item.type === "narration"
-        );
-        const uiEvents = response.filter(
-            (item): item is UiEvent => item.type === "ui"
-        );
-        handleUiEvents(uiEvents);
-        setHistory(prev => [...prev, ...narrative]);
-        // 探索模式下输入 → 进入叙事（若主持人同时裁定回探索，上行的 mode 事件会覆盖）
-        if (wasExplore) setGameMode("narrative");
-
-        // 行动会改状态，刷新菜单数值
-        const s = await getState();
-        applyState(s);
-        // 「LLM 请求窗口」期间后端暂停了时钟 → 重新校准古钟插值，避免多算
-        requestClockSync();
+            // 行动会改状态，刷新菜单数值
+            const s = await getState();
+            applyState(s);
+            // 「LLM 请求窗口」期间后端暂停了时钟 → 重新校准古钟插值，避免多算
+            requestClockSync();
+        } catch {
+            // 后端没起 / 请求失败：静默
+        } finally {
+            setSending(false);
+        }
     }
 
     // 开局拉一次状态
@@ -425,8 +461,15 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     }
 
     else {
-        const 状态 = playerState?.状态 ?? {};
-        const 基础 = playerState?.属性?.基础属性 ?? {};
+        // 探索浮层当前要显示的一句（#3）
+        const enLine = gameMode === "explore" && exploreLines.length
+            ? exploreLines[Math.min(exploreIdx, exploreLines.length - 1)]
+            : null;
+        // 时钟暂停条件：打字（输入框）/ 看历史·地图·数据·势力·详情 / 等 LLM 回复
+        const clockPaused =
+            sending || showHistory || showMap || showData || showGallery ||
+            readingIndex !== null || showInputGM || showInputAct || showInputSay;
+        const 状态 = playerState?.状态 ?? {};        const 基础 = playerState?.属性?.基础属性 ?? {};
         const 物品 = playerState?.背包?.物品 ?? {};
         const 金钱 = playerState?.金钱?.金钱;
 
@@ -441,10 +484,10 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
 
         return (
             <div className="background">
-                {/* 叙事层：探索模式下 display:none；可见时用 `contents`，让包装层**不产生盒子**
-                    （嵌套 .background 的 16:9 布局才不被多出的一层破坏） */}
-                <div style={{ display: gameMode === "explore" ? "none" : "contents" }}>
-                    <GameScene key="game" history={history} background={background} />
+                {/* 叙事层：探索模式 / 打开总览图时 display:none；可见时用 `contents`，
+                    让包装层**不产生盒子**（嵌套 .background 的 16:9 布局才不被多出的一层破坏） */}
+                <div style={{ display: (gameMode === "explore" || showMap) ? "none" : "contents" }}>
+                    <GameScene key="game" history={history} background={background} startIndex={sceneStart} />
                 </div>
 
                 {/* 探索层：整屏 zoom18 地图，光标代表玩家 */}
@@ -452,6 +495,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                     <div className="explore-map">
                         <GameMap
                             isNight={isNight}
+                            shichen={shichen}
                             zoom={18}
                             lockZoom
                             playerOverride={cursor}
@@ -465,13 +509,45 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                     </div>
                 )}
 
-                <Clock paused={showHistory} />
+                <Clock paused={clockPaused} />
+
+                {/* 探索模式的叙事浮层（#3）：GM 在「切回探索」时说的话也看得见 */}
+                {enLine && (
+                    <div
+                        className="explore-narration"
+                        onClick={() => {
+                            if (exploreIdx < exploreLines.length - 1) setExploreIdx(exploreIdx + 1);
+                            else { setExploreLines([]); setExploreIdx(0); }
+                        }}
+                    >
+                        {enLine.type === "chat" && (
+                            <div className="en-speaker">{enLine.speaker}</div>
+                        )}
+                        <div className="en-content">{enLine.content}</div>
+                        <div className="en-hint">
+                            {exploreIdx < exploreLines.length - 1
+                                ? `▼ 点击继续（${exploreIdx + 1}/${exploreLines.length}）`
+                                : "▼ 点击关闭"}
+                        </div>
+                    </div>
+                )}
 
                 {battleState && (
                     <BattleScene
                         initial={battleState}
                         onExit={() => { setBattleState(null); sendAction("", "continue", 0); }}
                     />
+                )}
+
+                {/* 地图（总览图）——常用，从菜单里拿出来常驻。再点一次可关闭 */}
+                <button className="map-button" onClick={() => setShowMap(!showMap)}>
+                    {showMap ? "关闭地图" : "地图"}
+                </button>
+
+                {gameMode === "narrative" && (
+                    <button className="explore-button" onClick={() => sendAction("进入探索，请求GM同意", "gm")}>
+                        探索
+                    </button>
                 )}
 
                 <button className="chat-button" onClick={() => { setshowInputGM(!showInputGM); setShowInputAct(false); setShowInputSay(false); }}>
@@ -523,7 +599,8 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                 showMap && (
                     <div className="game-map">
                         {/* 菜单地图 = 总览图：不启用探索迷雾，全部 POI 都画出来 */}
-                        <GameMap isNight={isNight} showAllIcons />
+                        <GameMap isNight={isNight} shichen={shichen} showAllIcons />
+                        <button className="map-close" onClick={() => setShowMap(false)}>返回</button>
                     </div>
                 )
                 }
@@ -600,7 +677,6 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                 <StaggeredMenu position="left" menuLabel="菜单" accentColor="#c0392b" closeOnContentClick>
                     <button className="sm-menu-item" onClick={triggerSave}>存档游戏</button>
                     <button className="sm-menu-item" onClick={handleAbandon}>放弃本轮</button>
-                    <button className="sm-menu-item" onClick={() => setShowMap(true)}>地图</button>
                     <button className="sm-menu-item" onClick={() => setShowGallery(true)}>势力</button>
                     <button className="sm-menu-item" onClick={onBackMenu}>返回主菜单</button>
                 </StaggeredMenu>

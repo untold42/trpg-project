@@ -21,22 +21,15 @@ function 开始播放(track: string) {
   }
   当前?.pause();
   const audio = new Audio(url);
-  audio.loop = false; // 只放一遍，不循环
+  audio.loop = true; // 循环播放
   audio.volume = 0.5;
   当前 = audio;
-  // 放完即结束（清空状态，若之后再发同曲才会重新播）
-  audio.addEventListener("ended", () => {
-    if (当前 === audio) {
-      当前 = null;
-      当前曲 = "";
-    }
-  });
   audio
     .play()
     .then(() => {
       当前曲 = track;
       待播 = null;
-      console.info("[music] ▶", track, "（一遍，不循环）");
+      console.info("[music] ▶", track, "（循环）");
     })
     .catch((e) => {
       待播 = track;

@@ -24,7 +24,32 @@
 .game-map {
     position: absolute;
     inset: 0;
-    z-index: 100;
+    /* 压在按钮（100）之下、探索地图（50）之上 —— 按钮始终可见可点 */
+    z-index: 80;
+}
+
+/* 总览图右上角的关闭键：**必须高过 Leaflet 图层**（popup 700 / controls 800） */
+.map-close {
+    position: absolute;
+    right: 20px;
+    top: 20px;
+    z-index: 2000;
+
+    width: 96px;
+    height: 44px;
+
+    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-position: center;
+
+    border: none;
+    background-color: transparent;
+
+    cursor: pointer;
+    color: white;
+    font-family: "Source Han Serif TC";
+    font-size: 18px;
 }
 
 /* 探索模式：整屏地图（低于按钮 100 / 古钟 90，高于叙事层） */
@@ -52,6 +77,37 @@
     font: 12px/1.5 Consolas, Menlo, monospace;
     white-space: pre;
     pointer-events: none;
+}
+
+/* ============================================================
+   黑夜：瓦片染深蓝 + POI 图标发光
+
+   瓦片：直接对 .leaflet-tile-pane 加 CSS filter（去色 → 压暗 → 染蓝）。
+         图标在 markerPane，不受瓦片滤镜影响，另给暖光。
+   开关：map 容器带 is-night（?nonight=1 可关）。
+   ============================================================ */
+.leaflet-container.is-night .leaflet-tile-pane {
+    /* 调色：brightness 越小越暗；hue-rotate 180~200 偏蓝；saturate 越大越纯 */
+    filter: grayscale(1) brightness(0.58) contrast(1.08) sepia(1) hue-rotate(190deg) saturate(2.4);
+}
+
+.leaflet-container.is-night .map-poi-icon.is-open {
+    filter:
+        drop-shadow(0 0 4px rgba(255, 214, 130, .95))
+        drop-shadow(0 0 12px rgba(255, 170, 70, .55));
+}
+
+/* 打烊的（非全天/已过营业时段）：夜里不亮灯，略压暗 */
+.leaflet-container.is-night .map-poi-icon:not(.is-open) {
+    opacity: .7;
+}
+
+/* 夜里让玩家棋子也带一圈暖光（奔跑时仍用奔跑的描边，不抢） */
+.leaflet-container.is-night .player-marker:not(.is-running) .player-token {
+    box-shadow:
+        0 0 0 2px rgba(255, 248, 232, .85),
+        0 0 14px rgba(255, 214, 130, .75),
+        0 2px 6px rgba(0, 0, 0, .45);
 }
 
 /* ============================================================
@@ -101,6 +157,100 @@
         0 0 0 2px rgba(255, 214, 140, .95),
         0 3px 10px rgba(0, 0, 0, .5);
     transform: scale(1.08);
+}
+
+/* 被水域 / 城墙挡住走不动时：描边转灰暗 */
+.player-marker.is-blocked .player-token {
+    border-color: #55504a;
+    box-shadow:
+        0 0 0 2px rgba(130, 130, 130, .75),
+        0 2px 6px rgba(0, 0, 0, .45);
+}
+
+/* 「地图」按钮（常驻） */
+.map-button {
+    position: absolute;
+    right: 0px;
+    bottom: 325px;
+    z-index: 100;
+
+    width: 120px;
+    height: 50px;
+
+    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-position: center;
+
+    border: none;
+    background-color: transparent;
+
+    cursor: pointer;
+    color: white;
+    font-family: "Source Han Serif TC";
+}
+
+/* 「探索」按钮（#2）：固定发场外请求，请 GM 放回大地图 */
+.explore-button {
+    position: absolute;
+    right: 0px;
+    bottom: 375px;
+    z-index: 100;
+
+    width: 120px;
+    height: 50px;
+
+    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-position: center;
+
+    border: none;
+    background-color: transparent;
+
+    cursor: pointer;
+    color: white;
+    font-family: "Source Han Serif TC";
+}
+
+/* 探索模式叙事浮层（#3）：GM 在「切回探索」时说的话也看得见 */
+.explore-narration {
+    position: absolute;
+    left: 46%;
+    bottom: 110px;
+    transform: translateX(-50%);
+    max-width: 58%;
+    z-index: 180;
+
+    padding: 14px 22px;
+    box-sizing: border-box;
+    background: rgba(12, 8, 6, .82);
+    border: 1px solid rgba(216, 180, 90, .55);
+    border-radius: 8px;
+    color: #f5efe0;
+    font-family: "Source Han Serif TC", "思源宋体", serif;
+    cursor: pointer;
+    user-select: none;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, .5);
+}
+
+.explore-narration .en-speaker {
+    color: #e8c877;
+    font-size: 20px;
+    margin-bottom: 4px;
+}
+
+.explore-narration .en-content {
+    font-size: 18px;
+    line-height: 1.6;
+}
+
+.explore-narration .en-hint {
+    margin-top: 8px;
+    text-align: right;
+    font-size: 13px;
+    color: #b9ac90;
+    opacity: .85;
 }
 
 /* 历史记录按钮 */

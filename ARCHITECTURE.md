@@ -905,7 +905,7 @@ rest(时辰)   ← 工具 sleep
 - `_check_time_authority` 护栏**换语义**：从"推进了没落库"→"**大幅跳时**却没落库"。
 - **天气按年维度**：现为单张 366 天表（1220），跨年只是复用（见 `TODO.md` §七）。
 - **战斗时间折算**：`clock.begin_battle/end_battle` 已就绪，但战斗流程尚未接入。
-- WASD 探索 / 可走网格 / Enter 场景（见 `README.md` §七～八）。
+- WASD 探索 / 碰撞（水域·城墙；见 `README.md` §七～八 + `walkable.ts`）/ Enter 场景。
 
 ---
 
@@ -963,5 +963,6 @@ rest(时辰)   ← 工具 sleep
 
 ### 待办 🔧
 
-- **可走网格碰撞**（WASD 已做，但玩家尚可穿过房屋 / 河流；`walkable.py` 未做）。
+- ✅ **碰撞已完成**（2026-09-16）：水域 / 城墙阻挡；城门 25m、桥 100m、路∩水 为通道
+  （前端 `walkable.ts` + `export_walkable.py`）。其余待做：`/move` 边走边同步。
 - 战斗时间折算接入（`clock.begin_battle/end_battle` 已就绪）。

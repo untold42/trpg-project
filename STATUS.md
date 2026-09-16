@@ -171,7 +171,7 @@ trpg-server/sessions/           （.gitignore）
 - **顶层按钮**：主持人 / 行动 / **说话**（对 NPC 的台词）/ **继续**（时间流逝、世界推进）/ 历史记录 / **数据**（弹金钱/背包/属性/状态）。
 - **「菜单」**（左侧滑出）：存档游戏 / 放弃本轮 / 地图 / 势力 / 返回主菜单。
 - **背景**：由 UI 事件 `kind:"bg"` 控制（`in-game/background.ts` 负责 地点+时辰→图），`GameScene` 只收 `background` prop。
-- **音乐**：由 UI 事件 `kind:"music"` 控制（`in-game/music.ts`，曲库=`assets/音乐/*.mp3`，**只放一遍不循环**，播完即停；离开游戏停止）。
+- **音乐**：由 UI 事件 `kind:"music"` 控制（`in-game/music.ts`，曲库=`assets/音乐/*.mp3`，**循环播放**；同名不重启；`track="无"` 或离开游戏时停止）。
 - **战斗**：`in-game/battle.tsx` + `styles/Battle.css` —— 10×6 网格 + **实心矩形 token**（阵营配色/名字/血内力条/buff）+ 动作菜单 + 目标点选 + 思路输入框 + 滚动日志 + 顶部**小/大模型开关** + 结算浮层；`GameController` 收 `kind:"battle"` 打开，战斗 BGM 由 `ui_sim.battle_track_for()` 选。
 - **模拟战斗**：主菜单「环境设定」里选友军/敌人（`GET /battle/roster`）→ `POST /battle/sim` → 直接开战斗界面（不回写存档）；主页面主题曲自动暂停/恢复。
 - **历史面板 / 续玩**：读 `GET /history`；不再有前端 `historyLog`。
@@ -376,7 +376,20 @@ cp -r tiles/{11..16} ../../trpg-client/public/tiles/
 - 模拟战斗结果泄漏进游戏叙事（`/battle/action` 无条件注入 `pending_notes` → 主持人照模拟战叙述并经 `modify_hp`/`modify_injury` 改真状态）；现按 `模拟` 标志跳过。
 - **`file_tools` 摘出 LLM**（`registry._DISABLED`：`list_directory`/`read_file`/`write_file`/`edit_file` 不下发、不可调用；代码保留，`TRPG_FILE_TOOLS=1` 可临时启用）。LLM 可见工具 33→29（游戏）。
 
-**待做**：`_check_time_authority` 换语义；跨日联动（天气 / `world_worker`）；WASD 探索 + 可走网格 + Enter 场景。
+**待做**：`_check_time_authority` 换语义；跨日联动（天气 / `world_worker`）。
+
+### ⭐ 本轮（2026-09-16）：体积碰撞 + 地图性能定案
+
+- **体积碰撞（WASD）**：新增 `trpg-client/src/in-game/walkable.ts`（前端矢量判定 + 网格索引）
+  与 `trpg-map/draw_tiles/export_walkable.py`（从空间库导出 `trpg-client/public/data/walkable.geojson`，1.76MB）。
+  规则：除**水域 / 城墙**外可走；**城门 25m** 为出城通道；**桥 100m** 可走；**路 ∩ 水** 默认路可走。
+  `ExploreControls` 走不动时**沿障碍滑动**（先试 X、再试 Y）；被挡时棋子描边转灰；`?nowalk=1` 关闭碰撞。
+  已接进 `trpg-map/生成.py` 的 `walkable` 步骤（须在 `db` 之后）。
+- **地图性能定案**：逐层关测 → `?nohit=1` 不卡、`?nofog=1` 最流畅 ⇒ 主因是 `HitLayer`
+  每次 `data` 变就整个重建（新建 canvas + `clearLayers` + `addData`）。已改为**图层只挂一次 + 增量增删**；
+  同时修了「图标缓存键不含 URL → 先画兜底圆点后无法恢复」的 bug。逐层开关 `?noicons/nohit/nopan/nofog=1`。
+  详见 `交接-地图性能.md` §11。
+- 残余：`?nopan=1` 仍稍有掉帧（疑似瓦片首次加载 / 合成，未处理）。
 
 ### ⭐ 上一轮：战斗视觉 / 地形 / AOE
 
@@ -392,7 +405,7 @@ cp -r tiles/{11..16} ../../trpg-client/public/tiles/
 
 ### 更早一轮（战斗系统 v0.1 及之前）
 - **战斗系统 v0.1**：网格 n vs n（10×6，切比雪夫）+ **阶段制**（先手方→后手方）；6 动作（移动/舞剑/防守/技能（五行）/交流（队友或对手）/撤退）；HP/TP·五行相克·**武器类型**（利器流血 / 钝器眩晕 / 徒手）/ Buff（10 基础 + 蓄力/穿甲）；**思路判定小/大模型可切**，且**模型只出「评价」、修正由代码映射**（±10，只作用于伤害）；NPC 走小模型（每侧 1 次调用，幻觉降级）；`start_battle` 工具 + `/battle/*` 路由；2D 俯视桌面**矩形 token** 前端；**环境设定「模拟战斗」**；**战斗 BGM**（boss 绑定专属曲）。详见 `trpg-world/战斗系统.md`。
-- **UI 事件管线 ⑧**：bg/music 全由小模型选（`ui_sim.py`）——场景按 `场景映射.md` 地点类型约束；音乐分 `音乐清单.md`（叙事）/`战斗音乐清单.md`（战斗）双清单；专属曲按 `曲名｜绑定` 触发；默认底色曲 `山中好岁月`；**只放一遍不循环**；换曲门槛=换背景或当前曲失效。
+- **UI 事件管线 ⑧**：bg/music 全由小模型选（`ui_sim.py`）——场景按 `场景映射.md` 地点类型约束；音乐分 `音乐清单.md`（叙事）/`战斗音乐清单.md`（战斗）双清单；专属曲按 `曲名｜绑定` 触发；默认底色曲 `山中好岁月`；**循环播放**（同名不重启）；换曲门槛=换背景或当前曲失效。
 - **时间加「刻」**（1 时辰=8 刻）；「继续」按钮可选 **0–4 刻**（0=不推进时间、只看信息）。
 - **金钱直接落账**（去掉请款/确认环节与账本；`modify_money` 直接改钱）。
 - **修 `query_nearby` 返回点**：改为几何体上**离查询点最近的点**（原为代表点，会让"跳窗"瞬移 184 米）。
@@ -418,7 +431,7 @@ cp -r tiles/{11..16} ../../trpg-client/public/tiles/
 > ⚠️ **别用外部工具开着 `游戏数据/*.json`**（编辑器 / DB Browser）——会 `PermissionError WinError 5`（现已重试 + 不崩，但写不进去）。
 
 ### 下一步优先级（建议）
-1. **WASD 碰撞（可走网格）** —— 现在能穿房屋/河流；从空间库预烘可走栅格（`walkable.py`）→ 前端查表碰撞。
+1. ~~**WASD 碰撞（可走网格）**~~ ✅ 已完成（2026-09-16）：改为**前端矢量碰撞**（`walkable.ts` + `export_walkable.py`）；水域/城墙阻挡，城门 25m / 桥 100m / 路∩水 为通道。
 2. **战斗时间折算接入** —— `clock.begin_battle/end_battle` 已就绪，但战斗流程还没接
    （开战 `begin_battle()` → ACCRUING；结束 `end_battle(回合数)` → +回合×60 游戏秒）。
 3. **`/move` 边走边同步**（可选）—— 现在坐标只在**输入时**提交给后端；加 `/move` 可让位置/迷雾实时跟上
@@ -432,7 +445,7 @@ cp -r tiles/{11..16} ../../trpg-client/public/tiles/
 > 暂缓：小模型润色文风 —— 结论是**别用 4B 改写叙事**（会改事实），已在 `总览.md` 加「文体」节让大模型直接写宋人白话。
 
 ### 未动的大块（对应 TODO 编号）
-小游戏（未做）；属性养成；日历（**年号/干支已做**，农历/节气未做）；地图扩展（`type` / 地域特色 / 世界地图 / 补史实城门 / 行程耗时 §8.4）；信息边界（§九）；知识库（§十）；**WASD 碰撞（可走网格）**。
+小游戏（未做）；属性养成；日历（**年号/干支已做**，农历/节气未做）；地图扩展（`type` / 地域特色 / 世界地图 / 补史实城门 / 行程耗时 §8.4）；信息边界（§九）；知识库（§十）。
 
 ---
 

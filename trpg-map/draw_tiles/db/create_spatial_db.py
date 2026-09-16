@@ -39,6 +39,29 @@ DB_FILE = os.path.join(DB_DIR, "map_spatial.db")
 MAP_ID = "yangzhou"
 MAP_NAME = "南宋扬州"
 
+# 营业时间：单一真相源 trpg-world/营业时间.json（kind → 时段）
+_HOURS_JSON = os.path.join(os.path.dirname(os.path.dirname(PROJECT_ROOT)), "trpg-world", "营业时间.json")
+_HOURS_CACHE = None
+
+
+def hours_for_kind(kind):
+    """某 ancient_kind 的营业时间（如 '卯-酉' / '全天'）。"""
+    global _HOURS_CACHE
+    if _HOURS_CACHE is None:
+        default, mapping = "全天", {}
+        try:
+            with open(_HOURS_JSON, encoding="utf-8") as f:
+                data = json.load(f)
+            default = data.get("默认") or "全天"
+            for h, kinds in (data.get("时段") or {}).items():
+                for k in kinds or []:
+                    mapping[k] = h
+        except Exception:
+            pass
+        _HOURS_CACHE = (mapping, default)
+    m, d = _HOURS_CACHE
+    return m.get(kind, d) if kind else d
+
 
 def resolve(path, default_dir):
     """绝对路径直接用；相对路径相对给定目录。"""
@@ -97,7 +120,8 @@ def main():
             ancient_kind  TEXT,
             geometry_type TEXT,
             coords        TEXT NOT NULL,
-            description   TEXT
+            description   TEXT,
+            hours         TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_features_map ON features(map_id);
         CREATE INDEX IF NOT EXISTS idx_features_kind ON features(ancient_kind);
@@ -156,14 +180,15 @@ def main():
             gtype,
             json.dumps(coords),
             o.get("description"),
+            hours_for_kind(o.get("ancient_kind")),
         ))
         # 先用临时占位 fid，插入后再回填 rtree
         batch_rt.append((0, minx, maxx, miny, maxy))
 
     cur.executemany(
         """INSERT INTO features(map_id, oid, name, name_modern, category,
-                                ancient_kind, geometry_type, coords, description)
-           VALUES(?,?,?,?,?,?,?,?,?)""",
+                                ancient_kind, geometry_type, coords, description, hours)
+           VALUES(?,?,?,?,?,?,?,?,?,?)""",
         batch_feat,
     )
 

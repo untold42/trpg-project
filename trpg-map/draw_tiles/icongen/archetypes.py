@@ -156,28 +156,72 @@ def boat_hull(d, cx, y, w=44, h=9):
 # ==========================================================================
 def arch_shop(d, cx=64, half=24, ground=102, floors=1, roof="gable", sign=True,
               hanging=False, awning=False, lanterns=0, door=(0, 0), win=2, **kw):
-    """铺面 / 作坊 / 民宅：单层为主，招牌+雨篷+幌子区分行业。"""
+    """铺面 / 作坊 / 民宅：单层为主，招牌+雨篷+幌子区分行业。
+
+    窄铺面（half<23）时窗口会撞角柱、幌子会压柱子 —— 这里统一**先算开间再摆窗**：
+    窗口只放在「角柱内侧 ~ 门框外侧」的可用 bay 里，放不下就不放（宁缺勿撞）。
+    """
     x0, x1 = cx - half, cx + half
+    pillar = 4.2
     podium(d, x0 - 6, x1 + 6, ground, h=10, steps=(cx - 8, cx + 8) if kw.get("steps") else None)
     wall_top = ground - 34
-    body(d, x0, x1, wall_top, ground, pillar=4.2)
+    body(d, x0, x1, wall_top, ground, pillar=pillar)
 
     dw, dh = door if door != (0, 0) else (16, 22)
     opening(d, cx - dw / 2, ground - dh, cx + dw / 2, ground, radius=4.5)
+
+    # 窗口：只放「角柱内侧 ~ 门框外侧」的可用 bay；太窄就不画（避开角柱重叠）
+    inner_l, inner_r = x0 + pillar + 2.0, x1 - pillar - 2.0
+    door_l, door_r = cx - dw / 2, cx + dw / 2
     if win:
-        for sgn in (-1, 1):
-            wx = cx + sgn * (dw / 2 + 6.5)
-            window_glow(d, wx - 4.5, wall_top + 9, wx + 4.5, wall_top + 21, width=1.1)
+        for b0, b1 in ((inner_l, door_l - 4.0), (door_r + 4.0, inner_r)):
+            bay = b1 - b0
+            if bay < 5.5:
+                continue
+            ww = min(9.0, bay)
+            wx = (b0 + b1) / 2
+            window_glow(d, wx - ww / 2, wall_top + 11, wx + ww / 2, wall_top + 23, width=1.1)
+
     if sign:
         sign_board(d, cx, wall_top + 4.5, w=min(26, half * 1.1))
     if hanging:
-        hanging_sign(d, x0 + 3.5, wall_top + 2)
-    if awning:                       # 雨篷只在窄店面上用；宽铺面会糊成一块
+        # 幌子挂到**檐下外缘**（原来 x0+3.5 正好压在角柱/窗上）
+        hanging_sign(d, x0 - 3.0, wall_top + 4)
+    if awning:
         sunblind(d, x0 + half * 0.45, x1 - half * 0.45, wall_top + 5)
     if lanterns:
-        for sgn in (-1, 1):
-            lantern(d, cx + sgn * (half + 2), wall_top + 6, body_top=wall_top + 12)
+        if hanging:                     # 幌子占了左檐，灯笼只在右檐一盏
+            lantern(d, x1 + 2, wall_top + 6, body_top=wall_top + 12)
+        else:
+            for sgn in (-1, 1):
+                lantern(d, cx + sgn * (half + 2), wall_top + 6, body_top=wall_top + 12)
     roof_style(d, roof, cx, half + 8, wall_top + 3, h=20)
+
+
+def arch_stall(d, cx=64, ground=102, canopy=True, flag=True, **kw):
+    """摊子（算命摊 / 卜卦摊）：**无墙**，大伞 + 桌案 + 人影 + 招幡。
+
+    算命是地摊不是房子（用户指出）。剪影靠“大伞”立住，40px 下也能认出。
+    """
+    # 桌案
+    rect(d, cx - 18, ground - 24, cx + 12, ground - 13, fill=STONE, width=1.6)
+    for lx in (cx - 15, cx + 8):
+        rect(d, lx, ground - 13, lx + 2.6, ground, fill=STONE_DK, width=1.0)
+    rect(d, cx - 14, ground - 31, cx - 8, ground - 24, fill=VERM, width=1.0)   # 签筒
+    lamp(d, cx + 3, ground - 28, r=2.6)                                        # 案上灯火
+    figure(d, cx - 5, ground - 13, 15)                                         # 摊主
+    if canopy:                                                                 # 大伞
+        px = cx + 10
+        seg(d, [(px, ground), (px, ground - 56)], INK, 2.0)
+        poly(d, [(cx - 30, ground - 52), (cx + 30, ground - 52),
+                 (cx + 22, ground - 62), (cx - 22, ground - 62)], fill=TILE, width=1.6)
+        seg(d, [(cx - 22, ground - 62), (cx + 22, ground - 62)], TILE_DK, 2.2)
+        seg(d, [(cx - 30, ground - 52), (cx + 30, ground - 52)], TILE_LT, 1.4)
+    if flag:                                                                   # 招幡
+        fx = cx + 30
+        seg(d, [(fx, ground), (fx, ground - 46)], INK, 1.6)
+        poly(d, [(fx, ground - 46), (fx + 13, ground - 41), (fx, ground - 34)],
+             fill=VERM, width=1.1)
 
 
 def arch_tower(d, cx=64, half=20, ground=102, floors=2, lanterns=2, sign=True, **kw):
@@ -347,11 +391,20 @@ def arch_nature(d, cx=64, ground=102, kind="water", **kw):
              fill=TILE, width=1.4)
         waves(d, 28, 56, 56, rows=1)
         waves(d, 60, 96, 88, rows=1)
-    else:                                                  # garden 园林：围墙 + 园门 + 亭 + 树
-        seg(d, [(24, 74), (24, ground), (104, ground), (104, 74)], STONE_DK, 2.6)
-        rect(d, 54, ground - 20, 74, ground - 8, fill=GLOW, width=1.3)      # 园门（夜亮）
-        roof_style(d, "pyramid", 44, 17, 66, h=15)                          # 亭
-        tree(d, 86, ground, h=32)
+    else:                                                  # garden 园林：园墙 + 月洞门 + 亭（有柱）+ 树
+        # 园墙（横贯后半）
+        seg(d, [(18, 76), (18, ground), (110, ground), (110, 76)], STONE_DK, 2.6)
+        # 月洞门（开在墙上，夜亮）
+        opening(d, 26, ground - 24, 46, ground - 4, radius=9.0)
+        # 亭：台基 + 四柱 + 攒尖顶 + 亭内人影（原来只有一顶浮空的屋顶，没柱子）
+        px = 84
+        podium(d, px - 20, px + 20, ground, h=8)
+        top = ground - 8
+        for dx in (-13, 13):
+            rect(d, px + dx - 2.4, top - 30, px + dx + 2.4, top, fill=VERM, width=1.2)
+        roof_style(d, "pyramid", px, 19, top - 29, h=15)
+        figure(d, px, top, 15)
+        tree(d, 58, ground, h=30)
 
 
 def arch_tomb(d, cx=64, ground=100, **kw):
@@ -456,7 +509,7 @@ SPECS = {
     "med":      ("shop",      dict(half=22, hanging=True, sign=True, lanterns=1)),
     "library":  ("tower",     dict(half=19, floors=2, lanterns=0, rose=False)),
     "academy":  ("hall",      dict(half=24, roof="xieshan", sign=True)),
-    "fortune":  ("shop",      dict(half=18, sign=True, win=0)),
+    "fortune":  ("stall",     dict()),
 
     # ---- 行旅 / 交通 ----
     "inn":      ("tower",     dict(half=20, lanterns=2)),
@@ -500,6 +553,7 @@ ARCHES = {
     "shop": arch_shop, "tower": arch_tower, "hall": arch_hall, "temple": arch_temple,
     "stage": arch_stage, "bridge": arch_bridge, "boat": arch_boat, "nature": arch_nature,
     "tomb": arch_tomb, "granary": arch_granary, "gate": arch_gate, "yard": arch_yard,
+    "stall": arch_stall,
 }
 
 

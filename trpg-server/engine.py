@@ -34,10 +34,11 @@ from tools.folder_to_prompt import folder_to_prompt  # noqa: F401  (供 main 使
 from tools.state_manager import state
 from tools.game_clock import clock
 from tools import derived
-from tools.ui_events import UI_EVENTS_KEY, music_event
+from tools.ui_events import UI_EVENTS_KEY, music_event, bg_event
 from tools import world_state
 from tools import world_worker
 from tools import ui_sim
+from tools import map_query
 from tools.registry import SAVE_TOOLS
 
 # ------------------------------------------------------------
@@ -102,6 +103,29 @@ def snapshot_state() -> str:
         但**不发给大模型**（足迹白占上下文；时钟只有一个裸秒数，徒增困惑）。
     """
     return render_state(state_dict())
+
+
+def nearby_places_text(radius_km: float = 0.6, limit: int = 12) -> str:
+    """玩家附近 0.6km 内的**实名地点**清单（供「地名必须真实」规则）。
+
+    每轮注入，给主持人真实地名可用；附近没有实名地点时给「用泛称」的兜底提示。
+    """
+    pos = (state.load("基本信息", {}) or {}).get("位置", {}) or {}
+    lon, lat = pos.get("经度"), pos.get("纬度")
+    if not isinstance(lon, (int, float)) or not isinstance(lat, (int, float)):
+        return ""
+    try:
+        places = map_query.nearby_places_brief(lon, lat, radius_km=radius_km, limit=limit)
+    except Exception:
+        return ""
+    if not places:
+        return "（附近 0.6km 内没有实名的店铺/坊巷——**不要编具体店名**，用「一家客栈」「街口酒肆」这类泛称。）"
+    lines = []
+    for p in places:
+        d = p.get("距玩家（米）")
+        dist = f"{d}米" if isinstance(d, int) else ""
+        lines.append(f"- {p['name']}（{p['kind']}，{p.get('方位', '')}{dist}）")
+    return "\n".join(lines)
 
 
 def load_previous_story() -> str:
@@ -401,6 +425,13 @@ class GameSession:
             "role": "system",
             "content": "===== 当前状态 =====\n" + snapshot_state(),
         })
+        # 「地名必须真实」——附玩家附近实名地点，供主持人取用真名（禁止生造）
+        nearby = nearby_places_text()
+        if nearby:
+            msgs.append({
+                "role": "system",
+                "content": "===== 附近实名地点（NPC 提地名只能用真实存在的，禁止生造）=====\n" + nearby,
+            })
         return msgs
 
 # ------------------------------------------------------------
@@ -439,10 +470,12 @@ class TurnRunner:
         self.tools_map = tools_map
         self._lock = threading.Lock()  # 串行化回合，避免并发请求交错
 
-    def run(self, user_input: str, mode: str = "action") -> list[dict]:
+    def run(self, user_input: str, mode: str = "action", from_explore: bool = False) -> list[dict]:
         """跑完一个回合，返回统一事件流。
 
         mode: "action"（角色行动）| "gm"（玩家对主持人的场外话）。
+        from_explore: 本轮是**玩家从探索模式发起的输入**（带坐标）——
+                      进入叙事时必须重新选一次背景/音乐（见 #5）。
         形状：[...工具 UI 事件, ...LLM 叙事指令]
         每条为 {"type": "ui"|"chat"|"narration", ...}
         """
@@ -450,12 +483,12 @@ class TurnRunner:
             # LLM 请求窗口：暂停连续时钟（生成/工具耗时不计入游戏时间），返回后恢复
             clock.pause("turn")
             try:
-                return self._run(user_input, mode)
+                return self._run(user_input, mode, from_explore)
             finally:
                 clock.resume("turn")
 
     # ---- 内部 ----
-    def _run(self, user_input: str, mode: str = "action") -> list[dict]:
+    def _run(self, user_input: str, mode: str = "action", from_explore: bool = False) -> list[dict]:
         session = self.session
         session.history.append({"role": "user", "content": user_input})
 
@@ -508,7 +541,8 @@ class TurnRunner:
         # 5b) 时间权威：叙述推进了时间却没调 update_time → 记提醒，下一轮注入
         self._check_time_authority(events, tool_records)
         # 5c) UI 事件（小模型）：背景 / 音乐
-        scene_ui = self._scene_ui_events(events)
+        #     探索→叙事（from_explore）时 **强制重选**（绕过去重），保证一切入叙事就有 bg+音乐
+        scene_ui = self._scene_ui_events(events, force=from_explore)
 
         session.history.append({"role": "assistant", "content": raw})
         session.append_turn({
@@ -636,12 +670,13 @@ class TurnRunner:
                 print(f"[time] 叙述含时间流逝「{hit}」但未调用 update_time")
             self.session.pending_time_note = self._TIME_NOTE.format(hit=hit)
 
-    def _scene_ui_events(self, events) -> list[dict]:
+    def _scene_ui_events(self, events, force: bool = False) -> list[dict]:
         """小模型判断本幕背景 / 音乐。
 
         - 传入当前地点 + 当前背景/音乐，供小模型判断；
         - **换曲规则**：背景变化 **或** 当前曲已不适用于本地点/在场时，才允许换曲；
           当前曲不再适用且模型没给新曲 → 发「停乐」。
+        - **force=True**（探索→叙事）：绕过去重，至少发一份 bg+音乐（模型没给就兵底）。
         """
         if not ui_sim.ENABLED:
             return []
@@ -669,7 +704,7 @@ class TurnRunner:
                 present=present,
             )
         except Exception:
-            return []
+            produced = []
 
         bg_ev = next((e for e in produced if e.get("kind") == "bg"), None)
         music_ev = next((e for e in produced if e.get("kind") == "music"), None)
@@ -679,10 +714,18 @@ class TurnRunner:
         if bg_ev:
             data = bg_ev.get("data") or {}
             key = (data.get("position"), data.get("time"))
-            if key != self.session.last_bg:
+            if force or key != self.session.last_bg:
                 self.session.last_bg = key
                 scene_changed = True
                 out.append(bg_ev)
+        elif force:
+            # 模型没给背景：用当前地点的第一个候选场景兵底（务必发一份）
+            fb = self._fallback_bg_event(loc)
+            if fb:
+                d = fb.get("data") or {}
+                self.session.last_bg = (d.get("position"), d.get("time"))
+                scene_changed = True
+                out.append(fb)
 
         # 当前曲是否仍适用于本地点 / 在场
         try:
@@ -692,16 +735,34 @@ class TurnRunner:
         last = self.session.last_music
         music_invalid = bool(last) and last not in allowed
 
-        if music_ev and (scene_changed or music_invalid):
+        if music_ev:
             track = (music_ev.get("data") or {}).get("track")
-            if track != last or music_invalid:
-                self.session.last_music = track
-                out.append(music_ev)
-        elif music_invalid and not music_ev:
+            if force or scene_changed or music_invalid:
+                if force or track != last or music_invalid:
+                    self.session.last_music = track
+                    out.append(music_ev)
+        elif force:
+            self.session.last_music = ui_sim.DEFAULT_TRACK
+            out.append(music_event(ui_sim.DEFAULT_TRACK))
+        elif music_invalid:
             # 当前曲已不适用，模型也没给新曲 → 停乐
             self.session.last_music = ""
             out.append(music_event(ui_sim.NONE))
         return out
+
+    def _fallback_bg_event(self, loc: str):
+        """强选背景时的兵底：当前地点允许的第一个场景 + 当前时辰。"""
+        try:
+            cands = ui_sim.scene_candidates(loc)
+        except Exception:
+            cands = []
+        if not cands:
+            return None
+        try:
+            t = str(((state.load("基本信息", {}) or {}).get("时间", {}) or {}).get("时辰", ""))
+        except Exception:
+            t = ""
+        return bg_event(cands[0], t)
 
     def _finalize(self, result, tool_msgs: list[dict]):
         """返回 (最终 assistant 原文, 解析出的指令数组)。"""

@@ -1,7 +1,11 @@
 /* 万能通用的画幕大小 */
 .background {
   position: relative;
-  width: 100%;
+  /* 16:9 画布必须完整落在窗口内：
+     宽度取「100%」与「按窗口高度反推的宽度」中较小者，
+     否则窗口比 16:9 更高时（16:10 屏 / 侧边停靠 DevTools / 浏览器缩放）
+     高度 = 100vw×9/16 会超出窗口，把 logo、菜单等绝对定位元素顶出界。 */
+  width: min(100%, calc(100vh * 16 / 9));
   aspect-ratio: 16 / 9;
   overflow: hidden;
 }

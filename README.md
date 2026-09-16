@@ -144,7 +144,7 @@ python tilegen/generate_tiles.py       # 重生成瓦片
 | 三模式状态机（探索/叙事/战斗） | `GameController.gameMode` + `Map.tsx`（WASD 移动 / 光标覆盖 / 即时迷雾） | ✅ 已完成 |
 | 探索坐标注入（从哪到哪） | `/action` 带 `坐标`/`上一坐标` → `_apply_move` 更新位置 + `【移动】`提醒 | ✅ 已完成 |
 | WASD 连续移动（命令式 + 相机跟随 + 速度随时钟缩放） | `Map.tsx` `ExploreControls` / `GameController` | ✅ 已完成 |
-| 碰撞（可走网格） | `walkable.py` | 🚧 |
+| 碰撞（水域 / 城墙） | `walkable.ts`（数据：`export_walkable.py` → `public/data/walkable.geojson`） | ✅ |
 | 上一轮状态 + 当前状态一起发给 LLM | `engine.state_stack`（`deque(maxlen=2)`） | ✅ 已完成 |
 | 跨日联动（天气 / world_sim） | `time_flow.pump()`（跨日 → 天气 + 世界推演） | ✅ 已完成 |
 | 时间影响数值（熬夜扣精力 + `sleep` 恢复） | `time_flow.py` + `时间影响.json` | ✅ 已完成 |
@@ -199,7 +199,7 @@ python tilegen/generate_tiles.py       # 重生成瓦片
 > **WASD 连续移动**（2026-09-15）：`Map.tsx` 的 `ExploreControls` 用命令式 `L.marker` + rAF
 > 逐帧更新位置与相机跟随（**不触发 React 重渲染**）；真实速度 = 游戏内步速 `1.4 m/s` × 时钟倍率
 > （时间快 15 倍 → 标记也快 15 倍），保证游戏内步行速度真实；输入框聚焦时不拦截 WASD。
-> **不能用点击瞬移**（点地图只看 POI 信息，不移动玩家）。**碰撞（可走网格）待做。**
+> **不能用点击瞬移**（点地图只看 POI 信息，不移动玩家）。**碰撞已完成**：水域 / 城墙阻挡，城门 25m、桥 100m、路∩水 为通道（见 §7.2）。
 >
 > **上一轮状态 + 当前状态**：`engine` 维护一个**长度 2 的栈**（`state_stack = deque(maxlen=2)`）
 > ——每轮末 `append(本轮状态)`，旧状态自动挤掉；下一轮把**栈顶**（上一轮）与
@@ -391,7 +391,7 @@ rAF 每帧只改一个变量。整点换时辰时加一点转场 / 音效。
 | `tools/game_clock.py` | **新建**：`Clock` 单例（标量 + 状态机 + 格式化） | 新建 | ✅ 已完成 |
 | `tools/time_flow.py` | **新建**：时间流逝的后果（跨时辰扣精力 / 跨日切天气+推演 / `sleep`） | 新建 | ✅ 已完成 |
 | `tools/registry.py` | 摘除调试文件工具（`_DISABLED`：不下发 LLM、不可调用；代码保留，`TRPG_FILE_TOOLS=1` 可启用） | 🔧 | ✅ 已完成 |
-| `tools/walkable.py` | **新建**：可走网格预烘 + 碰撞查询 | 新建 | 🚧 |
+| `tools/walkable.py` | ~~可走网格预烘~~ → 改为**前端矢量碰撞**：`trpg-client/src/in-game/walkable.ts` + `trpg-map/draw_tiles/export_walkable.py` | 新建 | ✅ 已完成 |
 | `游戏数据/时钟.json` | **新建**（首次自动从 `基本信息.时间` 迁移） | 数据 | ✅ 已完成 |
 | `engine.py` | `snapshot_state` 注入刻级时间；请求窗口暂停；快照回滚时钟 | 🔧 | ✅ 已完成（护栏换语义待做） |
 | `main.py` | 新增 `/clock`（锚点 / 暂停 / 恢复） | 🔧 | ✅ 已完成（`/action` 带锚点待做） |
@@ -437,7 +437,7 @@ rAF 每帧只改一个变量。整点换时辰时加一点转场 / 音效。
 ✅ 三模式状态机：探索（整屏 zoom18 地图 + **WASD**）/ 叙事（对话+立绘+古钟）/ 战斗（战棋）
 ✅ 探索坐标 → 叙事：`/action` 带 `坐标`/`上一坐标` → 【移动】系统提醒
 ✅ 窗口失焦自动暂停（Clock 内部）
-❌ 未做：WASD **碰撞**（可走网格）、战斗时间折算接入、`/move` 边走边同步、手柄、语音、
+❌ 未做：战斗时间折算接入、`/move` 边走边同步、手柄、语音、
         NPC 地图标记、昼夜光照、在场追踪、农历/节气、转场动画
 ```
 

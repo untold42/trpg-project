@@ -11,6 +11,7 @@
     数据/<城市>_南宋世界.json              ← 下游唯一输入
      ├─ export_clickable.py   → trpg-client/public/data/clickable.geojson
      ├─ db/create_spatial_db.py → draw_tiles/db/map_spatial.db
+     │      └─ export_walkable.py → trpg-client/public/data/walkable.geojson（碰撞层）
      └─ tilegen/generate_tiles.py → draw_tiles/tiles/{z}/{x}/{y}.png
                                         └─ 拷到 trpg-client/public/tiles/
 
@@ -58,6 +59,7 @@ STEPS = [
     ("world", "世界生成 → 南宋世界"),
     ("clickable", "导出前端点击层"),
     ("db", "重建空间库 map_spatial.db"),
+    ("walkable", "导出前端碰撞层（水域/城墙/城门/桥/路）"),
     ("tiles", "生成瓦片"),
     ("sync", "同步瓦片到前端 public/tiles"),
 ]
@@ -106,6 +108,11 @@ def step_db(city):
     run([PY, os.path.join("db", "create_spatial_db.py")], cwd=DRAW)
 
 
+def step_walkable(city):
+    # 读 db/map_spatial.db，故必须在 db 之后
+    run([PY, "export_walkable.py"], cwd=DRAW)
+
+
 def step_tiles(city):
     env = dict(BASE_ENV, TRPG_CITY=city)
     print("$ TRPG_CITY=%s python tilegen/generate_tiles.py" % city)
@@ -138,6 +145,7 @@ HANDLERS = {
     "world": step_world,
     "clickable": step_clickable,
     "db": step_db,
+    "walkable": step_walkable,
     "tiles": step_tiles,
     "sync": step_sync,
 }

@@ -3,6 +3,18 @@ import { useMap } from "react-leaflet";
 import * as L from "leaflet";
 import type { Feature, FeatureCollection, GeoJsonObject } from "geojson";
 import { mapStats } from "./mapStats";
+import { SHICHEN } from "./useGameClock";
+
+/** 该地点此刻是否营业（hours 为「卯-酉」等时辰区间；全天/异常 → 开） */
+function isOpenNow(hours: string | undefined, shichen: number): boolean {
+  if (!hours || hours === "全天" || shichen < 0) return true;
+  const parts = hours.split("-");
+  if (parts.length !== 2) return true;
+  const s = SHICHEN.indexOf(parts[0].trim());
+  const e = SHICHEN.indexOf(parts[1].trim());
+  if (s < 0 || e < 0) return true;
+  return s <= e ? (shichen >= s && shichen <= e) : (shichen >= s || shichen <= e);
+}
 
 const GEO_URL = "/data/clickable.geojson";
 const ICON_DIR = "/mapicons";
@@ -27,10 +39,16 @@ interface ClickableLayerProps {
   radiusKm?: number;
   /** 是否夜晚（由游戏时钟裁决，见 GameController）：决定取 <键>/night.png 还是 <键>/day.png */
   isNight?: boolean;
+  /** 当前时辰索引（0=子…11=亥）：打烊的地点夜里不亮灯 */
+  shichen?: number;
   /** 总览模式：**不做迷雾过滤**，全部要素直接可见（菜单里的地图用） */
   noFog?: boolean;
   /** 单点迷雾气泡（探索模式）：只保留这个点 ± radiusKm 内的要素 */
   focus?: { lon: number; lat: number } | null;
+  /** 诊断开关（?noicons=1）：不渲染图标层 */
+  hideIcons?: boolean;
+  /** 诊断开关（?nohit=1）：不渲染命中层 */
+  hideHit?: boolean;
 }
 
 interface ClickableProps {
@@ -44,6 +62,8 @@ interface ClickableProps {
   icon?: string;
   icon_lon?: number;
   icon_lat?: number;
+  /** 营业时间（来自 营业时间.json，如「卯-酉」「全天」） */
+  hours?: string;
 }
 
 /* ================= IndexedDB 缓存 ================= */
@@ -274,9 +294,12 @@ function pointToLayer(_feature: Feature, latlng: L.LatLng): L.CircleMarker {
 
 /** 不可见命中层（任何 zoom 都可点）
  *
- * 性能关键：**只装视口内的要素**，且只在「视口移出上次渲染范围」时才重建。
- * 早先是把**全部已探索要素**一次性塞进 L.geoJSON —— 探索范围越大越重，
- * 而 Canvas 每次 moveend 都要重绘所有图层 → 越玩越卡。
+ * 性能关键（2026-09-16 定案：`?nohit=1` 不卡、`?nofog=1` 最流畅 → 就是这里）：
+ *   1. **图层只挂一次**，不再依赖 `data`。—— 早先 effect 依赖 `[map, data, extents]`，
+ *      迷雾每走一段就让 `data` 变成新数组，于是整个 canvas 层被拆掉重建
+ *      （新建 renderer + clearLayers + addData 几百个 L.Path）→ 「新走的地方卡」。
+ *   2. **增量增删**：Map<Feature, L.Layer>，只加新进视口的、只删离开视口的。
+ *   3. `data` 变化时**不重建图层**，只按当前视口重新 diff（mode="data"）。
  */
 function HitLayer({
   data, extents,
@@ -285,68 +308,87 @@ function HitLayer({
   extents: Map<Feature, FeatureExtent | null>;
 }) {
   const map = useMap();
+
+  // 用 ref 读最新值，让图层生命周期完全不依赖 data / extents
+  const dataRef = useRef(data); dataRef.current = data;
+  const extentsRef = useRef(extents); extentsRef.current = extents;
+
+  const groupRef = useRef<L.LayerGroup | null>(null);
+  const optionsRef = useRef<(L.GeoJSONOptions & L.PathOptions) | null>(null);
+  const renderedRef = useRef<Map<Feature, L.Layer>>(new Map());
   const renderedBounds = useRef<L.LatLngBounds | null>(null);
 
+  const clearAll = useCallback(() => {
+    const group = groupRef.current;
+    if (!group) return;
+    renderedRef.current.forEach((l) => group.removeLayer(l));
+    renderedRef.current.clear();
+  }, []);
+
+  /** mode: "viewport"=视口移动（可短路）｜"data"=内容变了（必重算，但不重建层）｜"clear"=整层重画 */
+  const render = useCallback((mode: "viewport" | "data" | "clear" = "viewport") => {
+    const group = groupRef.current;
+    const options = optionsRef.current;
+    if (!group || !options) return;
+
+    const view = map.getBounds();
+    // 视口还在上次渲染范围内 → 什么都不用做（内容变化用 mode="data" 绕过）
+    if (mode === "viewport" && renderedBounds.current && renderedBounds.current.contains(view)) {
+      return;
+    }
+
+    const t0 = performance.now();
+    if (mode === "clear") clearAll();
+
+    const b = view.pad(0.35);
+    const w = b.getWest(), e = b.getEast(), s = b.getSouth(), n = b.getNorth();
+    const ex = extentsRef.current;
+    const rendered = renderedRef.current;
+    const want = new Set<Feature>();
+
+    for (const f of dataRef.current.features) {
+      const x = ex.get(f);
+      if (!x) continue;
+      const [mnx, mny, mxx, mxy] = x.bb;
+      if (mxx < w || mnx > e || mxy < s || mny > n) continue;
+      want.add(f);
+      if (rendered.has(f)) continue;              // 已在场上 → 复用
+      const layer = L.geoJSON(f as unknown as GeoJsonObject, options);
+      layer.addTo(group);
+      rendered.set(f, layer);
+    }
+
+    // 删掉本次不再需要的
+    rendered.forEach((layer, f) => {
+      if (!want.has(f)) { group.removeLayer(layer); rendered.delete(f); }
+    });
+
+    mapStats.hits = rendered.size;
+    mapStats.hitMs = performance.now() - t0;
+    renderedBounds.current = b;
+  }, [map, clearAll]);
+
+  // 图层生命周期：只挂一次
   useEffect(() => {
-    const renderer = L.canvas();
-    const options: L.GeoJSONOptions & L.PathOptions = {
+    optionsRef.current = {
       style: clickStyle,
       pointToLayer,
       onEachFeature,
-      renderer,
+      renderer: L.canvas(),        // renderer 也只建一次
     };
-
-    // 空层先挂上，之后只换内容（避免每次重建整个图层对象）
-    const layer = L.geoJSON(undefined as never, options);
-    layer.addTo(map);
+    const group = L.layerGroup().addTo(map);
+    groupRef.current = group;
+    render("clear");
 
     let timer: number | null = null;
-
-    const render = (force = false) => {
-      const t0 = performance.now();
-      const view = map.getBounds();
-
-      // 视口还在上次渲染范围内 → 什么都不用做
-      if (
-        !force &&
-        renderedBounds.current &&
-        renderedBounds.current.contains(view)
-      ) {
-        return;
-      }
-
-      const b = view.pad(0.35);
-      const w = b.getWest(), e = b.getEast(), s = b.getSouth(), n = b.getNorth();
-
-      const feats = data.features.filter((f) => {
-        const ex = extents.get(f);
-        if (!ex) return false;
-        const [mnx, mny, mxx, mxy] = ex.bb;
-        return !(mxx < w || mnx > e || mxy < s || mny > n);
-      });
-
-      layer.clearLayers();
-      layer.addData({
-        type: "FeatureCollection",
-        features: feats,
-      } as unknown as GeoJsonObject);
-
-      mapStats.hits = feats.length;
-      mapStats.hitMs = performance.now() - t0;
-
-      renderedBounds.current = b;
-    };
-
-    render(true);
-
     const onMoveEnd = () => {
       if (timer !== null) window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         timer = null;
-        render(false);
+        render("viewport");
       }, 180);
     };
-    const onZoomEnd = () => render(true);
+    const onZoomEnd = () => render("clear");
 
     map.on("moveend", onMoveEnd);
     map.on("zoomend", onZoomEnd);
@@ -354,10 +396,18 @@ function HitLayer({
       if (timer !== null) window.clearTimeout(timer);
       map.off("moveend", onMoveEnd);
       map.off("zoomend", onZoomEnd);
-      layer.remove();
+      clearAll();
+      group.remove();
+      groupRef.current = null;
+      optionsRef.current = null;
       renderedBounds.current = null;
     };
-  }, [map, data, extents]);
+  }, [map, render, clearAll]);
+
+  // data / extents 变化（迷雾）：只重算，不重建图层
+  useEffect(() => {
+    render("data");
+  }, [data, extents, render]);
 
   return null;
 }
@@ -450,7 +500,7 @@ function iconPosition(f: Feature, p: ClickableProps): L.LatLng | null {
   return null;
 }
 
-function IconsLayer({ data, isNight }: { data: FeatureCollection; isNight: boolean }) {
+function IconsLayer({ data, isNight, shichen }: { data: FeatureCollection; isNight: boolean; shichen: number }) {
   const map = useMap();
 
   // 图标键集合：用**签名**稳定引用，否则 data 一变就重新 preload + 额外一次渲染
@@ -494,6 +544,7 @@ function IconsLayer({ data, isNight }: { data: FeatureCollection; isNight: boole
   const dataRef = useRef(data); dataRef.current = data;
   const srcRef = useRef(iconSrc); srcRef.current = iconSrc;
   const nightRef = useRef(isNight); nightRef.current = isNight;
+  const shichenRef = useRef(shichen); shichenRef.current = shichen;
 
   const clearAll = useCallback(() => {
     renderedRef.current.forEach((m) => m.remove());
@@ -529,17 +580,20 @@ function IconsLayer({ data, isNight }: { data: FeatureCollection; isNight: boole
 
     const size = iconSizeFor(zoom);
 
-    const getIcon = (key: string): L.Icon | L.DivIcon => {
-      const ck = `${key}|${size}|${night ? "n" : "d"}`;
+    const getIcon = (key: string, open: boolean): L.Icon | L.DivIcon => {
+      const url = src[key];
+      // 缓存键带 url 与「是否营业」：夜色里打烊的店不发光（open=false → 无 is-open）
+      const ck = `${key}|${size}|${night ? "n" : "d"}|${url ?? "∅"}|${open ? "o" : "c"}`;
       let icon = cacheRef.current.get(ck);
       if (!icon) {
-        const url = src[key];
         icon = url
           ? L.icon({
               iconUrl: url,
               iconSize: [size, size],
               iconAnchor: [size / 2, size / 2],
               popupAnchor: [0, -size / 2 - 4],
+              // 黑夜时由 CSS 给「营业中」的图标发光（索引：GameController.css）
+              className: "map-poi-icon" + (open ? " is-open" : ""),
             })
           : missingIconFor(size);
         cacheRef.current.set(ck, icon);
@@ -558,9 +612,16 @@ function IconsLayer({ data, isNight }: { data: FeatureCollection; isNight: boole
       if (!pos || !bounds.contains(pos)) continue;
 
       want.add(f);
-      if (rendered.has(f)) continue;      // 已在场上 → 复用
+      const open = isOpenNow(p.hours, shichenRef.current);
+      const icon = getIcon(p.icon, open);
+      const existing = rendered.get(f);
+      if (existing) {
+        // 已在场上：若之前的图标是「兜底圆点」而现在真图到了 → 换掉（增量，不重建）
+        if (existing.options.icon !== icon) existing.setIcon(icon);
+        continue;
+      }
 
-      const marker = L.marker(pos, { icon: getIcon(p.icon), title: p.name });
+      const marker = L.marker(pos, { icon, title: p.name });
       marker.bindPopup(buildPopupHtml(p), { className: "ink-popup" });
       marker.addTo(group);
       rendered.set(f, marker);
@@ -610,7 +671,7 @@ function IconsLayer({ data, isNight }: { data: FeatureCollection; isNight: boole
   // data / 图标 / 昼夜 变化 → **增量**更新（只增删差异）
   useEffect(() => {
     render(false);
-  }, [data, iconSrc, isNight, render]);
+  }, [data, iconSrc, isNight, shichen, render]);
 
   return null;
 }
@@ -622,8 +683,11 @@ export default function ClickableLayer({
   footprints,
   radiusKm = 0.5,
   isNight = false,
+  shichen = -1,
   noFog = false,
   focus = null,
+  hideIcons = false,
+  hideHit = false,
 }: ClickableLayerProps) {
   const [features, setFeatures] = useState<Feature[] | null>(null);
 
@@ -720,8 +784,8 @@ export default function ClickableLayer({
 
   return (
     <>
-      <HitLayer data={data} extents={extents} />
-      <IconsLayer data={data} isNight={isNight} />
+      {!hideHit && <HitLayer data={data} extents={extents} />}
+      {!hideIcons && <IconsLayer data={data} isNight={isNight} shichen={shichen} />}
     </>
   );
 }
