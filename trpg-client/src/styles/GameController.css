@@ -34,6 +34,75 @@
     z-index: 50;
 }
 
+/* ⚠️ 曾试过给 .leaflet-*-pane 加 will-change: transform（想让平移免重栅格化），
+   但瓦片是 z16 放大 4 倍 + 几百个 DOM marker，强制合成层会吃满显存，
+   实测直接**黑屏**。已回退，不要再加。 */
+
+/* 调试 HUD（硬编码开）：**挂在 document.body 上 + fixed 定位**，
+   绕开 .leaflet-container 的 overflow 裁剪与 .explore-map 的层叠上下文 */
+.map-debug-hud {
+    position: fixed;
+    left: 8px;
+    bottom: 8px;
+    z-index: 99999;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, .72);
+    color: #d8f5c8;
+    font: 12px/1.5 Consolas, Menlo, monospace;
+    white-space: pre;
+    pointer-events: none;
+}
+
+/* ============================================================
+   玩家棋子：圆圈包围的「梁」字
+
+   原来是 18px 纯红圆点 —— 太小、也与国风不搭。
+   现在做成“铜钱/印章”感的圆牌，中间一个「梁」。
+   ============================================================ */
+/* 注意：用 .leaflet-div-icon.player-marker（两个类）提高优先级，
+   否则单类的 .player-marker 会被 Leaflet 自带的 .leaflet-div-icon
+   （白底 + 边框）覆盖 —— 取决于两者 CSS 的加载顺序。 */
+.leaflet-div-icon.player-marker {
+    background: none;
+    border: none;
+}
+
+.player-token {
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+
+    border-radius: 50%;
+    border: 2px solid #7a1f1f;
+    background: radial-gradient(circle at 35% 28%, #fff8e8 0%, #eddcb4 62%, #dcc694 100%);
+    box-shadow:
+        0 0 0 2px rgba(255, 248, 232, .85),
+        0 2px 6px rgba(0, 0, 0, .45);
+
+    color: #7a1f1f;
+    font-family: "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", "SimSun", serif;
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1;
+
+    user-select: none;
+    cursor: default;
+    transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease;
+}
+
+/* 按住 Shift 奔跑时：描边转亮、微微放大 */
+.player-marker.is-running .player-token {
+    border-color: #b03a2e;
+    box-shadow:
+        0 0 0 2px rgba(255, 214, 140, .95),
+        0 3px 10px rgba(0, 0, 0, .5);
+    transform: scale(1.08);
+}
+
 /* 历史记录按钮 */
 .history-button {
     position: absolute;
@@ -389,4 +458,17 @@
     font-size: clamp(1rem, 1.1vw, 1.25rem);
     line-height: 2.1;
     white-space: pre-line;
+}
+
+/* 地图错误边界：崩溃时显示错误文本，而不是一片黑 */
+.map-error {
+    position: absolute;
+    inset: 0;
+    z-index: 9999;
+    overflow: auto;
+    padding: 16px;
+    background: #1b1b1b;
+    color: #ffb4a2;
+    font: 13px/1.6 Consolas, Menlo, monospace;
+    white-space: pre-wrap;
 }

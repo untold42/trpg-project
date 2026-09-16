@@ -1,5 +1,7 @@
 import os
 
+import numpy as np
+
 from PIL import Image, ImageDraw
 
 from config import (
@@ -12,26 +14,16 @@ from config import (
     WATER_OUTLINE,
     RIVER_COLOR,
 
-    BUILDING_COLOR,
-    BUILDING_OUTLINE,
-
-    HISTORIC_BUILDING_COLOR,
-    HISTORIC_BUILDING_OUTLINE,
-
-    TEMPLE_COLOR,
-    TEMPLE_OUTLINE,
-
     WALL_COLOR,
 
-    POINT_COLOR,
-
-    GRASS_COLOR
+    FARMLAND_HATCH,
+    FOREST_DOT,
+    SCRUB_DOT,
 )
 
 from styles import (
-    get_landuse_color,
+    get_land_style,
     get_road_style,
-    should_draw_building
 )
 
 from texture import add_paper_texture
@@ -61,16 +53,65 @@ def _local_points(points, origin_x, origin_y):
 
 
 # ============================================================
-# 多边形辅助
+# 全局网格（纹理图案用；跨瓦片连续）
+# ============================================================
+
+def _global_grid(tile_x, tile_y):
+
+    gx = (
+        np.arange(TILE_SIZE) + tile_x * TILE_SIZE
+    ).astype(np.float64)[None, :]
+
+    gy = (
+        np.arange(TILE_SIZE) + tile_y * TILE_SIZE
+    ).astype(np.float64)[:, None]
+
+    return gx, gy
+
+
+def _hash01(gx, gy):
+
+    h = np.sin(gx * 12.9898 + gy * 78.233) * 43758.5453
+
+    return h - np.floor(h)
+
+
+def _overlay_mask(img, selected, color, alpha=1.0):
+
+    if not selected.any():
+        return
+
+    data = (selected.astype(np.float64) * alpha * 255.0)
+
+    mask = Image.fromarray(
+        np.clip(data, 0, 255).astype(np.uint8),
+        "L"
+    )
+
+    img.paste(
+        Image.new("RGB", img.size, color),
+        (0, 0),
+        mask
+    )
+
+
+def _polygon_mask(ring, origin_x, origin_y):
+
+    mask = Image.new("L", (TILE_SIZE, TILE_SIZE), 0)
+
+    ImageDraw.Draw(mask).polygon(
+        _local_points(ring, origin_x, origin_y),
+        fill=255
+    )
+
+    return np.asarray(mask) > 0
+
+
+# ============================================================
+# 多边形 / 折线辅助
 # ============================================================
 
 def _iter_polygons(prepared):
-
-    """
-    把 Polygon / MultiPolygon 统一成：
-    一个生成器，每次 yield 一个“多边形”，
-    每个多边形是 [外环, 内环, ...]。
-    """
 
     if prepared["type"] == "Polygon":
         yield prepared["coordinates"]
@@ -81,134 +122,132 @@ def _iter_polygons(prepared):
             yield polygon
 
 
-def _draw_polygons(
-    draw,
-    layer,
-    origin_x,
-    origin_y,
-    color_fn,
-    outline_fn=None
-):
+def _iter_lines(prepared):
 
-    """
-    通用的多边形绘制：
-    - 只画外环（忽略内环），避免简单填充把洞填死；
-    - 超出 Tile 的部分交给 PIL 自动裁剪。
-    """
+    if prepared["type"] == "LineString":
+        yield prepared["coordinates"]
+
+    elif prepared["type"] == "MultiLineString":
+
+        for line in prepared["coordinates"]:
+            yield line
+
+
+# ============================================================
+# 土地
+# ============================================================
+
+def _draw_land(img, draw, layer, zoom, tile_x, tile_y, origin_x, origin_y):
+
+    gx, gy = _global_grid(tile_x, tile_y)
+
+    dots = _hash01(gx, gy) > 0.972
+    hatch = ((gx + gy) % 7.0) < 1.0
+
+    forest_fill = get_land_style({"landuse": "forest"})[0]
 
     for prepared in layer:
 
         tags = prepared["obj"].get("tags", {})
 
-        fill = color_fn(tags)
+        fill, pattern = get_land_style(tags)
 
         if fill is None:
             continue
-
-        outline = outline_fn(tags) if outline_fn else None
 
         for polygon in _iter_polygons(prepared):
 
             if not polygon:
                 continue
 
-            outer_ring = _local_points(
-                polygon[0],
-                origin_x,
-                origin_y
-            )
+            outer_ring = _local_points(polygon[0], origin_x, origin_y)
 
             if len(outer_ring) < 3:
                 continue
 
-            draw.polygon(
-                outer_ring,
-                fill=fill,
-                outline=outline
+            draw.polygon(outer_ring, fill=fill)
+
+            if pattern is None or zoom < 13:
+                continue
+
+            inside = _polygon_mask(polygon[0], origin_x, origin_y)
+
+            if pattern == "dot":
+
+                color = FOREST_DOT if fill == forest_fill else SCRUB_DOT
+
+                _overlay_mask(img, inside & dots, color, alpha=0.75)
+
+            elif pattern == "hatch":
+
+                _overlay_mask(img, inside & hatch, FARMLAND_HATCH, alpha=0.55)
+
+
+# ============================================================
+# 水（面）
+# ============================================================
+
+def _draw_water(draw, layer, zoom, origin_x, origin_y):
+
+    from config import WATER_EDGE_M
+    from projection import meters_to_px
+
+    edge_w = meters_to_px(WATER_EDGE_M, zoom, minimum=1, maximum=6)
+
+    for prepared in layer:
+
+        for polygon in _iter_polygons(prepared):
+
+            if not polygon:
+                continue
+
+            ring = _local_points(polygon[0], origin_x, origin_y)
+
+            if len(ring) < 3:
+                continue
+
+            draw.polygon(ring, fill=WATER_COLOR)
+
+            draw.line(
+                ring + [ring[0]],
+                fill=WATER_OUTLINE,
+                width=edge_w,
+                joint="curve"
             )
 
 
 # ============================================================
-# 各图层绘制
+# 水道（线）
 # ============================================================
-
-def _draw_land(draw, layer, origin_x, origin_y):
-
-    def color_fn(tags):
-        return get_landuse_color(tags) or GRASS_COLOR
-
-    _draw_polygons(
-        draw,
-        layer,
-        origin_x,
-        origin_y,
-        color_fn=color_fn
-    )
-
-
-def _draw_water(draw, layer, origin_x, origin_y):
-
-    def color_fn(tags):
-        return WATER_COLOR
-
-    def outline_fn(tags):
-        return WATER_OUTLINE
-
-    _draw_polygons(
-        draw,
-        layer,
-        origin_x,
-        origin_y,
-        color_fn=color_fn,
-        outline_fn=outline_fn
-    )
-
 
 def _waterway_width(tags, zoom):
 
+    from config import WATERWAY_WIDTH_M, WATERWAY_DEFAULT_M
+    from projection import meters_to_px
+
     waterway = tags.get("waterway")
 
-    widths = {
-        "river": 3,
-        "canal": 2,
-        "dock": 2,
-        "ditch": 1,
-        "drain": 1,
-        "stream": 1
-    }
+    width_m = WATERWAY_WIDTH_M.get(waterway, WATERWAY_DEFAULT_M)
 
-    base = widths.get(waterway, 1)
-
-    if zoom >= 14 and waterway in ("river", "canal"):
-        base += 1
-
-    return base
+    return meters_to_px(width_m, zoom, minimum=1, maximum=64)
 
 
 def _draw_waterways(draw, layer, zoom, origin_x, origin_y):
 
     for prepared in layer:
 
-        width = _waterway_width(
-            prepared["obj"].get("tags", {}),
-            zoom
-        )
+        tags = prepared["obj"].get("tags", {})
 
-        lines = []
+        # 已被水面多边形覆盖的水道：不画。
+        # （否则水面中央会多出一条深色中线；见 build_world.buffer_waterways）
+        if tags.get("covered") == "yes":
+            continue
 
-        if prepared["type"] == "LineString":
-            lines.append(prepared["coordinates"])
+        width = _waterway_width(tags, zoom)
 
-        elif prepared["type"] == "MultiLineString":
-            lines.extend(prepared["coordinates"])
+        for line in _iter_lines(prepared):
 
-        for line in lines:
-
-            local_line = _local_points(
-                line,
-                origin_x,
-                origin_y
-            )
+            local_line = _local_points(line, origin_x, origin_y)
 
             if len(local_line) < 2:
                 continue
@@ -220,6 +259,10 @@ def _draw_waterways(draw, layer, zoom, origin_x, origin_y):
                 joint="curve"
             )
 
+
+# ============================================================
+# 道路（单色，无描边）
+# ============================================================
 
 def _draw_roads(draw, layer, zoom, origin_x, origin_y):
 
@@ -235,21 +278,9 @@ def _draw_roads(draw, layer, zoom, origin_x, origin_y):
 
         color, width = style
 
-        lines = []
+        for line in _iter_lines(prepared):
 
-        if prepared["type"] == "LineString":
-            lines.append(prepared["coordinates"])
-
-        elif prepared["type"] == "MultiLineString":
-            lines.extend(prepared["coordinates"])
-
-        for line in lines:
-
-            local_line = _local_points(
-                line,
-                origin_x,
-                origin_y
-            )
+            local_line = _local_points(line, origin_x, origin_y)
 
             if len(local_line) < 2:
                 continue
@@ -262,29 +293,22 @@ def _draw_roads(draw, layer, zoom, origin_x, origin_y):
             )
 
 
+# ============================================================
+# 城墙（纯黑实心）
+# ============================================================
+
 def _draw_wall(draw, layer, zoom, origin_x, origin_y):
 
-    """城墙：粗深色线，随 zoom 变粗。"""
+    from config import WALL_WIDTH_M
+    from projection import meters_to_px
 
-    width = 3 if zoom < 13 else (5 if zoom < 15 else 7)
+    width = meters_to_px(WALL_WIDTH_M, zoom, minimum=3, maximum=72)
 
     for prepared in layer:
 
-        lines = []
+        for line in _iter_lines(prepared):
 
-        if prepared["type"] == "LineString":
-            lines.append(prepared["coordinates"])
-
-        elif prepared["type"] == "MultiLineString":
-            lines.extend(prepared["coordinates"])
-
-        for line in lines:
-
-            local_line = _local_points(
-                line,
-                origin_x,
-                origin_y
-            )
+            local_line = _local_points(line, origin_x, origin_y)
 
             if len(local_line) < 2:
                 continue
@@ -297,79 +321,11 @@ def _draw_wall(draw, layer, zoom, origin_x, origin_y):
             )
 
 
-def _building_colors(tags):
-
-    building = tags.get("building")
-    amenity = tags.get("amenity")
-
-    if (
-        building == "temple"
-        or amenity in ("temple", "place_of_worship")
-        or tags.get("religion")
-    ):
-        return TEMPLE_COLOR, TEMPLE_OUTLINE
-
-    if (
-        tags.get("historic")
-        or building in ("monument", "museum")
-    ):
-        return (
-            HISTORIC_BUILDING_COLOR,
-            HISTORIC_BUILDING_OUTLINE
-        )
-
-    return BUILDING_COLOR, BUILDING_OUTLINE
-
-
-def _draw_buildings(draw, layer, zoom, origin_x, origin_y):
-
-    for prepared in layer:
-
-        tags = prepared["obj"].get("tags", {})
-
-        if not should_draw_building(tags, zoom):
-            continue
-
-        fill, outline = _building_colors(tags)
-
-        for polygon in _iter_polygons(prepared):
-
-            if not polygon:
-                continue
-
-            outer_ring = _local_points(
-                polygon[0],
-                origin_x,
-                origin_y
-            )
-
-            if len(outer_ring) < 3:
-                continue
-
-            draw.polygon(
-                outer_ring,
-                fill=fill,
-                outline=outline
-            )
-
-
 # ============================================================
 # 主入口
 # ============================================================
 
-def generate_tile(layers, zoom, tile_x, tile_y):
-
-    """
-    生成单张 256x256 的 PNG 瓦片。
-
-    参数
-    ----
-    layers : dict
-        由 spatial_index.build_tile_index 产生的图层字典，
-        每个图层是 prepared 对象列表。
-    zoom / tile_x / tile_y : int
-        瓦片的 z/x/y 编号。
-    """
+def generate_tile(layers, zoom, tile_x, tile_y, save=True):
 
     img = Image.new(
         "RGB",
@@ -382,17 +338,16 @@ def generate_tile(layers, zoom, tile_x, tile_y):
     origin_x = tile_x * TILE_SIZE
     origin_y = tile_y * TILE_SIZE
 
-    # 绘制顺序：土地 -> 水 -> 河流 -> 道路 -> 建筑 -> POI
     _draw_land(
-        draw,
+        img, draw,
         layers.get("land", []),
-        origin_x,
-        origin_y
+        zoom, tile_x, tile_y, origin_x, origin_y
     )
 
     _draw_water(
         draw,
         layers.get("water", []),
+        zoom,
         origin_x,
         origin_y
     )
@@ -421,26 +376,20 @@ def generate_tile(layers, zoom, tile_x, tile_y):
         origin_y
     )
 
-    _draw_buildings(
-        draw,
-        layers.get("building", []),
-        zoom,
-        origin_x,
-        origin_y
-    )
+    img = add_paper_texture(img, tile_x, tile_y)
 
-    add_paper_texture(img, tile_x, tile_y)
+    if save:
 
-    out_dir = os.path.join(
-        OUTPUT_DIR,
-        str(zoom),
-        str(tile_x)
-    )
+        out_dir = os.path.join(
+            OUTPUT_DIR,
+            str(zoom),
+            str(tile_x)
+        )
 
-    os.makedirs(out_dir, exist_ok=True)
+        os.makedirs(out_dir, exist_ok=True)
 
-    img.save(
-        os.path.join(out_dir, f"{tile_y}.png")
-    )
+        img.save(
+            os.path.join(out_dir, f"{tile_y}.png")
+        )
 
     return img

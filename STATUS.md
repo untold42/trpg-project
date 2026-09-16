@@ -202,13 +202,16 @@ trpg-server/sessions/           （.gitignore）
 数据流（v3，已稳定，勿手改中间产物）：
 
 ```
-map_ancient_center.json (原始 OSM，勿改)
-custom_ancient.json (76 布点锚点，勿改)
-        └──► build_world.py ──► map_ancient_song.json (12402 对象)
-                                     ├─► export_clickable.py ► 前端 clickable.geojson (2202 要素)
-                                     ├─► db/create_spatial_db.py ► map_spatial.db (12402 行)
+trpg-map/数据/扬州_OSM精简.json (抽稀后 OSM 14683，勿改)
+trpg-map/数据/扬州_布点锚点.json (76 布点锚点，勿改)
+        └──► draw_tiles/build_world.py ──► trpg-map/数据/扬州_南宋世界.json (12336 对象)
+                                     ├─► export_clickable.py ► 前端 clickable.geojson
+                                     ├─► db/create_spatial_db.py ► map_spatial.db
                                      └─► tilegen/generate_tiles.py ► tiles/ (z11–16)
 ```
+
+> 数据已统一收到 **`trpg-map/数据/`**（源 pbf / 全量 / 精简 / 布点 / 南宋世界），
+> 命名约定与血缘见 `trpg-map/数据/README.md`。
 
 - 瓦片 `trpg-client/public/tiles/{z}/{x}/{y}.png`
 - 点击层 `trpg-client/public/data/clickable.geojson`

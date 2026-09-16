@@ -11,11 +11,17 @@ import { 默认背景, getBackgroundImage } from "./background";
 import { playMusic, stopMusic } from "./music";
 import BattleScene, { type BattleState } from "./battle";
 import Clock from "./Clock";
-import { fetchClock, requestClockSync } from "./useGameClock";
+import { fetchClock, requestClockSync, useIsNight } from "./useGameClock";
 
 // 游戏内步速（米/游戏秒）——真实速度 = 步速 × 时钟倍率，
-// 这样「游戏内步行速度」保持真实（时间快 15 倍 → 标记也要快 15 倍地跑）
-const BASE_WALK_MPS = 1.4;
+// 这样「游戏内移动速度」与时间保持一致（时间快 15 倍 → 标记也快 15 倍地跑）。
+//
+// 1.4 是真实步行速度，但在这个地图尺度下显得捷（太拖）；
+// 调到 2.2（快走），再配合 Shift 奔跑。
+const BASE_WALK_MPS = 2.2;
+
+// 按住 Shift 的速度倍数（跑）：2.6 × 2.2 ≈ 5.7 米/游戏秒，接近冲刺
+const RUN_MULT = 2.6;
 
 // 承接App.tsx
 type GamingProps = {
@@ -137,8 +143,8 @@ async function fetchHistory(): Promise<HistoryView | null> {
 
 function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingProps) {
     const [showInputGM, setshowInputGM] = useState(false); //展示主持人输入框
-    const [showInputAct, setShowInputAct] = useState(false); //展示动作输入框
-    const [showInputSay, setShowInputSay] = useState(false); //展示「说话」（台词）输入框
+    const [showInputAct, setShowInputAct] = useState(false); //展示行动输入框
+    const [showInputSay, setShowInputSay] = useState(false); //展示台词输入框
     const [input, setInput] = useState(""); //输入框输入的内容
     const [history, setHistory] = useState<instruction[]>([]); //拿到llm的回复
     // 前情回顾（进入游戏后先播，点击推进完才进正常游戏；null = 无回顾）
@@ -148,8 +154,8 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     const [showHistory, setShowHistory] = useState(false) //展示历史记录
     const [loaded, setLoaded] = useState(false); //判断是否加载完成
     const historyBoxRef = useRef<HTMLDivElement>(null);//历史对话框的保持底部
-    const [showMap, setShowMap] = useState(false);
-    const [showGallery, setShowGallery] = useState(false);
+    const [showMap, setShowMap] = useState(false);//展示地图
+    const [showGallery, setShowGallery] = useState(false);//展示势力画廊
     const [showData, setShowData] = useState(false); // 数据面板（金钱/背包/属性/状态）
     const [readingIndex, setReadingIndex] = useState<number | null>(null);
     const [playerState, setPlayerState] = useState<PlayerState | null>(null); // 玩家真实状态
@@ -188,8 +194,8 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     const [cursor, setCursor] = useState<{ lon: number; lat: number } | null>(null);
     const cursorRef = useRef<{ lon: number; lat: number } | null>(null);
     const prevCursorRef = useRef<{ lon: number; lat: number } | null>(null); // 上一次「输入」时的位置
-    const cursorTrailRef = useRef<{ lon: number; lat: number }[]>([]);        // 光标轨迹（即时揭示迷雾）
     const [clockRate, setClockRate] = useState(15);                           // 时钟倍率（移动速度随它缩放）
+    const isNight = useIsNight();                                            // 昼夜：决定地图图标取 day / night
 
     // 统一处理 /state 返回：更新状态
     function applyState(s: PlayerState | null) {
@@ -248,10 +254,8 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     // WASD 移动停下 → 同步快照 + 记轨迹
     // （**不能用点击瞬移**：玩家只能一步步走；点地图仍可看 POI 信息，但不移动玩家）
     function handleExploreStop(p: { lon: number; lat: number }) {
+        // 探索模式的迷雾改成「玩家附近的气泡」（见 GameMap focus），不再累计足迹
         setCursor(p);
-        const trail = cursorTrailRef.current;
-        trail.push(p);
-        if (trail.length > 200) trail.splice(0, trail.length - 200);
     }
 
     //与后端的接口，拿到LLM的数据
@@ -353,7 +357,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         load();
     }, []);
 
-    // 加载所有美术资源
+    // 预加载所有美术资源
     useEffect(() => {
         const load = async () => {
             await preloadImages(
@@ -372,7 +376,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         }
     }, [showHistory]);
 
-    //监听Esc键位关闭输入框或历史记录框
+    //监听Esc键位从而关闭
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
             if (event.key === 'Escape') {
@@ -383,6 +387,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                 setShowGallery(false)
                 setShowData(false)
                 setShowInputSay(false)
+                setShowContinue(false)
                 setReadingIndex(null)
             }
         };
@@ -446,12 +451,15 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                 {gameMode === "explore" && (
                     <div className="explore-map">
                         <GameMap
+                            isNight={isNight}
                             zoom={18}
+                            lockZoom
                             playerOverride={cursor}
-                            extraFootprints={cursorTrailRef.current}
+                            focus={cursor}
                             wasd
                             posRef={cursorRef}
                             speedMps={BASE_WALK_MPS * clockRate}
+                            runMult={RUN_MULT}
                             onPositionChange={handleExploreStop}
                         />
                     </div>
@@ -514,7 +522,8 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                 {
                 showMap && (
                     <div className="game-map">
-                        <GameMap />
+                        {/* 菜单地图 = 总览图：不启用探索迷雾，全部 POI 都画出来 */}
+                        <GameMap isNight={isNight} showAllIcons />
                     </div>
                 )
                 }

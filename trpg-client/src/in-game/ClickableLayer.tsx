@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useMap } from "react-leaflet";
 import * as L from "leaflet";
-import type { Feature, FeatureCollection } from "geojson";
+import type { Feature, FeatureCollection, GeoJsonObject } from "geojson";
+import { mapStats } from "./mapStats";
 
 const GEO_URL = "/data/clickable.geojson";
 const ICON_DIR = "/mapicons";
@@ -24,6 +25,12 @@ interface ClickableLayerProps {
   footprints?: Footprint[] | null;
   /** 解锁半径（公里） */
   radiusKm?: number;
+  /** 是否夜晚（由游戏时钟裁决，见 GameController）：决定取 <键>/night.png 还是 <键>/day.png */
+  isNight?: boolean;
+  /** 总览模式：**不做迷雾过滤**，全部要素直接可见（菜单里的地图用） */
+  noFog?: boolean;
+  /** 单点迷雾气泡（探索模式）：只保留这个点 ± radiusKm 内的要素 */
+  focus?: { lon: number; lat: number } | null;
 }
 
 interface ClickableProps {
@@ -93,45 +100,108 @@ function distKm(lon1: number, lat1: number, lon2: number, lat2: number): number 
   return Math.hypot(dx, dy);
 }
 
-/** 求要素的“代表点”，用于判断它是否在某个足迹半径内 */
-function featureCenter(f: Feature): [number, number] | null {
+/** 要素的「代表点」+「包围盒」——一次遍历同时算出，供迷雾判定与视口裁剪使用 */
+export type FeatureExtent = {
+  /** 代表点（用于迷雾判定） */
+  c: [number, number];
+  /** 包围盒 [minLon, minLat, maxLon, maxLat]（用于视口裁剪） */
+  bb: [number, number, number, number];
+};
+
+function featureExtent(f: Feature): FeatureExtent | null {
   const g = f.geometry;
   const p = f.properties as ClickableProps;
 
   if (g.type === "Point") {
     const c = g.coordinates as number[];
-    return [c[0], c[1]];
-  }
-  // 面要素优先用导出时算好的内部代表点
-  if (p.icon_lon != null && p.icon_lat != null) {
-    return [p.icon_lon, p.icon_lat];
+    return { c: [c[0], c[1]], bb: [c[0], c[1], c[0], c[1]] };
   }
   if (g.type === "GeometryCollection") {
     return null;
   }
-  // 其它情况：收集所有坐标点取均值
-  const pts: [number, number][] = [];
-  const walk = (c: unknown) => {
-    if (Array.isArray(c) && typeof c[0] === "number") {
-      pts.push([c[0], c[1]]);
+
+  let n = 0, sumLon = 0, sumLat = 0;
+  let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
+
+  const walk = (x: unknown) => {
+    if (Array.isArray(x) && typeof x[0] === "number") {
+      const lon = x[0] as number, lat = x[1] as number;
+      n++; sumLon += lon; sumLat += lat;
+      if (lon < mnx) mnx = lon;
+      if (lon > mxx) mxx = lon;
+      if (lat < mny) mny = lat;
+      if (lat > mxy) mxy = lat;
       return;
     }
-    if (Array.isArray(c)) c.forEach(walk);
+    if (Array.isArray(x)) x.forEach(walk);
   };
   walk(g.coordinates);
-  if (pts.length === 0) return null;
-  const lon = pts.reduce((s, x) => s + x[0], 0) / pts.length;
-  const lat = pts.reduce((s, x) => s + x[1], 0) / pts.length;
-  return [lon, lat];
+
+  if (n === 0) return null;
+
+  // 面要素优先用导出时算好的内部代表点
+  const c: [number, number] =
+    p.icon_lon != null && p.icon_lat != null
+      ? [p.icon_lon, p.icon_lat]
+      : [sumLon / n, sumLat / n];
+
+  return { c, bb: [mnx, mny, mxx, mxy] };
 }
 
-function isExplored(f: Feature, footprints: Footprint[], radiusKm: number): boolean {
-  const c = featureCenter(f);
-  if (!c) return false;
+/* ---------- 迷雾判定加速 ----------
+ *
+ * 原来：每个要素都跑一遍 featureCenter（会遍历整个几何），
+ *       再和**全部足迹**逐个算距离 → O(要素数 × 足迹数)，
+ *       而且足迹最多 200 条，每次重渲染都重算 → 明显卡顿。
+ *
+ * 现在：① 要素中心只算一次（缓存）；
+ *       ② 足迹装进「半径大小的格子」，查询只看 3×3 邻格 → O(1)。
+ */
+
+type FootprintGrid = {
+  grid: Map<string, Footprint[]>;
+  dLat: number;
+  dLon: number;
+  radiusKm: number;
+};
+
+function buildFootprintGrid(
+  footprints: Footprint[],
+  radiusKm: number,
+): FootprintGrid {
+  const cellKm = Math.max(radiusKm, 0.05);
+  const dLat = cellKm / 111.0;
+  const dLon = cellKm / 94.0; // 扬州纬度下 1° 经度 ≈ 94 km
+  const grid = new Map<string, Footprint[]>();
   for (const fp of footprints) {
-    if (distKm(c[0], c[1], fp.lon, fp.lat) <= radiusKm) return true;
+    const key = `${Math.floor(fp.lat / dLat)}|${Math.floor(fp.lon / dLon)}`;
+    const arr = grid.get(key);
+    if (arr) arr.push(fp);
+    else grid.set(key, [fp]);
+  }
+  return { grid, dLat, dLon, radiusKm };
+}
+
+function isExploredFast(c: [number, number], g: FootprintGrid): boolean {
+  const ci = Math.floor(c[1] / g.dLat);
+  const cj = Math.floor(c[0] / g.dLon);
+  for (let di = -1; di <= 1; di++) {
+    for (let dj = -1; dj <= 1; dj++) {
+      const arr = g.grid.get(`${ci + di}|${cj + dj}`);
+      if (!arr) continue;
+      for (const fp of arr) {
+        if (distKm(c[0], c[1], fp.lon, fp.lat) <= g.radiusKm) return true;
+      }
+    }
   }
   return false;
+}
+
+/** 平方距离（km²），用于单点气泡判定（免开方） */
+function distKm2(lon1: number, lat1: number, lon2: number, lat2: number): number {
+  const dx = (lon1 - lon2) * 94.0;   // 扬州纬度下 1° 经度 ≈ 94 km
+  const dy = (lat1 - lat2) * 111.0;
+  return dx * dx + dy * dy;
 }
 
 /* ================= 弹窗 HTML ================= */
@@ -202,9 +272,20 @@ function pointToLayer(_feature: Feature, latlng: L.LatLng): L.CircleMarker {
   });
 }
 
-/** 不可见命中层（任何 zoom 都可点） */
-function HitLayer({ data }: { data: FeatureCollection }) {
+/** 不可见命中层（任何 zoom 都可点）
+ *
+ * 性能关键：**只装视口内的要素**，且只在「视口移出上次渲染范围」时才重建。
+ * 早先是把**全部已探索要素**一次性塞进 L.geoJSON —— 探索范围越大越重，
+ * 而 Canvas 每次 moveend 都要重绘所有图层 → 越玩越卡。
+ */
+function HitLayer({
+  data, extents,
+}: {
+  data: FeatureCollection;
+  extents: Map<Feature, FeatureExtent | null>;
+}) {
   const map = useMap();
+  const renderedBounds = useRef<L.LatLngBounds | null>(null);
 
   useEffect(() => {
     const renderer = L.canvas();
@@ -214,47 +295,144 @@ function HitLayer({ data }: { data: FeatureCollection }) {
       onEachFeature,
       renderer,
     };
-    const layer = L.geoJSON(data, options);
+
+    // 空层先挂上，之后只换内容（避免每次重建整个图层对象）
+    const layer = L.geoJSON(undefined as never, options);
     layer.addTo(map);
-    return () => {
-      layer.remove();
+
+    let timer: number | null = null;
+
+    const render = (force = false) => {
+      const t0 = performance.now();
+      const view = map.getBounds();
+
+      // 视口还在上次渲染范围内 → 什么都不用做
+      if (
+        !force &&
+        renderedBounds.current &&
+        renderedBounds.current.contains(view)
+      ) {
+        return;
+      }
+
+      const b = view.pad(0.35);
+      const w = b.getWest(), e = b.getEast(), s = b.getSouth(), n = b.getNorth();
+
+      const feats = data.features.filter((f) => {
+        const ex = extents.get(f);
+        if (!ex) return false;
+        const [mnx, mny, mxx, mxy] = ex.bb;
+        return !(mxx < w || mnx > e || mxy < s || mny > n);
+      });
+
+      layer.clearLayers();
+      layer.addData({
+        type: "FeatureCollection",
+        features: feats,
+      } as unknown as GeoJsonObject);
+
+      mapStats.hits = feats.length;
+      mapStats.hitMs = performance.now() - t0;
+
+      renderedBounds.current = b;
     };
-  }, [map, data]);
+
+    render(true);
+
+    const onMoveEnd = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        timer = null;
+        render(false);
+      }, 180);
+    };
+    const onZoomEnd = () => render(true);
+
+    map.on("moveend", onMoveEnd);
+    map.on("zoomend", onZoomEnd);
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+      map.off("moveend", onMoveEnd);
+      map.off("zoomend", onZoomEnd);
+      layer.remove();
+      renderedBounds.current = null;
+    };
+  }, [map, data, extents]);
 
   return null;
 }
 
 /* ================= 图标层（zoom >= 15，只渲染可视范围） ================= */
 
-function preloadIcons(keys: string[]): Promise<Record<string, boolean>> {
+/** 图标文件：`public/mapicons/<键>/<day|night>.png`
+ *  —— 每个建筑一套早晚两图（见 trpg-map/draw_tiles/icongen/README.md）。 */
+function iconUrl(key: string, night: boolean) {
+  return `${ICON_DIR}/${key}/${night ? "night" : "day"}.png`;
+}
+
+/** 加载一张图。**必须留住 Image 的引用**：不保留的话可能被 GC 掉，
+ *  加载被中止，onload/onerror 都不触发 → 那个图标永远显示成棕色圆点。 */
+const iconProbes: HTMLImageElement[] = [];
+
+function loadOne(src: string): Promise<boolean> {
   return new Promise((resolve) => {
-    let pending = keys.length;
-    const result: Record<string, boolean> = {};
-    if (pending === 0) {
-      resolve(result);
-      return;
-    }
-    keys.forEach((key) => {
-      const img = new Image();
-      img.onload = () => {
-        result[key] = true;
-        if (--pending === 0) resolve(result);
-      };
-      img.onerror = () => {
-        result[key] = false;
-        if (--pending === 0) resolve(result);
-      };
-      img.src = `${ICON_DIR}/${key}.png`;
-    });
+    const img = new Image();
+    iconProbes.push(img);
+    img.onload = () => resolve(true);
+    img.onerror = () => resolve(false);
+    img.src = src;
   });
 }
 
+/** 解析出**真正能用**的图标 URL，顺序：
+ *   ① `<键>/<昼夜>.png`
+ *   ② 同一张带 `?v=时间戳` —— 绕开浏览器里那条被缓存的失败响应
+ *      （vite 曾把不存在的图标返回的 index.html 也按 immutable 缓存一年）
+ *   ③ 另一昼夜的图（宁可看错时段，也别只剩一个棕色圆点）
+ *  返回 null = 三种都失败 → 交给 missingIconFor 画兜底圆点。
+ *
+ *  ⚠️ 关键：返回值必须**带着成功的那个 URL**，渲染时要用它。
+ *     早先版本只返回 true/false，渲染时仍用原 URL → 又被缓存里的失败响应挡住，
+ *     于是 preload 明明成功、地图上却还是点。
+ */
+async function resolveIconUrl(key: string, night: boolean): Promise<string | null> {
+  const src = iconUrl(key, night);
+  if (await loadOne(src)) return src;
+  const busted = `${src}?v=${Date.now()}`;
+  if (await loadOne(busted)) {
+    console.warn('[mapicon] 命中缓存里的失败响应，已改用带时间戳的 URL：', key, busted);
+    return busted;
+  }
+  const other = iconUrl(key, !night);
+  if (await loadOne(other)) {
+    console.warn('[mapicon] 另一时段的图可用，先顶上：', key, other);
+    return other;
+  }
+  console.error('[mapicon] 三种尝试都失败，改用兜底圆点：', key, src);
+  return null;
+}
+
+function preloadIcons(keys: string[], night: boolean): Promise<Record<string, string | null>> {
+  return Promise.all(
+    keys.map(async (key) => [key, await resolveIconUrl(key, night)] as const),
+  ).then((pairs) => Object.fromEntries(pairs));
+}
+
+
 /** 缺美术文件时的兜底小圆点 */
-const missingIcon = L.divIcon({
-  className: "ink-icon ink-icon-missing",
-  iconSize: [14, 14],
-  iconAnchor: [7, 7],
-});
+function missingIconFor(size: number) {
+  return L.divIcon({
+    className: "ink-icon ink-icon-missing",
+    iconSize: [size * 0.5, size * 0.5],
+    iconAnchor: [size * 0.25, size * 0.25],
+  });
+}
+
+/** 图标像素尺寸随 zoom 变大（z15=40 … z18=64），避免 z18 下图标显得过小 */
+function iconSizeFor(zoom: number) {
+  const s = 40 + Math.max(0, zoom - MIN_ICON_ZOOM) * 8;
+  return Math.round(Math.min(s, 72));
+}
 
 function iconPosition(f: Feature, p: ClickableProps): L.LatLng | null {
   const g = f.geometry;
@@ -272,92 +450,196 @@ function iconPosition(f: Feature, p: ClickableProps): L.LatLng | null {
   return null;
 }
 
-function IconsLayer({ data }: { data: FeatureCollection }) {
+function IconsLayer({ data, isNight }: { data: FeatureCollection; isNight: boolean }) {
   const map = useMap();
 
-  const iconKeys = useMemo(() => {
+  // 图标键集合：用**签名**稳定引用，否则 data 一变就重新 preload + 额外一次渲染
+  const iconKeySig = useMemo(() => {
     const set = new Set<string>();
     data.features.forEach((f) => {
       const p = f.properties as ClickableProps;
       if (p?.icon) set.add(p.icon);
     });
-    return [...set];
+    return [...set].sort().join(",");
   }, [data]);
 
-  const [icons, setIcons] = useState<Record<string, L.Icon | L.DivIcon>>({});
+  const iconKeys = useMemo(
+    () => (iconKeySig ? iconKeySig.split(",") : []),
+    [iconKeySig],
+  );
+
+  /** 键 → 真正可用的图片 URL（null = 三种尝试都失败，用兜底圆点） */
+  const [iconSrc, setIconSrc] = useState<Record<string, string | null> | null>(null);
 
   useEffect(() => {
     let alive = true;
-    preloadIcons(iconKeys).then((ok) => {
-      if (!alive) return;
-      const built: Record<string, L.Icon | L.DivIcon> = {};
-      iconKeys.forEach((key) => {
-        built[key] = ok[key]
-          ? L.icon({
-              iconUrl: `${ICON_DIR}/${key}.png`,
-              iconSize: [36, 36],
-              iconAnchor: [18, 18],
-              popupAnchor: [0, -20],
-            })
-          : missingIcon;
-      });
-      setIcons(built);
+    preloadIcons(iconKeys, isNight).then((result) => {
+      if (alive) setIconSrc(result);
     });
     return () => {
       alive = false;
     };
-  }, [iconKeys]);
+  }, [iconKeys, isNight]);
 
+  // ---- 增量渲染 ----
+  // 不再“data 一变就 clearLayers + 全量重建”（几百个 DOM marker + popup，
+  // 在 4 倍放大瓦片下会触发整层重新栅格化 → 一帧上千毫秒的尖峰）。
+  // 现在只增删差异：同一个 Feature 对象复用它的 marker。
+  const groupRef = useRef<L.LayerGroup | null>(null);
+  const renderedRef = useRef<Map<Feature, L.Marker>>(new Map());
+  const cacheRef = useRef<Map<string, L.Icon | L.DivIcon>>(new Map());
+  const styleRef = useRef({ zoom: -1, night: false });
+
+  // 用 ref 读最新值，让 render 保持稳定（不让 useCallback 依赖变化）
+  const dataRef = useRef(data); dataRef.current = data;
+  const srcRef = useRef(iconSrc); srcRef.current = iconSrc;
+  const nightRef = useRef(isNight); nightRef.current = isNight;
+
+  const clearAll = useCallback(() => {
+    renderedRef.current.forEach((m) => m.remove());
+    renderedRef.current.clear();
+    mapStats.icons = 0;
+  }, []);
+
+  const render = useCallback((force = false) => {
+    const group = groupRef.current;
+    if (!group) return;
+
+    const t0 = performance.now();
+    const zoom = map.getZoom();
+    const src = srcRef.current;
+    const night = nightRef.current;
+
+    // zoom / 昼夜 变了 → 图标尺寸或图片变了，必须整层重画
+    if (zoom !== styleRef.current.zoom || night !== styleRef.current.night) {
+      force = true;
+    }
+
+    if (zoom < MIN_ICON_ZOOM || !src) {
+      clearAll();
+      styleRef.current = { zoom, night };
+      mapStats.iconMs = performance.now() - t0;
+      return;
+    }
+
+    if (force) {
+      clearAll();
+      styleRef.current = { zoom, night };
+    }
+
+    const size = iconSizeFor(zoom);
+
+    const getIcon = (key: string): L.Icon | L.DivIcon => {
+      const ck = `${key}|${size}|${night ? "n" : "d"}`;
+      let icon = cacheRef.current.get(ck);
+      if (!icon) {
+        const url = src[key];
+        icon = url
+          ? L.icon({
+              iconUrl: url,
+              iconSize: [size, size],
+              iconAnchor: [size / 2, size / 2],
+              popupAnchor: [0, -size / 2 - 4],
+            })
+          : missingIconFor(size);
+        cacheRef.current.set(ck, icon);
+      }
+      return icon;
+    };
+
+    const bounds = map.getBounds().pad(0.35);
+    const rendered = renderedRef.current;
+    const want = new Set<Feature>();
+
+    for (const f of dataRef.current.features) {
+      const p = f.properties as ClickableProps;
+      if (!p?.name || !p.icon) continue;
+      const pos = iconPosition(f, p);
+      if (!pos || !bounds.contains(pos)) continue;
+
+      want.add(f);
+      if (rendered.has(f)) continue;      // 已在场上 → 复用
+
+      const marker = L.marker(pos, { icon: getIcon(p.icon), title: p.name });
+      marker.bindPopup(buildPopupHtml(p), { className: "ink-popup" });
+      marker.addTo(group);
+      rendered.set(f, marker);
+    }
+
+    // 删掉本次不再需要的
+    rendered.forEach((marker, f) => {
+      if (!want.has(f)) {
+        marker.remove();
+        rendered.delete(f);
+      }
+    });
+
+    mapStats.icons = rendered.size;
+    mapStats.iconMs = performance.now() - t0;
+  }, [map, clearAll]);
+
+  // 图层生命周期：只挂一次
   useEffect(() => {
-    if (Object.keys(icons).length === 0) return;
-
     const group = L.layerGroup().addTo(map);
+    groupRef.current = group;
+    render(true);
 
-    const render = () => {
-      group.clearLayers();
-      if (map.getZoom() < MIN_ICON_ZOOM) return;
-      const bounds = map.getBounds().pad(0.25); // 向外扩 25% 预渲染边缘
-      data.features.forEach((f) => {
-        const p = f.properties as ClickableProps;
-        if (!p?.name || !p.icon) return;
-        const pos = iconPosition(f, p);
-        if (!pos || !bounds.contains(pos)) return;
-        const marker = L.marker(pos, {
-          icon: icons[p.icon] ?? missingIcon,
-          title: p.name,
-        });
-        marker.bindPopup(buildPopupHtml(p), { className: "ink-popup" });
-        marker.addTo(group);
-      });
+    let timer: number | null = null;
+    const onMoveEnd = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        timer = null;
+        render(false);
+      }, 180);
     };
+    const onZoomEnd = () => render(true);
 
-    render();
-    map.on("moveend", render);
-    map.on("zoomend", render);
+    map.on("moveend", onMoveEnd);
+    map.on("zoomend", onZoomEnd);
     return () => {
-      map.off("moveend", render);
-      map.off("zoomend", render);
+      if (timer !== null) window.clearTimeout(timer);
+      map.off("moveend", onMoveEnd);
+      map.off("zoomend", onZoomEnd);
+      clearAll();
       group.remove();
+      groupRef.current = null;
+      styleRef.current = { zoom: -1, night: false };
     };
-  }, [map, data, icons]);
+  }, [map, render, clearAll]);
+
+  // data / 图标 / 昼夜 变化 → **增量**更新（只增删差异）
+  useEffect(() => {
+    render(false);
+  }, [data, iconSrc, isNight, render]);
 
   return null;
 }
+
 
 /* ================= 主组件 ================= */
 
 export default function ClickableLayer({
   footprints,
   radiusKm = 0.5,
+  isNight = false,
+  noFog = false,
+  focus = null,
 }: ClickableLayerProps) {
   const [features, setFeatures] = useState<Feature[] | null>(null);
 
   useEffect(() => {
     let alive = true;
 
+    // 用「条数 + 首尾签名」判断是否需要换数据。
+    // ⚠️ 早先只比 `prev.length === list.length`：重新导出 geojson 后条数常常不变，
+    //    网络拿到的新数据被直接丢弃，浏览器 IndexedDB 里的旧数据一直生效
+    //    （症状：地图上的图标/点位怎么刷新都不更新）。
+    const fingerprint = (list: Feature[]) =>
+      `${list.length}|${list[0]?.properties?.name ?? ""}|${list[list.length - 1]?.properties?.name ?? ""}|${list.filter((f) => f.properties?.icon).length}`;
+
     const apply = (list: Feature[]) => {
       setFeatures((prev) => {
-        if (prev && prev.length === list.length) return prev;
+        if (prev && fingerprint(prev) === fingerprint(list)) return prev;
         return list;
       });
     };
@@ -394,26 +676,52 @@ export default function ClickableLayer({
     };
   }, []);
 
+  // 要素「代表点 + 包围盒」只算一次（featureExtent 要遍历整个几何，重复算很贵）
+  const extents = useMemo(() => {
+    const m = new Map<Feature, FeatureExtent | null>();
+    if (!features) return m;
+    for (const f of features) m.set(f, featureExtent(f));
+    return m;
+  }, [features]);
+
   // 探索迷雾：只保留落在任一脚迹点半径内的要素
   const visibleFeatures = useMemo(() => {
     if (!features) return null;
-    if (!footprints) return features; // 后端未启动 → 不启用迷雾
-    return features.filter((f) => isExplored(f, footprints, radiusKm));
-  }, [features, footprints, radiusKm]);
+    if (noFog) return features;        // 总览模式：不做迷雾过滤
+    if (focus) {
+      // 探索模式：**只留玩家附近的要素**（单点气泡，不累积足迹）
+      const r2 = radiusKm * radiusKm;
+      return features.filter((f) => {
+        const e = extents.get(f);
+        if (!e) return false;
+        return distKm2(e.c[0], e.c[1], focus.lon, focus.lat) <= r2;
+      });
+    }
+    if (!footprints) return features;  // 后端未启动 → 不启用迷雾
+    const g = buildFootprintGrid(footprints, radiusKm);
+    return features.filter((f) => {
+      const e = extents.get(f);
+      return e ? isExploredFast(e.c, g) : false;
+    });
+  }, [features, footprints, radiusKm, extents, noFog, focus]);
+
+  // ⚠️ 必须在 early return **之前**调用（否则会
+  //    “Rendered more hooks than during the previous render” → 白屏）。
+  const data: FeatureCollection = useMemo(
+    () => ({ type: "FeatureCollection", features: visibleFeatures ?? [] }),
+    [visibleFeatures],
+  );
+
+  mapStats.visible = visibleFeatures ? visibleFeatures.length : 0;
 
   if (!visibleFeatures) {
     return null;
   }
 
-  const data: FeatureCollection = {
-    type: "FeatureCollection",
-    features: visibleFeatures,
-  };
-
   return (
     <>
-      <HitLayer data={data} />
-      <IconsLayer data={data} />
+      <HitLayer data={data} extents={extents} />
+      <IconsLayer data={data} isNight={isNight} />
     </>
   );
 }

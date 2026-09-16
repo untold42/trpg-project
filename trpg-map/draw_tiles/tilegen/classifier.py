@@ -75,6 +75,19 @@ def classify_object(prepared):
         return "waterway"
 
 
+    # natural=wood / scrub / wetland / bare_rock 等也是“土地”，
+    # 必须放在 is_water 之后（否则会把 natural=water 也吃进来）。
+    if tags.get("natural") in (
+        "wood",
+        "scrub",
+        "wetland",
+        "bare_rock",
+        "grassland",
+        "heath",
+    ):
+        return "land"
+
+
     if tags.get("man_made") == "city_wall":
         return "wall"
 

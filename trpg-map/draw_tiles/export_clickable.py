@@ -2,7 +2,7 @@
 """
 export_clickable.py
 ===================
-从 map_ancient_song.json（南宋转译版）导出“可点击对象”的严格 GeoJSON，
+从 trpg-map/数据/扬州_南宋世界.json（南宋世界）导出“可点击对象”的严格 GeoJSON，
 供前端 react-leaflet <GeoJSON> 使用。
 
 过滤规则：
@@ -11,7 +11,7 @@ export_clickable.py
     - 去掉坐标点过多的巨型要素（防卡）。
 
 用法：
-    python export_clickable.py [--input map_ancient_song.json]
+    python export_clickable.py [--input 数据/扬州_南宋世界.json]
                                [--out 输出.geojson]
     # 默认输出到 trpg-client/public/data/clickable.geojson（存在时），
     # 否则输出到当前目录 clickable.geojson。
@@ -21,8 +21,15 @@ import argparse
 import json
 import os
 
-INPUT_FILE = "map_ancient_song.json"
 OUTPUT_FILE = "clickable.geojson"
+
+# 数据目录：trpg-map/数据/
+DATA_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "数据"
+)
+
+INPUT_FILE = os.path.join(DATA_DIR, "扬州_南宋世界.json")
 
 # 前端项目 public 目录（可点击数据放这里）
 # 目录布局：<root>/trpg-project/{trpg-map, trpg-client, trpg-server}
@@ -47,7 +54,7 @@ KEEP_TAG_KEYS = (
 )
 
 # ============================================================
-# kind -> 图标键（对应 public/mapicons/<键>.png，美术自备）
+# kind -> 图标键（对应 public/mapicons/<键>/{day,night}.png，美术自备）
 # ============================================================
 
 ICON_BY_KIND = {
@@ -261,11 +268,12 @@ def main():
         f["properties"].get("icon") for f in features if f["properties"].get("icon")
     )
     manifest_lines = [
-        "在 public/mapicons/ 下放下列 PNG（建议 64x64 正方形，居中徽章式）：",
+        "每栋建筑一个文件夹：public/mapicons/<键>/  里面放 day.png 与 night.png（128x128 透明底）",
+        "由 trpg-map/draw_tiles/icongen/make_icons.py 自动生成；缺图会在图上退化成棕色圆点。",
         "",
     ]
     for key, n in icon_counter.most_common():
-        manifest_lines.append(f"{key}.png   (x{n})")
+        manifest_lines.append(f"{key}/day.png + {key}/night.png   (x{n})")
 
     if os.path.isdir(FRONTEND_PUBLIC):
         icon_dir = os.path.join(FRONTEND_PUBLIC, "mapicons")

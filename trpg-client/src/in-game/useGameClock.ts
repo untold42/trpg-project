@@ -159,3 +159,29 @@ export function useGameClock(onFrame?: (seconds: number, civil: Civil) => void) 
 
     return { anchor, sync, pause, resume };
 }
+
+// ------------------------------------------------------------
+// 昼夜（供地图图标切换 <键>/day.png 与 <键>/night.png）
+//   判据：卯 ~ 酉（时辰索引 3..9）为昼，戌 ~ 寅（10,11,0,1,2）为夜。
+//   昼夜切换以「时辰」计，故 60s 轮询一次锚点足够（与 useGameClock 同一节奏）。
+// ------------------------------------------------------------
+export function isNightFromSeconds(s: number): boolean {
+    const sh = civilFromSeconds(s).时辰索引;   // 0 = 子
+    return sh >= 10 || sh <= 2;
+}
+
+export function useIsNight(): boolean {
+    const [isNight, setIsNight] = useState(false);
+    useEffect(() => {
+        let alive = true;
+        const tick = () => {
+            fetchClock()
+                .then((a) => { if (alive && a) setIsNight(isNightFromSeconds(a.游戏秒)); })
+                .catch(() => { /* 后端没起来 → 保持日间 */ });
+        };
+        tick();
+        const iv = window.setInterval(tick, 60000);
+        return () => { alive = false; window.clearInterval(iv); };
+    }, []);
+    return isNight;
+}

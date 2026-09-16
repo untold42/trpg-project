@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-pbf_to_json.py —— 把 OSM 的 .pbf 文件转成与 map_ancient_center.json 同构的 JSON。
+pbf_to_json.py —— 把 OSM 的 .pbf 文件转成与 数据/<城市>_OSM精简.json 同构的 JSON。
 
-输出结构（对齐 draw_tiles/map_ancient_center.json）：
+输出结构（对齐 数据/<城市>_OSM精简.json）：
     {
       "name": "...",
       "version": 2,
@@ -59,10 +59,19 @@ except Exception:  # shapely 不可用时只做不带合并的降级
 # 输出 JSON 里保留哪些 OSM tag（对齐目标文件的 whitelist）
 # ---------------------------------------------------------------
 KEEP_TAG_KEYS = {
+    # 分类
     "highway", "natural", "building", "bridge", "boundary", "amenity",
     "surface", "leisure", "water", "railway", "man_made", "waterway",
-    "landuse", "sport", "shop", "place", "height", "tourism", "tunnel",
-    "historic", "office", "military",
+    "landuse", "sport", "shop", "place", "tourism", "tunnel",
+    "historic", "office", "military", "religion", "denomination",
+    # 尺寸 / 量（决定渲染宽度与高度）
+    "width", "width:carriageway", "lanes", "height", "ele", "layer",
+    "est_width", "diameter",
+    # 通行 / 季节（影响是否可走、是否季节性断流）
+    "oneway", "access", "motor_vehicle", "foot", "boat",
+    "intermittent", "seasonal", "tidal", "crossing", "ford", "area",
+    # 编号 / 溯源
+    "ref", "ref:cn", "old_name", "alt_name",
 }
 
 # 面状分类对应的 tag 组合（闭合 way 有这些 tag 之一 => 当作多边形）
@@ -84,7 +93,7 @@ POLYGON_KEYS = {
 }
 
 # ---------------------------------------------------------------
-# “精选模式”（默认开启）下按值过滤，对齐 map_ancient_center.json
+# “精选模式”（默认开启）下按值过滤，对齐 数据/扬州_OSM精简.json
 # 若想保留 PBF 里的全部要素，用 --full 关闭这些过滤。
 # ---------------------------------------------------------------
 CURATED_FILTERS = {
@@ -157,19 +166,67 @@ def _haversine_km(lon1, lat1, lon2, lat2):
     return 2 * r * math.asin(math.sqrt(a))
 
 
-class CircleFilter:
-    """圆形区域过滤（默认不裁剪，只写进 filter 元数据；传 --radius > 0 时启用）。"""
+class RegionFilter:
+    """区域过滤基类。不启用时不裁任何东西。"""
+
+    enabled = False
+
+    def point_inside(self, lon, lat):
+        return True
+
+    def any_point_inside(self, coords_iter):
+        return True
+
+    def meta(self):
+        return {"type": "none", "note": "未裁剪"}
+
+
+class CircleFilter(RegionFilter):
+    """圆形区域过滤（--radius）。"""
 
     def __init__(self, lon, lat, radius_km):
         self.lon = lon
         self.lat = lat
         self.radius = radius_km
+        self.enabled = radius_km > 0
 
     def point_inside(self, lon, lat):
         return _haversine_km(self.lon, self.lat, lon, lat) <= self.radius
 
     def any_point_inside(self, coords_iter):
         return any(self.point_inside(lon, lat) for lon, lat in coords_iter)
+
+    def meta(self):
+        return {
+            "type": "circle",
+            "center": {"longitude": self.lon, "latitude": self.lat},
+            "radius_km": self.radius,
+        }
+
+
+class BBoxFilter(RegionFilter):
+    """矩形画框过滤（--bbox / --city）。
+
+    与瓦片取景用**同一份画框**（见 trpg-map/城市.py），
+    所以画框外的数据根本不会进文件，不再白占体积。
+    """
+
+    def __init__(self, bbox):
+        self.min_lon, self.min_lat, self.max_lon, self.max_lat = bbox
+        self.enabled = True
+
+    def point_inside(self, lon, lat):
+        return (self.min_lon <= lon <= self.max_lon
+                and self.min_lat <= lat <= self.max_lat)
+
+    def any_point_inside(self, coords_iter):
+        return any(self.point_inside(lon, lat) for lon, lat in coords_iter)
+
+    def meta(self):
+        return {
+            "type": "bbox",
+            "bbox": [self.min_lon, self.min_lat, self.max_lon, self.max_lat],
+        }
 
 
 def tags_to_dict(tag_list):
@@ -337,9 +394,9 @@ def _to_multipolygon(g):
 # 主转换器
 # ---------------------------------------------------------------
 class PbfToJson:
-    def __init__(self, center_lon, center_lat, radius_km, name="扬州地图", use_curated=True):
+    def __init__(self, region_filter=None, name="扬州地图", use_curated=True):
         self.name = name
-        self.filter = CircleFilter(center_lon, center_lat, radius_km)
+        self.filter = region_filter or RegionFilter()
         self.use_curated = use_curated
         self.objects = []
 
@@ -414,20 +471,15 @@ class PbfToJson:
             "source": "OpenStreetMap",
             "coordinate_system": "WGS84",
             "objects": self.objects,
-            "filter": {
-                "type": "circle",
-                "center": {
-                    "longitude": self.filter.lon,
-                    "latitude": self.filter.lat,
-                },
-                "radius_km": self.filter.radius,
-            },
+            "filter": self.filter.meta(),
         }
 
     def save(self, out_path):
         data = self.to_dict()
         with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+            # 紧凑写出（不要 indent）：这种数据文件体量很大，
+            # 加缩进会让文件膨胀 ~2.5 倍，而且没人会去手读它。
+            json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
         return data
 
 
@@ -464,7 +516,7 @@ class _ConvertHandler(osmium.SimpleHandler):
             return
         if not self._keep(tags):
             return
-        if self.conv.filter.radius > 0 and not self.conv.filter.point_inside(n.lon, n.lat):
+        if self.conv.filter.enabled and not self.conv.filter.point_inside(n.lon, n.lat):
             return
         obj = {
             "id": n.id,
@@ -492,7 +544,7 @@ class _ConvertHandler(osmium.SimpleHandler):
             return
 
         # 过滤
-        if self.conv.filter.radius > 0:
+        if self.conv.filter.enabled:
             if not self.conv.filter.any_point_inside((ref.lon, ref.lat) for ref in w.nodes):
                 return
 
@@ -519,7 +571,7 @@ class _ConvertHandler(osmium.SimpleHandler):
         if not self._keep(tags):
             return
 
-        if self.conv.filter.radius > 0:
+        if self.conv.filter.enabled:
             if not self.conv.filter.any_point_inside(self._area_vertices(a)):
                 return
 
@@ -637,27 +689,72 @@ class _ConvertHandler(osmium.SimpleHandler):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="把 OSM PBF 转成 map_ancient_center.json 同构的 JSON"
+        description="把 OSM PBF 转成 pipeline 可用的 JSON（支持按城市画框裁剪）"
     )
     parser.add_argument("input", help="输入的 .pbf 文件路径")
-    parser.add_argument("-o", "--output", default="map_from_pbf.json", help="输出的 .json 文件路径")
-    parser.add_argument("--name", default="扬州地图", help="输出 JSON 的 name 字段")
-    parser.add_argument("--center-lon", type=float, default=119.4175, help="filter 圆心经度（默认 119.4175）")
-    parser.add_argument("--center-lat", type=float, default=32.41, help="filter 圆心纬度（默认 32.41）")
+    parser.add_argument("-o", "--output", default=None,
+                        help="输出的 .json 文件路径（默认 数据/<pbf名>_OSM精简.json）")
+    parser.add_argument("--name", default=None,
+                        help="输出 JSON 的 name 字段（默认由 pbf 文件名推导，如 扬州.pbf -> 扬州地图）")
+
+    # ---- 裁剪方式（三选一，优先级：bbox > city > radius）----
+    parser.add_argument("--city", default=None,
+                        help="用 trpg-map/城市.py 里该城市的画框裁剪（推荐），如 --city 扬州")
+    parser.add_argument("--bbox", default=None,
+                        help="矩形画框裁剪：min_lon,min_lat,max_lon,max_lat")
     parser.add_argument("--radius", type=float, default=0.0,
-                        help="圆形裁剪半径（公里），0 表示不裁剪只写元数据（默认 0）")
+                        help="圆形裁剪半径（公里），0 = 不裁（旧方式，不推荐）")
+    parser.add_argument("--center-lon", type=float, default=119.4175, help="圆裁剪圆心经度")
+    parser.add_argument("--center-lat", type=float, default=32.41, help="圆裁剪圆心纬度")
+
     parser.add_argument("--full", action="store_true",
                         help="关闭精选过滤，保留 PBF 里的全部要素")
     args = parser.parse_args()
+
+    # ---- 构建区域过滤器 ----
+    region = RegionFilter()
+    tag = ""
+
+    if args.bbox:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from 城市 import parse_bbox
+        region = BBoxFilter(parse_bbox(args.bbox))
+        tag = "bbox"
+    elif args.city:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from 城市 import frame_bbox
+        region = BBoxFilter(frame_bbox(args.city))
+        tag = args.city
+    elif args.radius > 0:
+        region = CircleFilter(args.center_lon, args.center_lat, args.radius)
+        tag = "r%g" % args.radius
+
+    if args.output is None:
+        stem = os.path.splitext(os.path.basename(args.input))[0]
+        # 按画框裁 → 产出“精简”（build_world 的输入）；不裁 → 产出“全量”
+        suffix = "OSM精简" if (args.city or args.bbox) else "OSM全量"
+        args.output = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "数据",
+            f"{stem}_{suffix}.json",
+        )
+
+    # name 默认由 pbf 文件名推导（避免转别的城市时写死成“扬州地图”）
+    if args.name is None:
+        stem = os.path.splitext(os.path.basename(args.input))[0]
+        args.name = f"{stem}地图"
 
     if not os.path.exists(args.input):
         print(f"错误：找不到输入文件 {args.input}", file=sys.stderr)
         sys.exit(1)
 
+    if region.enabled:
+        print("裁剪：", json.dumps(region.meta(), ensure_ascii=False))
+    else:
+        print("裁剪：无（全量）")
+
     conv = PbfToJson(
-        center_lon=args.center_lon,
-        center_lat=args.center_lat,
-        radius_km=args.radius,
+        region_filter=region,
         name=args.name,
         use_curated=not args.full,
     )

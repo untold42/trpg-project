@@ -44,6 +44,40 @@ def lonlat_to_tile(lon, lat, zoom):
     )
 
 
+def meters_per_pixel(zoom, lat=None):
+
+    """某 zoom / 纬度下，1 像素代表多少米（Web Mercator）。"""
+
+    from config import REF_LAT
+
+    if lat is None:
+        lat = REF_LAT
+
+    return (
+        40075016.686
+        * math.cos(math.radians(lat))
+        / (TILE_SIZE * (2 ** zoom))
+    )
+
+
+def meters_to_px(meters, zoom, lat=None, scale=1.0,
+                 minimum=None, maximum=None):
+
+    """把真实米数换算成像素宽度（带上下限）。"""
+
+    from config import MIN_LINE_PX, MAX_LINE_PX
+
+    if minimum is None:
+        minimum = MIN_LINE_PX
+
+    if maximum is None:
+        maximum = MAX_LINE_PX
+
+    px = meters * scale / meters_per_pixel(zoom, lat)
+
+    return int(max(minimum, min(maximum, round(px))))
+
+
 def get_tiles_for_bbox(bbox, zoom):
 
     min_lon, min_lat, max_lon, max_lat = bbox

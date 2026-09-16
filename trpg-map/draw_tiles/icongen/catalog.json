@@ -1,0 +1,1132 @@
+{
+ "ward": {
+  "icon": "ward",
+  "kinds": [],
+  "groups": [],
+  "zones": [],
+  "notes": [],
+  "count": 165,
+  "source": "bespoke",
+  "group": "—",
+  "zone": "—"
+ },
+ "tavern": {
+  "icon": "tavern",
+  "kinds": [
+   "酒楼",
+   "酒肆"
+  ],
+  "groups": [
+   "饮食"
+  ],
+  "zones": [
+   "core"
+  ],
+  "notes": [
+   "酒楼：正店酒楼",
+   "酒肆：小店沽酒"
+  ],
+  "count": 122,
+  "source": "archetype",
+  "group": "饮食",
+  "zone": "core"
+ },
+ "food": {
+  "icon": "food",
+  "kinds": [
+   "鱼行",
+   "酱园",
+   "食铺",
+   "饼铺"
+  ],
+  "groups": [
+   "商市",
+   "百工",
+   "饮食"
+  ],
+  "zones": [
+   "water",
+   "general"
+  ],
+  "notes": [
+   "鱼行：水产市",
+   "酱园：酱醋作坊",
+   "食铺：面食店/小店",
+   "饼铺：胡饼/蒸饼等"
+  ],
+  "count": 105,
+  "source": "archetype",
+  "group": "商市/百工/饮食",
+  "zone": "water/general"
+ },
+ "textile": {
+  "icon": "textile",
+  "kinds": [
+   "绸缎庄",
+   "布行",
+   "绣坊",
+   "织坊"
+  ],
+  "groups": [
+   "商市",
+   "百工"
+  ],
+  "zones": [
+   "core",
+   "general"
+  ],
+  "notes": [
+   "绸缎庄：绸缎布匹",
+   "布行：布匹批发零售",
+   "绣坊：刺绣作",
+   "织坊：机房，织造"
+  ],
+  "count": 104,
+  "source": "archetype",
+  "group": "商市/百工",
+  "zone": "core/general"
+ },
+ "inn": {
+  "icon": "inn",
+  "kinds": [
+   "客栈",
+   "邸店"
+  ],
+  "groups": [
+   "行旅"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "客栈：客舍，可住店打尖",
+   "邸店：兼存货、堆货之客店"
+  ],
+  "count": 99,
+  "source": "archetype",
+  "group": "行旅",
+  "zone": "general"
+ },
+ "med": {
+  "icon": "med",
+  "kinds": [
+   "医馆",
+   "药铺",
+   "惠民药局"
+  ],
+  "groups": [
+   "医药"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "医馆：坐堂行医",
+   "药铺：卖药",
+   "惠民药局：官办施药局"
+  ],
+  "count": 95,
+  "source": "archetype",
+  "group": "医药",
+  "zone": "general"
+ },
+ "tea": {
+  "icon": "tea",
+  "kinds": [
+   "茶坊"
+  ],
+  "groups": [
+   "饮食"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "茶坊：茶馆，宋称茶坊/茶肆"
+  ],
+  "count": 84,
+  "source": "archetype",
+  "group": "饮食",
+  "zone": "general"
+ },
+ "ferry": {
+  "icon": "ferry",
+  "kinds": [
+   "码头",
+   "渡口"
+  ],
+  "groups": [
+   "行旅"
+  ],
+  "zones": [
+   "water"
+  ],
+  "notes": [
+   "码头：装卸客货",
+   "渡口：摆渡过河"
+  ],
+  "count": 83,
+  "source": "archetype",
+  "group": "行旅",
+  "zone": "water"
+ },
+ "mill": {
+  "icon": "mill",
+  "kinds": [
+   "磨坊",
+   "油坊",
+   "豆腐坊"
+  ],
+  "groups": [
+   "百工"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "磨坊：磨面榨油等",
+   "油坊：榨油",
+   "豆腐坊：做豆腐"
+  ],
+  "count": 70,
+  "source": "archetype",
+  "group": "百工",
+  "zone": "general"
+ },
+ "stable": {
+  "icon": "stable",
+  "kinds": [
+   "车马行",
+   "马厩"
+  ],
+  "groups": [
+   "行旅"
+  ],
+  "zones": [
+   "edge",
+   "general"
+  ],
+  "notes": [
+   "车马行：车马租赁/歇脚",
+   "马厩：蓄养马骡"
+  ],
+  "count": 70,
+  "source": "archetype",
+  "group": "行旅",
+  "zone": "edge/general"
+ },
+ "post": {
+  "icon": "post",
+  "kinds": [
+   "镖行",
+   "驿站",
+   "递铺"
+  ],
+  "groups": [
+   "行旅"
+  ],
+  "zones": [
+   "general",
+   "edge"
+  ],
+  "notes": [
+   "镖行：护货保镖（宋代作“标行/脚店”近似）",
+   "驿站：官驿，传信换马",
+   "递铺：急脚递/步递铺"
+  ],
+  "count": 63,
+  "source": "archetype",
+  "group": "行旅",
+  "zone": "general/edge"
+ },
+ "temple": {
+  "icon": "temple",
+  "kinds": [
+   "寺",
+   "观"
+  ],
+  "groups": [
+   "信仰"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "寺：佛寺",
+   "观：道观"
+  ],
+  "count": 61,
+  "source": "archetype",
+  "group": "信仰",
+  "zone": "general"
+ },
+ "academy": {
+  "icon": "academy",
+  "kinds": [
+   "书院",
+   "州学",
+   "县学",
+   "蒙馆"
+  ],
+  "groups": [
+   "文教"
+  ],
+  "zones": [
+   "general",
+   "core"
+  ],
+  "notes": [
+   "书院：聚徒讲学",
+   "州学：州学/府学",
+   "县学：县学",
+   "蒙馆：启蒙塾"
+  ],
+  "count": 60,
+  "source": "archetype",
+  "group": "文教",
+  "zone": "general/core"
+ },
+ "shrine": {
+  "icon": "shrine",
+  "kinds": [
+   "祠",
+   "土地庙",
+   "城隍庙"
+  ],
+  "groups": [
+   "信仰"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "祠：民间祠庙/名宦祠",
+   "土地庙：社庙",
+   "城隍庙：城隍"
+  ],
+  "count": 56,
+  "source": "archetype",
+  "group": "信仰",
+  "zone": "general"
+ },
+ "library": {
+  "icon": "library",
+  "kinds": [
+   "书坊",
+   "藏书楼"
+  ],
+  "groups": [
+   "文教"
+  ],
+  "zones": [
+   "general",
+   "core"
+  ],
+  "notes": [
+   "书坊：刻书卖书",
+   "藏书楼：藏书"
+  ],
+  "count": 48,
+  "source": "archetype",
+  "group": "文教",
+  "zone": "general/core"
+ },
+ "shop": {
+  "icon": "shop",
+  "kinds": [],
+  "groups": [],
+  "zones": [],
+  "notes": [],
+  "count": 48,
+  "source": "archetype",
+  "group": "—",
+  "zone": "—"
+ },
+ "village": {
+  "icon": "village",
+  "kinds": [],
+  "groups": [],
+  "zones": [],
+  "notes": [],
+  "count": 48,
+  "source": "archetype",
+  "group": "—",
+  "zone": "—"
+ },
+ "bridge": {
+  "icon": "bridge",
+  "kinds": [
+   "浮桥",
+   "桥"
+  ],
+  "groups": [
+   "行旅"
+  ],
+  "zones": [
+   "water",
+   "general"
+  ],
+  "notes": [
+   "浮桥：舟桥",
+   "桥：石桥/木桥"
+  ],
+  "count": 43,
+  "source": "archetype",
+  "group": "行旅",
+  "zone": "water/general"
+ },
+ "theater": {
+  "icon": "theater",
+  "kinds": [
+   "瓦舍",
+   "勾栏"
+  ],
+  "groups": [
+   "百戏娱乐"
+  ],
+  "zones": [
+   "core"
+  ],
+  "notes": [
+   "瓦舍：宋时大型游艺场，勾栏居其中",
+   "勾栏：瓦舍中的戏棚，杂剧/傀儡/说唱"
+  ],
+  "count": 39,
+  "source": "archetype",
+  "group": "百戏娱乐",
+  "zone": "core"
+ },
+ "town": {
+  "icon": "town",
+  "kinds": [],
+  "groups": [],
+  "zones": [],
+  "notes": [],
+  "count": 33,
+  "source": "archetype",
+  "group": "—",
+  "zone": "—"
+ },
+ "market": {
+  "icon": "market",
+  "kinds": [
+   "市集"
+  ],
+  "groups": [
+   "商市"
+  ],
+  "zones": [
+   "core"
+  ],
+  "notes": [
+   "市集：定期市、庙市"
+  ],
+  "count": 32,
+  "source": "archetype",
+  "group": "商市",
+  "zone": "core"
+ },
+ "money": {
+  "icon": "money",
+  "kinds": [
+   "钱铺",
+   "金银铺"
+  ],
+  "groups": [
+   "金融"
+  ],
+  "zones": [
+   "core"
+  ],
+  "notes": [
+   "钱铺：兑换钱钞/金银",
+   "金银铺：打造买卖金银首饰"
+  ],
+  "count": 32,
+  "source": "archetype",
+  "group": "金融",
+  "zone": "core"
+ },
+ "office": {
+  "icon": "office",
+  "kinds": [
+   "州衙",
+   "县衙",
+   "巡检司",
+   "牢狱",
+   "税场"
+  ],
+  "groups": [
+   "官署"
+  ],
+  "zones": [
+   "core",
+   "general"
+  ],
+  "notes": [
+   "州衙：州郡治所",
+   "县衙：县治",
+   "巡检司：缉捕治安",
+   "牢狱：监牢",
+   "税场：商税场务"
+  ],
+  "count": 32,
+  "source": "archetype",
+  "group": "官署",
+  "zone": "core/general"
+ },
+ "garden": {
+  "icon": "garden",
+  "kinds": [
+   "园",
+   "园苑"
+  ],
+  "groups": [
+   "游乐"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "园：私家园林/花园",
+   "园苑：苑囿/大园林"
+  ],
+  "count": 31,
+  "source": "archetype",
+  "group": "游乐",
+  "zone": "general"
+ },
+ "coffin": {
+  "icon": "coffin",
+  "kinds": [
+   "棺材铺",
+   "纸扎铺"
+  ],
+  "groups": [
+   "礼用"
+  ],
+  "zones": [
+   "edge"
+  ],
+  "notes": [
+   "棺材铺：寿材，多居城外",
+   "纸扎铺：纸人纸马冥器"
+  ],
+  "count": 30,
+  "source": "archetype",
+  "group": "礼用",
+  "zone": "edge"
+ },
+ "grave": {
+  "icon": "grave",
+  "kinds": [
+   "义冢",
+   "坟地"
+  ],
+  "groups": [
+   "信仰"
+  ],
+  "zones": [
+   "edge"
+  ],
+  "notes": [
+   "义冢：乱葬/义葬地",
+   "坟地：墓园"
+  ],
+  "count": 28,
+  "source": "archetype",
+  "group": "信仰",
+  "zone": "edge"
+ },
+ "huafang": {
+  "icon": "huafang",
+  "kinds": [
+   "画舫"
+  ],
+  "groups": [
+   "风月"
+  ],
+  "zones": [
+   "water"
+  ],
+  "notes": [
+   "画舫：水上歌舫/伎船，泊于河湖之间"
+  ],
+  "count": 28,
+  "source": "archetype",
+  "group": "风月",
+  "zone": "water"
+ },
+ "gamble": {
+  "icon": "gamble",
+  "kinds": [
+   "赌坊"
+  ],
+  "groups": [
+   "市井娱乐"
+  ],
+  "zones": [
+   "core"
+  ],
+  "notes": [
+   "赌坊：博戏场所（宋代禁赌，多为暗坊）"
+  ],
+  "count": 25,
+  "source": "archetype",
+  "group": "市井娱乐",
+  "zone": "core"
+ },
+ "go": {
+  "icon": "go",
+  "kinds": [
+   "棋馆"
+  ],
+  "groups": [
+   "百戏娱乐"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "棋馆：弈棋/博戏清谈之所"
+  ],
+  "count": 25,
+  "source": "archetype",
+  "group": "百戏娱乐",
+  "zone": "general"
+ },
+ "pawn": {
+  "icon": "pawn",
+  "kinds": [
+   "当铺"
+  ],
+  "groups": [
+   "金融"
+  ],
+  "zones": [
+   "core"
+  ],
+  "notes": [
+   "当铺：质库/解库，抵押借贷"
+  ],
+  "count": 25,
+  "source": "archetype",
+  "group": "金融",
+  "zone": "core"
+ },
+ "wine": {
+  "icon": "wine",
+  "kinds": [
+   "酒坊"
+  ],
+  "groups": [
+   "饮食"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "酒坊：酿酒发售"
+  ],
+  "count": 25,
+  "source": "archetype",
+  "group": "饮食",
+  "zone": "general"
+ },
+ "dye": {
+  "icon": "dye",
+  "kinds": [
+   "染坊"
+  ],
+  "groups": [
+   "百工"
+  ],
+  "zones": [
+   "water"
+  ],
+  "notes": [
+   "染坊：染布，需水"
+  ],
+  "count": 23,
+  "source": "archetype",
+  "group": "百工",
+  "zone": "water"
+ },
+ "story": {
+  "icon": "story",
+  "kinds": [
+   "书场"
+  ],
+  "groups": [
+   "百戏娱乐"
+  ],
+  "zones": [
+   "core"
+  ],
+  "notes": [
+   "书场：说书/评话/诸宫调场子"
+  ],
+  "count": 23,
+  "source": "archetype",
+  "group": "百戏娱乐",
+  "zone": "core"
+ },
+ "jiaofang": {
+  "icon": "jiaofang",
+  "kinds": [
+   "教坊"
+  ],
+  "groups": [
+   "风月"
+  ],
+  "zones": [
+   "core"
+  ],
+  "notes": [
+   "教坊：官/私乐舞教习之所，习曲舞、应宴演"
+  ],
+  "count": 22,
+  "source": "bespoke",
+  "group": "风月",
+  "zone": "core"
+ },
+ "qinglou": {
+  "icon": "qinglou",
+  "kinds": [
+   "青楼"
+  ],
+  "groups": [
+   "风月"
+  ],
+  "zones": [
+   "core"
+  ],
+  "notes": [
+   "青楼：以色艺为主的妓馆（夜夜笙歌处）"
+  ],
+  "count": 18,
+  "source": "bespoke",
+  "group": "风月",
+  "zone": "core"
+ },
+ "smith": {
+  "icon": "smith",
+  "kinds": [
+   "铁匠铺",
+   "铜匠铺"
+  ],
+  "groups": [
+   "百工"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "铁匠铺：打铁、制农具刀具",
+   "铜匠铺：铜器铸造修补"
+  ],
+  "count": 15,
+  "source": "archetype",
+  "group": "百工",
+  "zone": "general"
+ },
+ "incense": {
+  "icon": "incense",
+  "kinds": [
+   "香烛铺"
+  ],
+  "groups": [
+   "礼用"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "香烛铺：香烛纸马"
+  ],
+  "count": 13,
+  "source": "archetype",
+  "group": "礼用",
+  "zone": "general"
+ },
+ "carpenter": {
+  "icon": "carpenter",
+  "kinds": [
+   "木匠行"
+  ],
+  "groups": [
+   "百工"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "木匠行：造屋制器"
+  ],
+  "count": 12,
+  "source": "archetype",
+  "group": "百工",
+  "zone": "general"
+ },
+ "martial": {
+  "icon": "martial",
+  "kinds": [
+   "武馆"
+  ],
+  "groups": [
+   "军武"
+  ],
+  "zones": [
+   "core"
+  ],
+  "notes": [
+   "武馆：拳脚器械教习之所"
+  ],
+  "count": 12,
+  "source": "archetype",
+  "group": "军武",
+  "zone": "core"
+ },
+ "stage": {
+  "icon": "stage",
+  "kinds": [
+   "戏台"
+  ],
+  "groups": [
+   "百戏娱乐"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "戏台：露台/乐棚，社戏庙会演出"
+  ],
+  "count": 12,
+  "source": "archetype",
+  "group": "百戏娱乐",
+  "zone": "general"
+ },
+ "fortune": {
+  "icon": "fortune",
+  "kinds": [
+   "算命摊"
+  ],
+  "groups": [
+   "百戏"
+  ],
+  "zones": [
+   "core"
+  ],
+  "notes": [
+   "算命摊：卜卦看相"
+  ],
+  "count": 11,
+  "source": "archetype",
+  "group": "百戏",
+  "zone": "core"
+ },
+ "grain": {
+  "icon": "grain",
+  "kinds": [
+   "粮行"
+  ],
+  "groups": [
+   "商市"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "粮行：米粮买卖行"
+  ],
+  "count": 11,
+  "source": "archetype",
+  "group": "商市",
+  "zone": "general"
+ },
+ "sight": {
+  "icon": "sight",
+  "kinds": [
+   "高台"
+  ],
+  "groups": [
+   "地标"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "高台：台榭楼观"
+  ],
+  "count": 10,
+  "source": "archetype",
+  "group": "地标",
+  "zone": "general"
+ },
+ "boat": {
+  "icon": "boat",
+  "kinds": [
+   "船行"
+  ],
+  "groups": [
+   "行旅"
+  ],
+  "zones": [
+   "water"
+  ],
+  "notes": [
+   "船行：租船/客货船行"
+  ],
+  "count": 9,
+  "source": "archetype",
+  "group": "行旅",
+  "zone": "water"
+ },
+ "gate": {
+  "icon": "gate",
+  "kinds": [
+   "城门",
+   "城楼",
+   "钟鼓楼"
+  ],
+  "groups": [
+   "城防"
+  ],
+  "zones": [
+   "edge",
+   "core"
+  ],
+  "notes": [
+   "城门：城郭门",
+   "城楼：城门上之楼",
+   "钟鼓楼：报时"
+  ],
+  "count": 8,
+  "source": "archetype",
+  "group": "城防",
+  "zone": "edge/core"
+ },
+ "water": {
+  "icon": "water",
+  "kinds": [
+   "湖"
+  ],
+  "groups": [
+   "山水"
+  ],
+  "zones": [
+   "water"
+  ],
+  "notes": [
+   "湖：湖泊"
+  ],
+  "count": 1,
+  "source": "archetype",
+  "group": "山水",
+  "zone": "water"
+ },
+ "arena": {
+  "icon": "arena",
+  "kinds": [
+   "相扑棚",
+   "演武场"
+  ],
+  "groups": [
+   "百戏娱乐",
+   "军武"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "相扑棚：相扑、角抵表演处",
+   "演武场：教习弓马武艺、比试之处"
+  ],
+  "count": 0,
+  "source": "archetype",
+  "group": "百戏娱乐/军武",
+  "zone": "general"
+ },
+ "drink": {
+  "icon": "drink",
+  "kinds": [],
+  "groups": [],
+  "zones": [],
+  "notes": [],
+  "count": 0,
+  "source": "archetype",
+  "group": "—",
+  "zone": "—"
+ },
+ "fire": {
+  "icon": "fire",
+  "kinds": [
+   "望火楼",
+   "更房"
+  ],
+  "groups": [
+   "城防"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "望火楼：火警瞭望，宋制军中亦备",
+   "更房：夜巡打更"
+  ],
+  "count": 0,
+  "source": "archetype",
+  "group": "城防",
+  "zone": "general"
+ },
+ "forest": {
+  "icon": "forest",
+  "kinds": [
+   "林"
+  ],
+  "groups": [
+   "山水"
+  ],
+  "zones": [
+   "edge"
+  ],
+  "notes": [
+   "林：林地"
+  ],
+  "count": 0,
+  "source": "archetype",
+  "group": "山水",
+  "zone": "edge"
+ },
+ "granary": {
+  "icon": "granary",
+  "kinds": [
+   "粮仓"
+  ],
+  "groups": [
+   "官署"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "粮仓：常平仓/义仓"
+  ],
+  "count": 0,
+  "source": "archetype",
+  "group": "官署",
+  "zone": "general"
+ },
+ "house": {
+  "icon": "house",
+  "kinds": [],
+  "groups": [],
+  "zones": [],
+  "notes": [],
+  "count": 0,
+  "source": "archetype",
+  "group": "—",
+  "zone": "—"
+ },
+ "islet": {
+  "icon": "islet",
+  "kinds": [
+   "洲"
+  ],
+  "groups": [
+   "山水"
+  ],
+  "zones": [
+   "water"
+  ],
+  "notes": [
+   "洲：河洲"
+  ],
+  "count": 0,
+  "source": "archetype",
+  "group": "山水",
+  "zone": "water"
+ },
+ "monument": {
+  "icon": "monument",
+  "kinds": [],
+  "groups": [],
+  "zones": [],
+  "notes": [],
+  "count": 0,
+  "source": "archetype",
+  "group": "—",
+  "zone": "—"
+ },
+ "mountain": {
+  "icon": "mountain",
+  "kinds": [
+   "山"
+  ],
+  "groups": [
+   "山水"
+  ],
+  "zones": [
+   "edge"
+  ],
+  "notes": [
+   "山：山丘"
+  ],
+  "count": 0,
+  "source": "archetype",
+  "group": "山水",
+  "zone": "edge"
+ },
+ "museum": {
+  "icon": "museum",
+  "kinds": [],
+  "groups": [],
+  "zones": [],
+  "notes": [],
+  "count": 0,
+  "source": "archetype",
+  "group": "—",
+  "zone": "—"
+ },
+ "river": {
+  "icon": "river",
+  "kinds": [],
+  "groups": [],
+  "zones": [],
+  "notes": [],
+  "count": 0,
+  "source": "archetype",
+  "group": "—",
+  "zone": "—"
+ },
+ "ruin": {
+  "icon": "ruin",
+  "kinds": [],
+  "groups": [],
+  "zones": [],
+  "notes": [],
+  "count": 0,
+  "source": "archetype",
+  "group": "—",
+  "zone": "—"
+ },
+ "vet": {
+  "icon": "vet",
+  "kinds": [
+   "兽医铺"
+  ],
+  "groups": [
+   "医药"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "兽医铺：医牛马"
+  ],
+  "count": 0,
+  "source": "archetype",
+  "group": "医药",
+  "zone": "general"
+ }
+}

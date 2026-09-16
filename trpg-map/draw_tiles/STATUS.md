@@ -9,20 +9,22 @@
 ## 一、当前数据流（地图 v3）
 
 ```
-map_ancient_center.json   (原始 OSM 14683，勿改)
-custom_ancient.json       (76 布点锚点，勿改)
+../数据/扬州_OSM精简.json   (抽稀后 OSM 14683，勿改)
+../数据/扬州_布点锚点.json   (76 布点锚点，勿改)
         │
-        └──► build_world.py ──────────► map_ancient_song.json (12402 对象，勿手改)
-                                           │  [保留层 4149 + 生成层 ~8253]
+        └──► build_world.py ──────────► ../数据/扬州_南宋世界.json (12336 对象，勿手改)
+                                           │  [保留层 ~4029 + 生成层 ~8307]
                                            │
-                                           ├─► export_clickable.py ► 前端 clickable.geojson (2202 要素)
-                                           ├─► db/create_spatial_db.py ► db/map_spatial.db (12402 行)
+                                           ├─► export_clickable.py ► 前端 clickable.geojson
+                                           ├─► db/create_spatial_db.py ► db/map_spatial.db
                                            └─► tilegen/generate_tiles.py ► tiles/ (z11–16)
 ```
 
+> 数据统一在 **`trpg-map/数据/`**（与 `draw_tiles/` 同级），命名约定见 [`../数据/README.md`](../数据/README.md)。
+
 前端（`trpg-project/trpg-client`，相对 draw_tiles 是 `../../trpg-client`）：
 - 瓦片 `public/tiles/{z}/{x}/{y}.png`
-- 点击层 `public/data/clickable.geojson`（2202 要素；民居已排除）
+- 点击层 `public/data/clickable.geojson`（2135 要素；民居已排除）
 - 图标 `public/mapicons/*.png`（**现有 22 张，manifest 要求 46 键，缺 ~24 键，缺的显示棕色圆点**）
 - `ClickableLayer.tsx`：隐形命中层(全缩放可点) + 图标层(zoom≥15)
 - `Map.tsx`：打开即定位到玩家坐标(zoom 16)并画红色圆点
@@ -52,7 +54,7 @@ custom_ancient.json       (76 布点锚点，勿改)
 5. **坊名**：36 专名 + 两字吉祥字根组合，165 坊不重名。
 6. **POI 命名**：前缀池组合扩到 1350，客栈/茶坊等不再重名成裸"客栈"。
 7. **城外**：无官道直线；仅真镇周边散落民居。
-8. **点击层/DB**：export 2202 要素、DB 12402 行，均正常。
+8. **点击层/DB**：export 2135 要素、DB 12402 行，均正常。
 
 ## 四、LLM 工具调用 + 玩家定位（trpg-server）
 
@@ -105,9 +107,11 @@ cd ../trpg-client && npm run dev
 | README.md | 完整架构与命令 |
 | build_world.py | **世界生成器**（保留层+城墙/道路/坊/民居/POI/城外） |
 | song_kinds.py | 南宋 kind 词表（group/icon/zone/note） |
-| map_ancient_center.json | OSM 原始（勿改） |
-| custom_ancient.json | 76 布点锚点（勿改） |
-| map_ancient_song.json | 生成产物（勿手改） |
+| 数据位置 | 说明 |
+|------|------|
+| `../数据/扬州_OSM精简.json` | 抽稀后 OSM（勿改） |
+| `../数据/扬州_布点锚点.json` | 76 布点锚点（勿改） |
+| `../数据/扬州_南宋世界.json` | 生成产物（勿手改） |
 | export_clickable.py | 点击层导出 |
 | tilegen/config.py + renderer.py + classifier.py + spatial_index.py | 瓦片生成（含城墙样式/民居隐藏） |
 | db/create_spatial_db.py + query_nearby_spatial.py + map_spatial.db | 空间库（LLM 查询） |
@@ -116,4 +120,4 @@ cd ../trpg-client && npm run dev
 
 前端（`trpg-project/trpg-client`）：Map.tsx（红点+定位）/ ClickableLayer.tsx / index.css / public(mapicons,data,tiles)
 
-> 旧脚本 translate.py / place_ancient.py / merge_custom.py 已被 build_world.py 取代，保留作参考。
+> 旧脚本 translate.py / place_ancient.py / merge_custom.py 已被 build_world.py 取代，**已不在仓库**。

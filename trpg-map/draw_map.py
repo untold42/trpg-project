@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-draw_map.py —— 从 JSON（如 岳阳_map.json）绘制一幅总览地图 PNG。
+draw_map.py —— 从 JSON（如 数据/岳阳_OSM全量.json）绘制一幅总览地图 PNG。
 
 用法：
-    python draw_map.py 岳阳_map.json -o 岳阳地图.png
-    python draw_map.py 岳阳_map.json -o 岳阳地图.png --width 2400 --labels all
-    python draw_map.py 岳阳_map.json -o 岳阳地图.png --title "岳阳市全域图"
-    python draw_map.py 岳阳_map.json -o 岳阳地图.png --full          # 用完整范围
-    python draw_map.py 岳阳_map.json -o out.png --bbox 112.4,28.4,114.0,29.8
+    python draw_map.py 数据/岳阳_OSM全量.json -o 岳阳地图.png
+    python draw_map.py 数据/岳阳_OSM全量.json -o 岳阳地图.png --width 2400 --labels all
+    python draw_map.py 数据/岳阳_OSM全量.json -o 岳阳地图.png --title "岳阳市全域图"
+    python draw_map.py 数据/岳阳_OSM全量.json -o 岳阳地图.png --full          # 用完整范围
+    python draw_map.py 数据/岳阳_OSM全量.json -o out.png --bbox 112.4,28.4,114.0,29.8
 
 特点：
   - Web Mercator 投影，自动取景（默认裁掉极少数远处的“尾巴”对象）；
@@ -512,7 +512,7 @@ def parse_region(s):
 
 def main():
     ap = argparse.ArgumentParser(description="从 JSON 绘制总览地图 PNG")
-    ap.add_argument("input", help="输入的 JSON 文件（如 岳阳_map.json）")
+    ap.add_argument("input", help="输入的 JSON 文件（如 数据/岳阳_OSM全量.json）")
     ap.add_argument("-o", "--output", default="map.png", help="输出 PNG 路径")
     ap.add_argument("--width", type=int, default=2400, help="输出宽度像素（默认 2400）")
     ap.add_argument("--margin", type=float, default=0.04, help="四周留白比例（默认 0.04）")

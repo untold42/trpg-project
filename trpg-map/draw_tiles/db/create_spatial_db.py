@@ -13,7 +13,7 @@ create_spatial_db.py
         -- SQLite 原生 R-tree 空间索引（按包围盒粗筛）
 
 用法：
-    python create_spatial_db.py [--input map_ancient_song.json]
+    python create_spatial_db.py [--input 数据/扬州_南宋世界.json]
                                 [--db map_spatial.db] [--map yangzhou]
 """
 
@@ -31,7 +31,10 @@ PROJECT_ROOT = os.path.dirname(
 # 数据库文件放在 db/ 目录里
 DB_DIR = os.path.dirname(os.path.abspath(__file__))
 
-INPUT_FILE = os.path.join(PROJECT_ROOT, "map_ancient_song.json")
+# 数据目录：trpg-map/数据/
+DATA_DIR = os.path.join(os.path.dirname(PROJECT_ROOT), "数据")
+
+INPUT_FILE = os.path.join(DATA_DIR, "扬州_南宋世界.json")
 DB_FILE = os.path.join(DB_DIR, "map_spatial.db")
 MAP_ID = "yangzhou"
 MAP_NAME = "南宋扬州"

@@ -5,9 +5,9 @@ build_world.py
 南宋扬州世界生成器（推翻现代 OSM 城区，只保留自然地理 + 史实锚点，其余算法生成）。
 
 数据流：
-    map_ancient_center.json (OSM 原始) ─┐
-    custom_ancient.json   (76 布点锚点) ─┼─► build_world.py
-                                         └─► map_ancient_song.json（同名覆盖，下游零改动）
+    ../数据/扬州_OSM精简.json (抽稀后 OSM) ─┐
+    ../数据/扬州_布点锚点.json (76 布点锚点) ─┼─► build_world.py
+                                        └─► ../数据/扬州_南宋世界.json（同名覆盖，下游零改动）
 
 生成顺序（--stage 控制）：
     1 = 保留层(自然地理+锚点) + 城墙/城门 + 老城道路 + 坊面层
@@ -31,13 +31,29 @@ from shapely.geometry import (
 from shapely.ops import unary_union
 
 from song_kinds import KINDS as SONG_KINDS
+from water_width import width_m as waterway_width_m
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SOURCE_FILE = os.path.join(BASE_DIR, "map_ancient_center.json")
-CUSTOM_FILE = os.path.join(BASE_DIR, "custom_ancient.json")
-OUTPUT_FILE = os.path.join(BASE_DIR, "map_ancient_song.json")
+# 数据统一放在 trpg-map/数据/（与 draw_tiles/ 同级）
+DATA_DIR = os.path.join(os.path.dirname(BASE_DIR), "数据")
+
+# 城市（可用 TRPG_CITY 覆盖）——决定输入/输出文件名
+CITY = os.environ.get("TRPG_CITY", "扬州")
+
+SOURCE_FILE = os.path.join(DATA_DIR, f"{CITY}_OSM精简.json")
+CUSTOM_FILE = os.path.join(DATA_DIR, f"{CITY}_布点锚点.json")
+OUTPUT_FILE = os.path.join(DATA_DIR, f"{CITY}_南宋世界.json")
+
+# POI 冻结表：存在则**只读它**，不再随机生成。
+# 为什么：build_pois 原本每次跑都随机采样位置 + 随机取名，
+# 导致存档/足迹/见闻里的地名每次重跑都对不上（实测保留率仅 16%）。
+POI_FILE = os.path.join(DATA_DIR, f"{CITY}_POI.json")
 
 SEED = 42
+
+# 覆盖检查：若某条水道的中线有这么多比例已经落在「已有水面」里，
+# 就不再 buffer（已有水面就是真相），避免小河被错误撑宽。
+COVERAGE_SKIP = 0.5
 
 # ----------------------------------------------------------------------
 # 投影：局部等距（米制），中心取画框中心
@@ -297,6 +313,7 @@ class WorldBuilder:
         self.zicheng_poly = None
         self.water_geom = None      # 米制 union
         self.water_features = []    # 米制 water 线/面（供画舫贴岸）
+        self.water_polys = []       # 米制水面（**只含面**，buffer 时用来去重）
         self.center_xy = lonlat_to_xy(CENTER_LON, CENTER_LAT)
 
     # ---------------- id ----------------
@@ -374,22 +391,175 @@ class WorldBuilder:
                 shp = Polygon([lonlat_to_xy(x, y) for x, y in g["coordinates"][0]])
                 out.append(shp)
                 self.water_features.append(shp)
+                self.water_polys.append(shp)
             elif gt == "MultiPolygon":
                 for poly in g["coordinates"]:
                     shp = Polygon([lonlat_to_xy(x, y) for x, y in poly[0]])
                     out.append(shp)
                     self.water_features.append(shp)
+                    self.water_polys.append(shp)
             elif gt == "LineString":
+                # 自来水道只有中心线 → 按**真实宽度** buffer（不再硬编码 12m）
                 shp = LineString([lonlat_to_xy(x, y) for x, y in g["coordinates"]])
-                out.append(shp.buffer(12.0))
+                w = waterway_width_m(o.get("tags"), o.get("name"))
+                out.append(shp.buffer(w / 2.0, cap_style=2, join_style=1))
                 self.water_features.append(shp)
             elif gt == "MultiLineString":
                 for line in g["coordinates"]:
                     shp = LineString([lonlat_to_xy(x, y) for x, y in line])
-                    out.append(shp.buffer(12.0))
+                    w = waterway_width_m(o.get("tags"), o.get("name"))
+                    out.append(shp.buffer(w / 2.0, cap_style=2, join_style=1))
                     self.water_features.append(shp)
         except Exception:
             pass
+
+    # ---------------- 1b. 水道 buffer 成面（路径 A） ----------------
+    def buffer_waterways(self):
+        """把水道中心线按真实宽度 buffer 成水面多边形。
+
+        OSM 里大河常常**只有中心线**（如扬州的长江），没有水面多边形。
+        若不 buffer，空间库里它就是一条**零宽度线**——碰撞会认为可以直接
+        走过去，渲染也只能画成一根细线（而真实宽度 1500m）。
+
+        做法：同名河段先合并 → 中心线 buffer(width/2) → 减去已有水面
+              → 作为 category=water 写入输出；原水道线删除。
+        """
+        ww = [o for o in self.objects if o.get("category") == "waterway"]
+        if not ww:
+            return []
+
+        existing = [p for p in self.water_polys if not p.is_empty]
+
+        tree = None
+        if existing:
+            try:
+                from shapely.strtree import STRtree
+                tree = STRtree(existing)
+            except Exception:
+                tree = None
+
+        # 同名河段先归组（长江在数据里是 5 段）
+        groups = {}
+        for i, o in enumerate(ww):
+            key = o.get("name") or ("__noname_%d" % i)
+            groups.setdefault(key, []).append(o)
+
+        out = []
+        geoms_m = []          # 米制，供后续 water_geom 使用
+        skipped = []          # 因“已有水面”而跳过的河
+        buffered_objs = []    # 被 buffer 掉的原水道对象（要删）
+
+        for name, items in groups.items():
+            tags = items[0].get("tags") or {}
+            w = waterway_width_m(tags, items[0].get("name"))
+
+            # 先收集全部中线点（米制），用于两项判断：
+            #   a. 已被已有水面覆盖多少（高覆盖率 → 根本不 buffer）
+            #   b. 真正要 buffer 的几何
+            parts = []
+            sample_pts = []
+            for o in items:
+                g = o.get("geometry") or {}
+                gt = g.get("type")
+                if gt == "LineString":
+                    raw = [g.get("coordinates") or []]
+                elif gt == "MultiLineString":
+                    raw = g.get("coordinates") or []
+                else:
+                    continue
+                for ln in raw:
+                    if len(ln) < 2:
+                        continue
+                    try:
+                        xy = [lonlat_to_xy(x, y) for x, y in ln]
+                        parts.append(LineString(xy).buffer(
+                            w / 2.0, cap_style=2, join_style=1))
+                        sample_pts.extend(xy)
+                    except Exception:
+                        pass
+
+            if not parts:
+                continue
+
+            # ---- 覆盖检查：已有水面就是真相，不要再 buffer ----
+            if existing and sample_pts:
+                try:
+                    idxs = tree.query(LineString(sample_pts)) if tree is not None else None
+                except Exception:
+                    idxs = None
+                near = [existing[j] for j in idxs] if idxs is not None and len(idxs) else existing
+                step = max(1, len(sample_pts) // 60)
+                probe = sample_pts[::step]
+                covered = sum(
+                    1 for p in probe
+                    if any(g.contains(Point(p)) for g in near)
+                ) / max(1, len(probe))
+                if covered >= COVERAGE_SKIP:
+                    # 保留原中线（它带着河名，而那些水面多边形是无名的），
+                    # 打上 covered 标记 → 渲染器跳过（不然水面上会多一条深色中线）
+                    for o in items:
+                        o.setdefault("tags", {})["covered"] = "yes"
+                    skipped.append((name, covered))
+                    continue
+
+            try:
+                buf = unary_union(parts)
+            except Exception:
+                continue
+
+            # 减去已有水面（避免重叠 → 水面上出现多余内轮廓）
+            if existing:
+                if tree is not None:
+                    try:
+                        near = [existing[j] for j in tree.query(buf)]
+                    except Exception:
+                        near = [p for p in existing if p.intersects(buf)]
+                else:
+                    near = [p for p in existing if p.intersects(buf)]
+                if near:
+                    try:
+                        buf = buf.difference(unary_union(near))
+                    except Exception:
+                        pass
+
+            if buf.is_empty:
+                continue
+
+            gj = xy_geom_to_geojson(buf)
+            if not gj:
+                continue
+
+            geoms_m.append(buf)
+
+            wt = tags.get("waterway")
+            out.append({
+                "id": None,
+                "name": None if name.startswith("__noname_") else name,
+                "category": "water",
+                "geometry": gj,
+                "tags": {
+                    "water": "river" if wt in ("river", "stream") else "canal",
+                    "buffered_from": "waterway",
+                    "buffered_width_m": round(w, 1),
+                },
+            })
+            buffered_objs.extend(items)
+
+        # 只删「真正被 buffer 掉」的水道线；
+        # 被覆盖而跳过的保留（它们带着河名，且渲染时会跳过）。
+        drop_ids = {id(o) for o in buffered_objs}
+        self.objects = [o for o in self.objects if id(o) not in drop_ids]
+
+        # 让 buffer 出来的河面也参与后续计算（建房避水等）
+        try:
+            merged = ([self.water_geom] if self.water_geom is not None else []) + geoms_m
+            self.water_geom = unary_union(merged) if merged else None
+        except Exception:
+            pass
+
+        print("水道 buffer：%d 条中线 → %d 个河面（%d 组因已有水面跳过，保留中线）"
+              % (len(ww), len(out), len(skipped)))
+        return out
 
     # ---------------- 2. 城墙 / 城门 ----------------
     def build_wall(self):
@@ -706,6 +876,13 @@ class WorldBuilder:
 
     # ---------------- 6. POI ----------------
     def build_pois(self):
+
+        # ---- 冻结表优先：POI 的名字/位置永久稳定，存档不会对不上 ----
+        if os.path.exists(POI_FILE):
+            out = self._load_frozen_pois(POI_FILE)
+            print("POI（冻结表）:", len(out))
+            return out
+
         core_region = self.core_poly.difference(self.water_geom) if self.water_geom else self.core_poly
         general_region = self.core_poly.buffer(1500).difference(self.water_geom) \
             if self.water_geom else self.core_poly.buffer(1500)
@@ -740,7 +917,46 @@ class WorldBuilder:
             o.pop("_x", None)
             o.pop("_y", None)
         print("POI:", len(out))
+
+        # 首次生成后落盘冻结（之后不再随机）
+        self._save_frozen_pois(out, POI_FILE)
         return out
+
+    # ---- POI 冻结表读写 ----
+    def _load_frozen_pois(self, path):
+        data = json.load(open(path, encoding="utf-8"))
+        out = []
+        for p in data.get("objects", []):
+            out.append({
+                "id": self.new_id(),
+                "name": p.get("name"),
+                "category": "custom",
+                "geometry": {"type": "Point",
+                             "coordinates": [p["lon"], p["lat"]]},
+                "tags": {},
+                "ancient_kind": p.get("kind"),
+            })
+        return out
+
+    def _save_frozen_pois(self, objs, path):
+        pois = []
+        for o in objs:
+            c = o["geometry"]["coordinates"]
+            pois.append({
+                "name": o.get("name"),
+                "kind": o.get("ancient_kind"),
+                "lon": round(c[0], 7),
+                "lat": round(c[1], 7),
+            })
+        data = {
+            "comment": f"{CITY} POI 冻结表 —— build_world 只读它，不再随机生成",
+            "city": CITY,
+            "count": len(pois),
+            "objects": pois,
+        }
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
+        print("POI 冻结表已写出：", path)
 
     def _sample_zone(self, zone, core_region, general_region):
         rng = self.rng
@@ -863,6 +1079,10 @@ class WorldBuilder:
     # ---------------- 组装 ----------------
     def run(self):
         self.objects = self.load_keep_objects()
+        # 注意：不能写成 self.objects += self.buffer_waterways()
+        # （Python 会先取旧列表再求值右边，buffer 里换掉的新列表会被丢弃）
+        buffered_water = self.buffer_waterways()
+        self.objects += buffered_water
         self.objects += self.build_wall()
         self.objects += self.build_roads()
         self.objects += self.build_gates()
@@ -878,7 +1098,7 @@ class WorldBuilder:
             self.objects += self.build_country()
 
         data = {
-            "name": "扬州地图",
+            "name": f"{CITY}地图",
             "version": 3,
             "source": "OSM(自然地理+锚点) + 算法生成城区",
             "generator": "build_world.py",

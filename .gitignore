@@ -5,9 +5,15 @@ trpg-client/public/tiles
 
 .env
 
-trpg-map/扬州.pbf
 trpg-map/draw_tiles/tiles
+trpg-map/draw_tiles/_preview/
+trpg-map/draw_tiles/_*.txt
+trpg-map/_*.py
+trpg-map/_*.txt
 trpg-server/sessions/
+
+# 地图数据：中间产物不入库（源 pbf 与成品 *_OSM全量/*_OSM精简/*_南宋世界 仍在库）
+trpg-map/数据/中间产物/
 
 # Python 字节码（不属于源码）
 __pycache__/

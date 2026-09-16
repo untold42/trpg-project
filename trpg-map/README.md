@@ -1,9 +1,9 @@
 # pbf_to_json.py —— OSM PBF 转 JSON 工具
 
 把 OpenStreetMap 的 `.pbf` 二进制文件，转成与
-[`draw_tiles/map_ancient_center.json`](draw_tiles/map_ancient_center.json) **同构**的 JSON。
+[`../数据/扬州_OSM精简.json`](../数据/扬州_OSM精简.json) **同构**的 JSON。
 
-> 一句话：`扬州.pbf`（原始 OSM 数据） → `map_from_pbf.json`（和现有 pipeline 兼容的结构化数据）。
+> 一句话：`数据/源pbf/扬州.pbf`（原始 OSM 数据） → `数据/扬州_OSM全量.json`（和现有 pipeline 兼容的结构化数据）。
 
 ---
 
@@ -12,16 +12,16 @@
 `trpg-map` 的数据流是这样的：
 
 ```
-扬州.pbf (原始 OSM)
+数据/源pbf/扬州.pbf (原始 OSM)
    │
    ▼   【本工具：pbf_to_json.py】
-map_from_pbf.json   ← 与 map_ancient_center.json 同构
+数据/扬州_OSM全量.json   ← 与 数据/扬州_OSM精简.json 同构
    │
-   ▼   cut.py / translate.py 等（已有）
+   ▼   古代化/世界生成见 draw_tiles/build_world.py（一键：../生成.py）
 古代化裁剪、南宋转译、瓦片、空间库…
 ```
 
-仓库里现有的脚本（`cut.py`、`stat.py`、`draw_tiles/*`）**都只读 JSON**，没有任何代码解析 PBF。
+仓库里现有的脚本（`stat.py`、`draw_tiles/*`）**都只读 JSON**，没有任何代码解析 PBF。
 本工具补上了最前面这一步：把 PBF 转成下游能直接消费的 JSON。
 
 ---
@@ -52,13 +52,13 @@ python -m pip install shapely   # 仅当你打算自己扩展几何处理时
 cd C:/Users/20866/Desktop/trpg-project/trpg-map
 
 # 默认：精选模式
-python pbf_to_json.py 扬州.pbf -o map_from_pbf.json
+python pbf_to_json.py 数据/源pbf/扬州.pbf -o 数据/扬州_OSM全量.json
 
-# 按圆形裁剪 30km（对齐 map_ancient_center.json 的 filter 元数据）
-python pbf_to_json.py 扬州.pbf -o map_from_pbf.json --radius 30
+# 按圆形裁剪 30km（对齐 数据/扬州_OSM精简.json 的 filter 元数据）
+python pbf_to_json.py 数据/源pbf/扬州.pbf -o 数据/扬州_OSM全量.json --radius 30
 
 # 保留 PBF 全部要素（不做值过滤）
-python pbf_to_json.py 扬州.pbf -o map_from_pbf.json --full
+python pbf_to_json.py 数据/源pbf/扬州.pbf -o 数据/扬州_OSM全量.json --full
 ```
 
 ---
@@ -68,7 +68,7 @@ python pbf_to_json.py 扬州.pbf -o map_from_pbf.json --full
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `input` | —（必填） | 输入的 `.pbf` 文件路径 |
-| `-o, --output` | `map_from_pbf.json` | 输出 JSON 路径 |
+| `-o, --output` | `数据/扬州_OSM全量.json` | 输出 JSON 路径 |
 | `--name` | `扬州地图` | 输出 JSON 的 `name` 字段 |
 | `--center-lon` | `119.4175` | `filter` 圆心经度 |
 | `--center-lat` | `32.41` | `filter` 圆心纬度 |
@@ -79,7 +79,7 @@ python pbf_to_json.py 扬州.pbf -o map_from_pbf.json --full
 
 ## 5. 输出格式
 
-输出结构与 `map_ancient_center.json` 完全一致：
+输出结构与 `数据/扬州_OSM精简.json` 完全一致：
 
 ```jsonc
 {
@@ -188,7 +188,7 @@ shop, place, height, tourism, tunnel, historic, office, military
 
 ## 7. 精选过滤（默认开启）
 
-`CURATED_FILTERS` 表按 tag 值做白名单过滤，对齐 `map_ancient_center.json` 的口径。例如：
+`CURATED_FILTERS` 表按 tag 值做白名单过滤，对齐 `数据/扬州_OSM精简.json` 的口径。例如：
 
 - **道路**只保留 `primary / secondary / tertiary / residential / unclassified / living_street / corridor / bridleway` 等，去掉 `service / footway / path / cycleway / track / motorway` 等。
 - **建筑**只保留 `yes / apartments / house / residential / dormitory / …`，去掉 `storage_tank / barn / cabin` 等。
@@ -213,7 +213,7 @@ shop, place, height, tourism, tunnel, historic, office, military
 
 ### 9.1 中文文件名
 
-`osmium` 的 C 扩展在 Windows 上打不开非 ASCII 路径（`扬州.pbf` 会报 `Open failed`）。
+`osmium` 的 C 扩展在 Windows 上打不开非 ASCII 路径（`数据/源pbf/扬州.pbf` 会报 `Open failed`）。
 脚本检测到非 ASCII 文件名时，会自动复制到临时 ASCII 文件再读，读完不留垃圾。
 
 ### 9.2 中文编码（重要）
@@ -229,7 +229,7 @@ shop, place, height, tourism, tunnel, historic, office, military
 
 ```python
 import json
-d = json.load(open("map_from_pbf.json", encoding="utf-8"))
+d = json.load(open("数据/扬州_OSM全量.json", encoding="utf-8"))
 bad = [o["name"] for o in d["objects"]
        if o.get("name") and any(ord(c) == 0xFFFD or 0xE000 <= ord(c) <= 0xF8FF
                                  for c in o["name"])]
@@ -284,20 +284,20 @@ chcp 65001
 
 ```bash
 # 基本：自动取景 + 区县名
-python draw_map.py 岳阳_map.json -o 岳阳地图.png --width 2600 --title "岳阳市全域图"
+python draw_map.py 数据/岳阳_OSM全量.json -o 岳阳地图.png --width 2600 --title "岳阳市全域图"
 
 # 详细版：加建筑、居民小路、乡镇名
-python draw_map.py 岳阳_map.json -o 详图.png --labels all
+python draw_map.py 数据/岳阳_OSM全量.json -o 详图.png --labels all
 
 # 高亮标注某个名字（朱砂红点+红字+红轮廓）
-python draw_map.py 岳阳_map.json -o 标注.png --annotate "洞庭湖"
+python draw_map.py 数据/岳阳_OSM全量.json -o 标注.png --annotate "洞庭湖"
 
 # 用紫色虚线框标出“应有范围”（可重复）
-python draw_map.py 岳阳_map.json -o 标注.png \
+python draw_map.py 数据/岳阳_OSM全量.json -o 标注.png \
     --region "111.90,28.65,113.20,29.60|洞庭湖应有范围（估算，仅存部分）"
 
 # 手动指定图幅范围
-python draw_map.py 岳阳_map.json -o crop.png --bbox 112.7,29.1,113.4,29.6
+python draw_map.py 数据/岳阳_OSM全量.json -o crop.png --bbox 112.7,29.1,113.4,29.6
 ```
 
 参数：`--width`、`--margin`、`--title`、`--labels none|major|all`、`--bbox`、`--full`、
@@ -308,21 +308,21 @@ python draw_map.py 岳阳_map.json -o crop.png --bbox 112.7,29.1,113.4,29.6
 
 ---
 
-## 11. 已知差异（与 map_ancient_center.json 对比）
+## 11. 已知差异（与 数据/扬州_OSM精简.json 对比）
 
-| 项目 | 本工具 | map_ancient_center.json |
+| 项目 | 本工具 | 数据/扬州_OSM精简.json |
 |------|--------|------------------------|
 | 对象数量（默认） | 约 6.1 万 | 14683 |
 | 道路数量 | 精选后仍偏多 | 3979（明显按类型抽稀过） |
 | 建筑数量 | 精选后仍偏多 | 3396（明显按类型抽稀过） |
 | 水源 | 精选后 3 千+ | 3413（基本全量） |
 
-原因：`map_ancient_center.json` 本身已经是**另一套管线精选+抽稀后的结果**，不是单纯
+原因：`数据/扬州_OSM精简.json` 本身已经是**另一套管线精选+抽稀后的结果**，不是单纯
 「30km 圆裁剪」能复现的。本工具负责「PBF → 同结构 JSON」这一步；后续的抽稀、古代化、
-转译请继续走 `cut.py` / `translate.py` 等已有流程。
+古代化请继续走 `draw_tiles/build_world.py`（一键：`../生成.py`）。
 
 如果你希望本工具再加一层「道路/建筑按类型抽稀」来逼近 14683 的口径，可以改
-`CURATED_FILTERS` 或在 `cut.py` 之前加一道过滤。
+`CURATED_FILTERS`，或用 `--bbox/--city` 缩小画框。
 
 ---
 
@@ -343,11 +343,11 @@ python draw_map.py 岳阳_map.json -o crop.png --bbox 112.7,29.1,113.4,29.6
 
 ```
 trpg-map/
-├── 扬州.pbf                 # 原始 OSM 输入
+├── 数据/源pbf/扬州.pbf                 # 原始 OSM 输入
 ├── pbf_to_json.py           # 本工具
-├── map_from_pbf.json        # 输出示例（本工具生成）
-├── cut.py                   # 下游：古代化裁剪（读 JSON）
+├── 数据/扬州_OSM全量.json        # 输出示例（本工具生成）
+├── 生成.py                  # 一键链路：PBF → 数据 → 数据库 + 瓦片
 ├── stat.py                  # 下游：统计
 └── draw_tiles/              # 下游：南宋转译、瓦片、空间库
-    └── map_ancient_center.json   # 结构参考基准
+    └── 数据/扬州_OSM精简.json   # 结构参考基准
 ```

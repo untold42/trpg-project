@@ -21,22 +21,22 @@
 ## 一、整体数据流
 
 ```
-map_ancient_center.json         原始 OSM 快照（14683 对象；唯一源文件，勿改）
+trpg-map/数据/扬州_OSM精简.json        抽稀后的 OSM（14683 对象）
+        │            ▲
+        │            └ trpg-map/数据/扬州_布点锚点.json（76 个锚点）
+        ▼ build_world.py              ①丢弃现代要素 ②算法生成坊/民居/官道/坊巷 ③打 ancient_kind
+trpg-map/数据/扬州_南宋世界.json       可玩世界（12336 对象）
         │
-        ▼ translate.py           ①剔除现代要素 ②打南宋 kind ③改名/泛化
-map_ancient_song.json           南宋转译版（~13261 保留下，另 +76 人工布点 = 13337）
-        │           ▲
-        │           └ place_ancient.py(生成) → custom_ancient.json
-        │               merge_custom.py 并入 song json 并自动导出
-        │
-        ├─► export_clickable.py ──► 前端 public/data/clickable.geojson（6163 要素）
+        ├─► export_clickable.py ──► 前端 public/data/clickable.geojson
         │                           前端 public/mapicons/manifest.txt
-        ├─► db/create_spatial_db.py ► db/map_spatial.db（13337 行，给 LLM 查）
+        ├─► db/create_spatial_db.py ► db/map_spatial.db（给 LLM 查）
         └─► tilegen/generate_tiles.py ► tiles/{z}/{x}/{y}.png（~2.9 万张）
                                         拷到 ../../trpg-client/public/tiles/
 ```
 
-> 瓦片与点击层同源（都用 `map_ancient_song.json`），底图与可点击点一一对应；
+> **数据已统一收到 `trpg-map/数据/`**（与 `draw_tiles/` 同级），
+> 命名约定与完整血缘见 [`../数据/README.md`](../数据/README.md)。
+> 瓦片与点击层同源（都用 `扬州_南宋世界.json`），底图与可点击点一一对应；
 > renderer 只画几何不画名字/点，改名字不用重生成瓦片。
 
 ---
@@ -45,25 +45,24 @@ map_ancient_song.json           南宋转译版（~13261 保留下，另 +76 人
 
 ```
 draw_tiles/
-├── map_ancient_center.json   原始 OSM（唯一源，勿手改）
-├── translate.py              转译：剔除/打 kind/改名；输出 song json + 审计
-├── place_ancient.py          人工布点（生成 custom_ancient.json）
-├── merge_custom.py           把布点并入 song json，并自动重导出
-├── export_clickable.py       从 song json 导出前端 clickable.geojson + manifest
+├── build_world.py            世界生成：抽稀 OSM + 布点 → 南宋世界.json
+├── export_clickable.py       从 南宋世界.json 导出前端 clickable.geojson + manifest
 ├── song_kinds.py             南宋 kind 词表（group/icon/zone/note）
-├── custom_ancient.json       布点结果（merge 用）
-├── map_ancient_song.json     转译中件（瓦片/导出/建库的输入）
-├── _translate_review.txt / _place_review.txt   脚本审计输出
 ├── tilegen/                  瓦片渲染簇（内部互相 import，单目录自洽）
 │   ├── config.py             常量：路径/zoom/16:9 取景/颜色
 │   ├── projection / geometry / classifier / spatial_index / styles
 │   ├── texture.py / renderer.py
+│   ├── preview.py            快速预览：只生成指定地点附近几张瓦片拼成一张图
 │   └── generate_tiles.py     主入口：自动取景 → 逐 zoom 逐瓦片生成
 ├── db/                       数据库（唯一一套）
 │   ├── create_spatial_db.py      建 map_spatial.db（R-tree + 完整几何）
 │   ├── query_nearby_spatial.py   点/线/面精确范围查询（给 LLM/调试）
 │   └── map_spatial.db            结果库
-└── tiles/                    瓦片输出
+├── tiles/                    瓦片输出（gitignore）
+└── _preview/                 预览输出（latest/ 下是最新一组）
+
+数据（全部在 trpg-map/数据/，见 ../数据/README.md）：
+    扬州_OSM精简.json / 扬州_布点锚点.json / 扬州_南宋世界.json
 ```
 
 - 渲染管线文件职责：见各文件 docstring（classifier 分图层、renderer 画 256×256 + 宣纸纹理等）。
@@ -91,28 +90,37 @@ cp -r tiles/{11..16} ../../trpg-client/public/tiles/
 
 ---
 
-## 四、转译（translate.py，当前 v0.5）
+## 四、世界生成（build_world.py）
 
-流水线顺序：**剔除 → 归类 → 改名**；原名一律留 `name_modern`。
+**一步生成**：读 `trpg-map/数据/扬州_OSM精简.json` + `扬州_布点锚点.json`，
+输出 `trpg-map/数据/扬州_南宋世界.json`。
 
-1. **剔除现代要素**（REMOVE_RULES / REMOVE_NAME_KEYWORDS）：铁路、停车场、加油站、ATM、信号塔、驾校/车管、电信营业厅、按摩/轮胎/烟草/保健品等现代门店、客运站、灯塔/水厂、纪念地（陵园/纪念馆）、史可法等后世人物命名、大学点位…（整类删）。
-2. **归类**：`KIND_BY_TAG` 把 OSM 标签映射成南宋 kind（书院/医馆/客栈/酒楼/钱铺/寺观/园苑…），含：
-   - `building=temple → 寺观`（只有 building 标签的殿堂不再误归宅）；
-   - `amenity=post_office/parcel_locker → 递铺`、`public_bath → 浴堂`、`shelter → 亭` 等补充映射。
-3. **普通建筑处理**（重要）：
-   - kind=宅 的**普通建筑（有名无名一律）→ 民居**：统一名字"民居"、house 图标、可点；原商户/机关名留 `name_modern`；
-   - 历史地标白名单（五亭桥/普哈丁园/贾氏庭院/四望亭/挡军楼/树人堂）保留点名；
-   - 学舍等无点意义建筑去名（几何保留，不可点）。
-4. **名字清洗/泛化**：去"扬州/市/区/序数/人民/中心"等；校名先切"分校/校区/XX小学/中学"再补 kind（梅岭小学金辉分校→梅岭书院）；品牌按类型转（蜜雪冰城→饮品铺、兰州拉面→食铺、各家银行→钱铺、顺丰/菜鸟→递铺）；现代菜品后缀剥掉（蒋家桥饺面店→蒋家桥酒楼）；`EXACT_GENERIC` 表处理个别整名。
-5. **现代公园清洗**：XX体育休闲/湿地公园→地名主干；人才/马拉松/五一/邻里等现代主题公园→去名（几何保留）。
-6. **功能楼/杂点去名**：教学楼/传达室/文化宫/游客服务中心/公园出入口等→去名。
-7. **输出**：`map_ancient_song.json` + `_translate_review.txt`（改名/去名清单与 kind 统计）。
+核心思路：**推翻现代 OSM 城区，只保留自然地理 + 史实锚点，其余算法生成。**
 
-每次改 translate/词表后重跑：
+分阶段（`--stage` 控制）：
+
+| stage | 内容 |
+|---|---|
+| 1 | 保留层（自然地理 water/waterway/natural/landuse + 锚点）+ 城墙/城门 + 老城道路 + 坊面层 |
+| 2 | + 坊内民居矩形 |
+| 3 | + POI 布点 + 城外官道/聚落（**完整**，默认） |
+
+**保留 vs 重建**（实测）：
+
+| 处理 | 类别 |
+|---|---|
+| 原样搬运（几何逐字节相同） | water 3413、waterway 199、natural 204、landuse 88、place 81、tourism 17、historic 5 |
+| 整体丢弃（现代要素） | railway / boundary / leisure / line / poi / poi_area / man_made / shop / point |
+| 算法生成 | area 165（坊）、building 6230（坊内民居）、road 190（官道 88 + 坊巷 101 + 城墙 1）、custom 1744（POI） |
+
+产出对象带 `ancient_kind`（8432 个），词表见 `song_kinds.py`。
+
 ```bash
-python translate.py
-python merge_custom.py          # 重新并入 76 布点 + 自动 export
+python build_world.py --stage 1
+python build_world.py            # 完整（默认）
 ```
+
+> 旧的 `translate.py` / `place_ancient.py` / `merge_custom.py` 已被 `build_world.py` 取代，**已不在仓库里**。
 
 ---
 
@@ -166,20 +174,24 @@ WHERE f.map_id='yangzhou' AND f.category='building'
 ## 七、常用命令（默认在 draw_tiles/ 内）
 
 ```bash
-python translate.py                             # 转译（改规则后必跑）
-python place_ancient.py --hotspots 6 --per-hotspot 12 \
-    --center-lon 119.438 --center-lat 32.398 --radius 1.3   # 布点预览
-python merge_custom.py                          # 并入布点 + 重新导出
-python export_clickable.py                      # 只导出点击层/manifest
-python tilegen/generate_tiles.py                # 重生成瓦片（10–20 分钟）
-python db/create_spatial_db.py                  # 重建 map_spatial.db
+# —— 数据层（在 trpg-map/ 内）——
+python pbf_to_json.py 数据/源pbf/扬州.pbf     # PBF → 数据/扬州_OSM全量.json
+python 生成.py --city 扬州                     # 一键跑完整链路（见 ../数据/README.md）
+python draw_tiles/build_world.py              # → 数据/扬州_南宋世界.json
+
+# —— 产物层（在 draw_tiles/ 内）——
+python export_clickable.py                    # 点击层 + manifest
+python tilegen/preview.py 16 119.4365 32.394 3   # 快速预览几张瓦片（几秒）
+python tilegen/generate_tiles.py              # 全量瓦片（~10 分钟）
+python db/create_spatial_db.py                # 重建 map_spatial.db
 python db/query_nearby_spatial.py --lon 119.4175 --lat 32.41 --r 1
 
-# 前端
+# —— 前端 ——
 cd ../../trpg-client && npm run dev
 ```
 
-**顺序约束**：改 translate/词表 → `translate.py → merge_custom.py`（内含 export）；只有动渲染设置（renderer/config）才需重生成瓦片。
+**顺序约束**：改世界生成（`build_world.py`）→ 先重跑它，再 export / 建库；
+只改渲染设置（`tilegen/config.py` / `renderer.py`）→ 只需重生成瓦片。
 
 ---
 
@@ -187,8 +199,8 @@ cd ../../trpg-client && npm run dev
 
 | 现象 | 处理 |
 |------|------|
-| translate 控制台中文乱码 | 编码问题，数据正常；看 `_translate_review.txt` |
+| 控制台中文乱码 | Windows 编码问题，数据正常；加 `PYTHONIOENCODING=utf-8` |
 | 想还原原名 | 读 `name_modern` |
 | 地图上点不开 | 只收有名字要素；建筑统一为"民居"（见五） |
-| 改词表后 db 没变 | `python translate.py && python db/create_spatial_db.py` |
+| 改了 build_world 后 db 没变 | `python build_world.py && python db/create_spatial_db.py` |
 | 民居图标太密 | 前端 ClickableLayer 给 `kind=民居` 加 z16 阈值（见五） |
