@@ -7,12 +7,35 @@ import preloadImages from "./PreloadImages";
 import GameMap from "./Map"
 import { StaggeredMenu } from "./Staggered Menu";
 import AccordionGallery, { type AccordionGalleryItem } from "./AccordionGallery";
-import { 默认背景, getBackgroundImage } from "./background";
+import { 默认背景, getBackgroundImage, periodOfShichen } from "./background";
 import { playMusic, stopMusic } from "./music";
 import BattleScene, { type BattleState } from "./battle";
 import Clock from "./Clock";
 import { fetchClock, requestClockSync, useWorldTime } from "./useGameClock";
 import { setShichen } from "./walkable";
+import { MAP_ID } from "./mapId";
+import { API } from "../api";
+
+// 地图条目（GET /maps）：frame = [min_lon, min_lat, max_lon, max_lat]
+type MapEntry = { id: string; name: string; frame: number[] | null };
+// GET /search 的命中项（跨城市搜地点）
+type SearchHit = {
+    map_id: string; 地图: string; 名称: string; 类型: string;
+    lon: number | null; lat: number | null;
+};
+
+/** 画框 → Leaflet maxBounds（注意 [lat, lon] 顺序） */
+function frameBounds(frame?: number[] | null) {
+    if (!frame || frame.length !== 4) return undefined;
+    return [[frame[1], frame[0]], [frame[3], frame[2]]] as
+        [[number, number], [number, number]];
+}
+
+/** 画框 → 中心点 */
+function frameCenter(frame?: number[] | null): [number, number] | undefined {
+    if (!frame || frame.length !== 4) return undefined;
+    return [(frame[1] + frame[3]) / 2, (frame[0] + frame[2]) / 2];
+}
 
 // 游戏内步速（米/游戏秒）——真实速度 = 步速 × 时钟倍率，
 // 这样「游戏内移动速度」与时间保持一致（时间快 15 倍 → 标记也快 15 倍地跑）。
@@ -173,6 +196,10 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     const [background, setBackground] = useState<string>(
         initialBg?.position ? getBackgroundImage(initialBg.position, initialBg.time ?? "") : 默认背景
     ); // 当前背景（由 UI 事件控制）
+    // 当前背景图对应的**场景名**（如「城市大街」）。
+    // 白天/黄昏/黑夜是**时间的函数**，所以只记场景，时段到了自己重算——
+    // 否则「睡到早上但地点没变」时小模型按规则答「无」、不发 bg 事件，背景会一直停在夜里。
+    const [bgPosition, setBgPosition] = useState<string>(initialBg?.position ?? "");
     const [historyLines, setHistoryLines] = useState<string[]>([]); // 历史面板（读后端）
     const [factions, setFactions] = useState<FactionEntry[]>([]); // 势力画廊（GET /factions）
 
@@ -225,10 +252,14 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         let mode: "explore" | "narrative" | null = null;
         for (const ev of events) {
             if (ev.kind === "bg") {
-                setBackground(getBackgroundImage(
-                    String(ev.data.position ?? ""),
-                    String(ev.data.time ?? "")
-                ));
+                // 只认非空场景名：小模型「拿不准」时可能给空/无，
+                // 那不该把背景重新打回主页图。
+                const pos = String(ev.data.position ?? "");
+                const tm = String(ev.data.time ?? "");
+                if (pos) {
+                    setBgPosition(pos);
+                    setBackground(getBackgroundImage(pos, tm));
+                }
             } else if (ev.kind === "music") {
                 playMusic(String(ev.data.track ?? ""));
             } else if (ev.kind === "battle") {
@@ -430,6 +461,121 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         if (initialMusic) playMusic(initialMusic);
     }, []);
 
+    // 进游戏时的初始背景：若前情回顾没给，就按**玩家当前地点**取一个（不用等第一轮叙事）。
+    // 后端 GET /scene 给场景名，时分由它一并返回的时辰决定（白天/黄昏/黑夜）。
+    useEffect(() => {
+        if (initialBg?.position) return;   // 前情回顾已经带了最后一幕
+        (async () => {
+            try {
+                const d = await (await fetch(`${API}/scene`)).json();
+                if (d?.场景) {
+                    setBgPosition(d.场景);
+                    setBackground(getBackgroundImage(d.场景, d.时辰 ?? ""));
+                }
+            } catch { /* 后端没起：继续用主页面 */ }
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // 时段变化（白天/黄昏/黑夜）→ 用**当前场景名**重算背景。
+    // 睡到早上、时间跳跃、跨时辰都由它接管，不依赖大/小模型发 bg 事件。
+    const period = periodOfShichen(shichen);
+    useEffect(() => {
+        if (!bgPosition) return;
+        setBackground(getBackgroundImage(bgPosition, period));
+    }, [period, bgPosition]);
+
+    // ---- 地图（多城市）----
+    // playerCity 由**玩家坐标 + 各图画框现算**（与后端同一套规则）→ 探索地图用它；
+    // viewCity   = 菜单里那张总览图在看哪座城 → 纯查看，可自由搜/切，零副作用。
+    const [maps, setMaps] = useState<MapEntry[]>([]);
+    const [mapsReady, setMapsReady] = useState(false);
+    const [viewCity, setViewCity] = useState<string>(MAP_ID);
+    const [flyTo, setFlyTo] = useState<{ lon: number; lat: number; key: number } | null>(null);
+    useEffect(() => {
+        (async () => {
+            try {
+                const d = await (await fetch(`${API}/maps`)).json();
+                if (Array.isArray(d?.maps) && d.maps.length) setMaps(d.maps);
+            } catch { /* 后端没起：用默认 */ }
+            finally { setMapsReady(true); }
+        })();
+    }, []);
+
+    const mapOf = (id: string) => maps.find((m) => m.id === id);
+
+    // 玩家在哪张图里：坐标落在谁家画框内就是谁。
+    // 这样跨城移动后探索地图会自动跟着换；否则会出现
+    // 「地图中心在岳阳、maxBounds 还是扬州」→ 瓦片全白。
+    const playerCity = useMemo(() => {
+        if (cursor && maps.length) {
+            for (const m of maps) {
+                const f = m.frame;
+                if (f && cursor.lon >= f[0] && cursor.lon <= f[2]
+                    && cursor.lat >= f[1] && cursor.lat <= f[3]) {
+                    return m.id;
+                }
+            }
+        }
+        return MAP_ID;
+    }, [cursor, maps]);
+
+    // 探索地图的活动范围（按玩家所在城，别让走动坐标被夹到别的城）
+    const exploreBounds = useMemo(
+        () => frameBounds(mapOf(playerCity)?.frame), [playerCity, maps]);
+
+    // ---- 地图搜索（跨城市：搜地点名或城市名，命中即切图 + 飞过去）----
+    const [searchQ, setSearchQ] = useState("");
+    const [searchRes, setSearchRes] = useState<SearchHit[]>([]);
+    const [searchBusy, setSearchBusy] = useState(false);
+    const [searchDone, setSearchDone] = useState(false);
+
+    async function 搜地点(qRaw: string): Promise<SearchHit[]> {
+        const q = qRaw.trim();
+        if (!q) { setSearchRes([]); setSearchDone(false); return []; }
+        setSearchBusy(true);
+        try {
+            const d = await (await fetch(`${API}/search?q=${encodeURIComponent(q)}`)).json();
+            const rs: SearchHit[] = Array.isArray(d?.results) ? d.results : [];
+            setSearchRes(rs);
+            setSearchDone(true);
+            return rs;
+        } catch {
+            setSearchRes([]);
+            setSearchDone(true);
+            return [];
+        } finally {
+            setSearchBusy(false);
+        }
+    }
+
+    // 打字防抖（回车时会立即再搜一次，不等这 180ms）
+    useEffect(() => {
+        if (!showMap) return;
+        const q = searchQ.trim();
+        if (!q) { setSearchRes([]); setSearchDone(false); return; }
+        const t = setTimeout(() => { 搜地点(q); }, 180);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchQ, showMap]);
+
+    function 跳转地图(r: SearchHit) {
+        setViewCity(r.map_id);
+        if (r.lon != null && r.lat != null) {
+            setFlyTo({ lon: r.lon, lat: r.lat, key: Date.now() });
+        }
+        setSearchRes([]);
+        setSearchDone(false);
+        setSearchQ(r.名称);
+    }
+
+    /** 回车：有结果就跳第一条；还没搜（或结果为空）就立即搜一次再跳 */
+    async function 回车跳转() {
+        if (searchRes.length) { 跳转地图(searchRes[0]); return; }
+        const rs = await 搜地点(searchQ);
+        if (rs.length) 跳转地图(rs[0]);
+    }
+
     // 进入游戏：若本局未结束，续上（显示最后一幕），并载入历史面板
     useEffect(() => {
         const load = async () => {
@@ -542,14 +688,19 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                     <GameScene key="game" history={history} background={background} startIndex={sceneStart} />
                 </div>
 
-                {/* 探索层：整屏 zoom18 地图，光标代表玩家 */}
-                {gameMode === "explore" && (
+                {/* 探索层：整屏 zoom18 地图，光标代表玩家。
+                    等 /maps 回来再挂载：否则首次挂载可能拿不到画框 → maxBounds 用扬州默认值，
+                    而玩家在岳阳 → 视野被夹到扬州外，一片空。 */}
+                {gameMode === "explore" && mapsReady && (
                     <div className="explore-map">
                         <GameMap
                             isNight={isNight}
                             shichen={shichen}
                             zoom={18}
                             lockZoom
+                            mapId={playerCity}
+                            bounds={exploreBounds}
+                            center={frameCenter(mapOf(playerCity)?.frame)}
                             playerOverride={cursor}
                             focus={cursor}
                             wasd
@@ -593,7 +744,10 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                 )}
 
                 {/* 地图（总览图）——常用，从菜单里拿出来常驻。再点一次可关闭 */}
-                <button className="map-button" onClick={() => setShowMap(!showMap)}>
+                <button className="map-button" onClick={() => {
+                    if (!showMap) { setViewCity(playerCity); setSearchQ(""); setSearchRes([]); }
+                    setShowMap(!showMap);
+                }}>
                     {showMap ? "关闭地图" : "地图"}
                 </button>
 
@@ -651,9 +805,45 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                 {
                 showMap && (
                     <div className="game-map">
-                        {/* 菜单地图 = 总览图：不启用探索迷雾，全部 POI 都画出来；**不带进入/观察/回忆按钮** */}
-                        <GameMap isNight={isNight} shichen={shichen} showAllIcons />
-                        <button className="map-close" onClick={() => setShowMap(false)}>返回</button>
+                        {/* 菜单地图 = 总览图：不启用探索迷雾，全部 POI 都画出来；**不带进入/观察/回忆按钮**。
+                            它只是「看」，可以自由搜/切城市——不会动玩家坐标（游戏城市由坐标决定）。 */}
+                        <GameMap isNight={isNight} shichen={shichen} showAllIcons
+                            mapId={viewCity}
+                            bounds={frameBounds(mapOf(viewCity)?.frame)}
+                            center={frameCenter(mapOf(viewCity)?.frame)}
+                            hidePlayer={viewCity !== playerCity}
+                            flyTo={flyTo} />
+
+                        {/* 搜索：搜城市或地点，回车/点击即切图并飞过去（多城市也只需这一处） */}
+                        <div className="map-search">
+                            <input
+                                className="map-search-input"
+                                value={searchQ}
+                                placeholder="搜索地点 / 城市，回车跳转（如：锦香宫、岳阳楼）"
+                                onChange={(e) => setSearchQ(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter") { e.preventDefault(); 回车跳转(); }
+                                    if (e.key === "Escape") { setSearchRes([]); setSearchDone(false); }
+                                }}
+                            />
+                            {searchRes.length > 0 && (
+                                <div className="map-search-results">
+                                    {searchRes.map((r, i) => (
+                                        <button key={`${r.map_id}-${r.名称}-${i}`}
+                                            className={"map-search-hit" + (i === 0 ? " first" : "")}
+                                            onClick={() => 跳转地图(r)}>
+                                            <span className="hit-name">{r.名称}</span>
+                                            {r.类型 && <span className="hit-kind">{r.类型}</span>}
+                                            <span className="hit-city">{r.地图}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                            {searchDone && !searchBusy && searchRes.length === 0 && searchQ.trim() && (
+                                <div className="map-search-empty">没有找到「{searchQ.trim()}」</div>
+                            )}
+                        </div>
+
                     </div>
                 )
                 }

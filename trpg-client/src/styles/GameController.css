@@ -34,7 +34,6 @@
     right: 20px;
     top: 20px;
     z-index: 2000;
-
     width: 96px;
     height: 44px;
 
@@ -77,6 +76,120 @@
     font: 12px/1.5 Consolas, Menlo, monospace;
     white-space: pre;
     pointer-events: none;
+}
+
+/* 总览地图的搜索（多城市）：搜城市/地点，命中即切图 + 飞过去。
+   放顶部居中，避开左上古钟（left 25px / top 70px）与右上「返回」。 */
+.map-search {
+    position: absolute;
+    left: 50%;
+    top: 18px;
+    transform: translateX(-50%);
+    z-index: 2100;
+    width: min(420px, 46vw);
+}
+
+.map-search-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 14px;
+    border-radius: 8px;
+    border: 1px solid rgba(120, 90, 50, .5);
+    background: rgba(244, 238, 219, .96);
+    color: #3d2f1c;
+    font: 14px/1.4 "Songti SC", "SimSun", serif;
+    letter-spacing: 1px;
+    outline: none;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .22);
+}
+
+.map-search-input::placeholder {
+    color: #8a7a60;
+}
+
+.map-search-results {
+    margin-top: 6px;
+    max-height: 46vh;
+    overflow-y: auto;
+    border-radius: 8px;
+    border: 1px solid rgba(120, 90, 50, .45);
+    background: rgba(246, 241, 226, .98);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .28);
+}
+
+.map-search-hit {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 12px;
+    border: none;
+    border-bottom: 1px solid rgba(120, 90, 50, .14);
+    background: transparent;
+    color: #3d2f1c;
+    font: 14px/1.4 "Songti SC", "SimSun", serif;
+    text-align: left;
+    cursor: pointer;
+}
+
+.map-search-hit:last-child {
+    border-bottom: none;
+}
+
+.map-search-hit.first {
+    background: rgba(140, 82, 68, .10);   /* 回车会跳这条，标一下 */
+}
+
+.map-search-empty {
+    margin-top: 6px;
+    padding: 9px 14px;
+    border-radius: 8px;
+    border: 1px solid rgba(120, 90, 50, .3);
+    background: rgba(246, 241, 226, .94);
+    color: #8a7a60;
+    font: 13px/1.4 "Songti SC", "SimSun", serif;
+    letter-spacing: 1px;
+}
+
+.map-search-hit:hover {
+    background: rgba(140, 82, 68, .14);
+}
+
+.map-search-hit .hit-name {
+    flex: 1;
+    letter-spacing: 1px;
+}
+
+.map-search-hit .hit-kind {
+    flex: 0 0 auto;
+    font-size: 12px;
+    color: #8a6a4a;
+}
+
+.map-search-hit .hit-city {
+    flex: 0 0 auto;
+    font-size: 12px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: rgba(140, 82, 68, .16);
+    color: #7a4a3a;
+}
+
+/* 地形步速提示：走进林地/山地/滩涂等时显示「林地 ×0.60」 */
+.map-terrain-badge {
+    position: fixed;
+    right: 12px;
+    bottom: 12px;
+    z-index: 99998;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: rgba(30, 40, 30, .78);
+    border: 1px solid rgba(200, 230, 190, .35);
+    color: #e8f5e0;
+    font: 13px/1.4 "Songti SC", "SimSun", serif;
+    letter-spacing: 1px;
+    pointer-events: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
 }
 
 /* ============================================================

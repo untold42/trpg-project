@@ -8,7 +8,8 @@ import "leaflet/dist/leaflet.css";
 
 import ClickableLayer from "./ClickableLayer";
 import { mapStats } from "./mapStats";
-import { loadWalkable, isWalkable } from "./walkable";
+import { loadWalkable, isWalkable, terrainAt } from "./walkable";
+import { MAP_ID, tileUrlFor } from "./mapId";
 
 // 地图可活动范围 = 瓦片实际覆盖的经纬度矩形（西南角 → 东北角）
 // 与 trpg-map/城市.py 的 frame_bbox("扬州") 一致（画框 100.7×56.6 km）
@@ -18,6 +19,19 @@ const MAP_BOUNDS: LatLngBoundsExpression = [SW_CORNER, NE_CORNER];
 
 // 后端没起来 / 没经纬度时的兜底中心
 const DEFAULT_CENTER: [number, number] = [32.4040133, 119.4207185];
+
+/** 搜索跳转用：key 变化即飞到目标点（同城跳转不会重挂地图，靠它） */
+function FlyTo({ target }: { target: { lon: number; lat: number; key: number } | null }) {
+  const map = useMap();
+  const key = target?.key;
+  useEffect(() => {
+    if (!target) return;
+    map.flyTo([target.lat, target.lon], Math.max(map.getZoom(), 16), { duration: 0.6 });
+    // 只按 key 触发（同一目标重复点也要能重新飞）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return null;
+}
 
 // 玩家位置 + 足迹（探索迷雾）：后端从 游戏数据/基本信息.json 读经纬度并记录足迹
 const EXPLORED_URL = "http://localhost:5000/explored";
@@ -125,7 +139,7 @@ function ClickToMove({ onMove }: { onMove?: (p: { lon: number; lat: number }) =>
  * - 松开按键时回调 `onStop(pos)`，把位置同步给父组件（迷雾轨迹 / 行动坐标）。
  */
 function ExploreControls({
-  posRef, speedMps, runMult, onStop, radiusKm, noPan = false, walkable,
+  posRef, speedMps, runMult, onStop, radiusKm, noPan = false, walkable, area,
 }: {
   posRef: MutableRefObject<{ lon: number; lat: number } | null>;
   speedMps: number;
@@ -136,6 +150,8 @@ function ExploreControls({
   noPan?: boolean;
   /** 可走判定（返回 false 则被挡）；不传 = 不做碰撞 */
   walkable?: (lon: number, lat: number) => boolean;
+  /** 活动范围 [[minLat,minLon],[maxLat,maxLon]]——**按地图传**，别写死扬州 */
+  area: [[number, number], [number, number]];
 }) {
   const map = useMap();
   const markerRef = useRef<L.Marker | null>(null);
@@ -203,14 +219,17 @@ function ExploreControls({
     let raf = 0;
     let last = performance.now();
     const M_PER_DEG_LAT = 111320;
-    const SW = SW_CORNER;
-    const NE = NE_CORNER;
+    const SW = area[0];
+    const NE = area[1];
 
     // 调试 HUD（硬编码开）：直接改 DOM，不 setState。
     // ⚠️ 必须挂到 document.body：.leaflet-container 只有 overflow:hidden、
     //    没有 position:relative，而且 .explore-map 的 z-index 层叠上下文会把
     //    HUD 压在按钮下面 —— 挂 body + fixed 才能保证看得见。
     let hud: HTMLDivElement | null = null;
+    // 地形步速提示（常显；只在文字变化时写 DOM，避免每帧重排）
+    let badge: HTMLDivElement | null = null;
+    let badgeText = "";
     let frames = 0;
     let fpsAt = performance.now();
     if (DEBUG_HUD) {
@@ -242,7 +261,9 @@ function ExploreControls({
         runningNow = running;
         if (dx || dy) {
           const len = Math.hypot(dx, dy);
-          const dist = speedMps * (running ? runMult : 1) * dt;
+          // 地形步速倍率：路 → 路倍率；否则取最重地形（林地/山地）；平地 1.0
+          const tinfo = terrainAt(p.lon, p.lat);
+          const dist = speedMps * tinfo.mult * (running ? runMult : 1) * dt;
           const mPerDegLon = M_PER_DEG_LAT * Math.cos((p.lat * Math.PI) / 180) || M_PER_DEG_LAT;
           let lat = p.lat + ((dy / len) * dist) / M_PER_DEG_LAT;
           let lon = p.lon + ((dx / len) * dist) / mPerDegLon;
@@ -260,6 +281,25 @@ function ExploreControls({
           blockedNow = !moved && !!walkable;
         }
         const cur = posRef.current!;
+
+        // 地形步速提示（常显；变化时才写 DOM）
+        const tm = terrainAt(cur.lon, cur.lat);
+        if (tm.mult !== 1) {
+          const txt = `${tm.kind || "地形"} ×${tm.mult.toFixed(2)}`;
+          if (txt !== badgeText) {
+            badgeText = txt;
+            if (!badge) {
+              badge = document.createElement("div");
+              badge.className = "map-terrain-badge";
+              document.body.appendChild(badge);
+            }
+            badge.textContent = txt;
+            badge.style.display = "block";
+          }
+        } else if (badgeText) {
+          badgeText = "";
+          if (badge) badge.style.display = "none";
+        }
 
         // 迷雾气泡跟随：走过一定距离才上报一次（**不要每帧**，否则每帧 re-render）
         const rc = lastCommitRef.current;
@@ -380,10 +420,11 @@ function ExploreControls({
     return () => {
       cancelAnimationFrame(raf);
       hud?.remove();
+      badge?.remove();
       markerRef.current?.remove();
       markerRef.current = null;
     };
-  }, [map, posRef, speedMps, runMult, noPan, walkable]);
+  }, [map, posRef, speedMps, runMult, noPan, walkable, area]);
 
   return null;
 }
@@ -421,6 +462,16 @@ export type GameMapProps = {
   showAllIcons?: boolean;
   /** 点击 POI 弹窗里的动作（进入 / 观察 / 回忆） */
   onPlaceAction?: (place: string, act: string) => void;
+  /** 看哪张地图（默认 `?map=`）。探索地图应传**玩家所在城市** */
+  mapId?: string;
+  /** 该地图的画框（maxBounds）；不传则用扬州默认值 */
+  bounds?: LatLngBoundsExpression;
+  /** 没有玩家坐标时的初始中心（不传则用扬州默认值） */
+  center?: [number, number];
+  /** 玩家不在本图时隐藏玩家标记（例如在看别的地图） */
+  hidePlayer?: boolean;
+  /** 搜索跳转：key 变化即飞到该点 */
+  flyTo?: { lon: number; lat: number; key: number } | null;
 };
 
 function GameMap({
@@ -428,6 +479,7 @@ function GameMap({
   lockZoom = false,
   wasd, posRef, speedMps = 20, runMult = 2.5, onPositionChange,
   isNight = false, showAllIcons = false, shichen = -1, onPlaceAction,
+  mapId = MAP_ID, bounds, center, hidePlayer = false, flyTo = null,
 }: GameMapProps = {}) {
   const [player, setPlayer] = useState<PlayerPos | null>(null);
   const [footprints, setFootprints] = useState<Footprint[] | null>(null);
@@ -461,10 +513,13 @@ function GameMap({
     };
   }, []);
 
-  // 体积碰撞数据（水域 / 城墙 / 城门 / 桥 / 路）——只加载一次，模块级缓存
+  // 体积碰撞数据（水域 / 城墙 / 城门 / 桥 / 路 / 地形）——**只有 WASD 探索才需要**。
+  // 总览图（只看不走到）不要加载：walkable 的索引是模块级单例，
+  // 加载别的地图会把 `IDX` 换成那一张，探索时碰撞就全错了。
   useEffect(() => {
-    loadWalkable();
-  }, []);
+    if (!wasd) return;
+    loadWalkable(mapId);
+  }, [mapId, wasd]);
 
   // 合并「后端足迹 + 本次行走轨迹」。
   // ⚠️ cursorTrail 是**原地 push** 的（数组引用不变），所以必须靠 footprintVersion
@@ -480,24 +535,38 @@ function GameMap({
     return footprints;
   }, [footprints, extraFootprints, footprintVersion]);
 
+  // 活动范围（夹住走动坐标）——按地图算，否则玩家会被夹到另一座城的边界上。
+  // ⚠️ 必须放在 `if (!ready) return null` **之前**（Hooks 不能在任何 early return 之后）。
+  const areaKey = bounds ? JSON.stringify(bounds) : "";
+  const area = useMemo<[[number, number], [number, number]]>(() => {
+    const b = bounds as [[number, number], [number, number]] | undefined;
+    if (Array.isArray(b) && b.length === 2 && Array.isArray(b[0])) return b;
+    return [SW_CORNER, NE_CORNER];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [areaKey]);
+
   // 等定位结果回来再渲染地图，保证初始中心就在玩家位置
   if (!ready) {
     return null;
   }
 
-  const shownPlayer: PlayerPos | null = playerOverride
-    ? { lat: playerOverride.lat, lon: playerOverride.lon, name: "当前位置" }
-    : player;
+  const shownPlayer: PlayerPos | null = hidePlayer
+    ? null
+    : playerOverride
+      ? { lat: playerOverride.lat, lon: playerOverride.lon, name: "当前位置" }
+      : player;
 
   return (
     <MapErrorBoundary>
       <MapContainer
+      key={mapId}
       className={isNight && !NO_NIGHT ? "is-night" : undefined}
-      center={shownPlayer ? [shownPlayer.lat, shownPlayer.lon] : DEFAULT_CENTER}
+      center={shownPlayer ? [shownPlayer.lat, shownPlayer.lon]
+                          : (center ?? DEFAULT_CENTER)}
       zoom={zoom}
       minZoom={lockZoom ? zoom : 12}
       maxZoom={zoom}
-      maxBounds={MAP_BOUNDS}
+      maxBounds={bounds ?? MAP_BOUNDS}
       maxBoundsViscosity={1.0}
       zoomControl={!lockZoom}
       scrollWheelZoom={!lockZoom}
@@ -508,7 +577,7 @@ function GameMap({
       style={{ width: "100%", height: "100%" }}
     >
       <TileLayer
-        url="/tiles/{z}/{x}/{y}.png"
+        url={tileUrlFor(mapId)}
         minZoom={12}
         maxZoom={18}
         maxNativeZoom={16}
@@ -516,7 +585,9 @@ function GameMap({
       />
 
       <ClickToMove onMove={onMove} />
+      <FlyTo target={flyTo} />
       <ClickableLayer
+        mapId={mapId}
         footprints={shownFootprints}
         focus={focus}
         radiusKm={radiusKm}
@@ -536,6 +607,7 @@ function GameMap({
           runMult={runMult}
           radiusKm={radiusKm}
           noPan={NO_PAN}
+          area={area}
           walkable={NO_WALK ? undefined : isWalkable}
           onStop={onPositionChange ?? (() => { })}
         />

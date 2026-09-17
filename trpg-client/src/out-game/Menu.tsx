@@ -7,6 +7,8 @@ import GooseAnimation from "./GooseAnimation";
 import MoveLogo from "./Logo";
 import type { instruction } from "../types/gametype";
 import BattleScene, { type BattleState } from "../in-game/battle";
+import { MAP_ID, rememberMap } from "../in-game/mapId";
+import { API } from "../api";
 
 // 模拟战斗可选名单条目
 type Roster = { 名字: string; 梯度: string };
@@ -21,8 +23,6 @@ export type StartData = {
 type MenuProps = {
     onStartGame: (start?: StartData) => void;
 };
-
-const API = "http://localhost:5000";
 
 function Menu({ onStartGame }: MenuProps) {
     //音乐预处理
@@ -75,6 +75,40 @@ function Menu({ onStartGame }: MenuProps) {
                 body: JSON.stringify({ 难度: d }),
             });
         } catch { /* 后端没起：忽略 */ }
+    }
+
+    // ---- 环境设定：地图（多城市；写后端 游戏数据/地图设置.json，然后带 ?map= 重载）----
+    const [maps, setMaps] = useState<{ id: string; name: string }[]>([]);
+    const [curMap, setCurMap] = useState<string>(MAP_ID);
+
+    useEffect(() => {
+        if (!showSetting) return;
+        (async () => {
+            try {
+                const d = await (await fetch(`${API}/maps`)).json();
+                if (Array.isArray(d?.maps) && d.maps.length) setMaps(d.maps);
+                if (d?.current) setCurMap(d.current);
+            } catch { /* 后端没起：忽略 */ }
+        })();
+    }, [showSetting]);
+
+    async function 选地图(id: string) {
+        if (id === curMap) return;
+        // 换的只是“看哪张图”（瓦片/点击层），**不会动玩家坐标**——
+        // 游戏城市由玩家坐标决定（后端 map_settings.get_map），所以无需确认。
+        setCurMap(id);
+        rememberMap(id);
+        try {
+            await fetch(`${API}/map`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 地图: id }),
+            });
+        } catch { /* 后端没起：至少前端本地切了 */ }
+        // 换整张地图 → 重载页面（瓦片/点击层/碰撞层都按 ?map= 取）
+        const q = new URLSearchParams(window.location.search);
+        q.set("map", id);
+        window.location.replace(`${window.location.pathname}?${q.toString()}`);
     }
 
     // ---- 环境设定：模拟战斗（直接测战斗系统，不动真实存档）----
@@ -180,6 +214,24 @@ function Menu({ onStartGame }: MenuProps) {
                         <div className="Setting">
                             <div className="setting-inner">
                                 <h2 className="setting-title">环境设定</h2>
+
+                                <div className="setting-row">
+                                    <span className="setting-label">地图</span>
+                                    <div className="setting-options">
+                                        {maps.map((m) => (
+                                            <button
+                                                key={m.id}
+                                                className={"setting-option" + (m.id === curMap ? " active" : "")}
+                                                onClick={() => 选地图(m.id)}
+                                            >
+                                                {m.name}
+                                            </button>
+                                        ))}
+                                        {!maps.length && (
+                                            <span className="sim-empty">（后端未启动，读不到地图列表）</span>
+                                        )}
+                                    </div>
+                                </div>
 
                                 <div className="setting-row">
                                     <span className="setting-label">难度</span>

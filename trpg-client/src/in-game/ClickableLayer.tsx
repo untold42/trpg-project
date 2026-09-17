@@ -16,12 +16,13 @@ function isOpenNow(hours: string | undefined, shichen: number): boolean {
   return s <= e ? (shichen >= s && shichen <= e) : (shichen >= s || shichen <= e);
 }
 
-const GEO_URL = "/data/clickable.geojson";
+import { MAP_ID, dataUrlFor } from "./mapId";
+
 const ICON_DIR = "/mapicons";
 const MIN_ICON_ZOOM = 15;
 
-/* 本地缓存：clickable.geojson 存 IndexedDB，二次打开免下载、免解析 */
-const CACHE_DB = "yangzhou-map-cache";
+/* 本地缓存：clickable.geojson 存 IndexedDB，二次打开免下载、免解析。
+   每张地图一个库（`<map_id>-map-cache`），互不污染。 */
 const CACHE_STORE = "kv";
 const GEO_CACHE_KEY = "clickable-geojson";
 const GEO_VERSION = "v1"; // 重新导出 clickable.geojson 后，若想强制前端刷新，bump 此值
@@ -33,6 +34,8 @@ interface Footprint {
 }
 
 interface ClickableLayerProps {
+  /** 看哪张地图（默认 `?map=`）；探索地图应传**玩家所在城市** */
+  mapId?: string;
   /** 已探索足迹点；null/undefined = 不启用迷雾（显示全部） */
   footprints?: Footprint[] | null;
   /** 解锁半径（公里） */
@@ -72,9 +75,9 @@ interface ClickableProps {
 
 /* ================= IndexedDB 缓存 ================= */
 
-function openCache(): Promise<IDBDatabase> {
+function openCache(mapId: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(CACHE_DB, 1);
+    const req = indexedDB.open(`${mapId}-map-cache`, 1);
     req.onupgradeneeded = () => {
       if (!req.result.objectStoreNames.contains(CACHE_STORE)) {
         req.result.createObjectStore(CACHE_STORE);
@@ -85,9 +88,9 @@ function openCache(): Promise<IDBDatabase> {
   });
 }
 
-async function cacheGet(key: string): Promise<unknown> {
+async function cacheGet(mapId: string, key: string): Promise<unknown> {
   try {
-    const db = await openCache();
+    const db = await openCache(mapId);
     return await new Promise((resolve, reject) => {
       const tx = db.transaction(CACHE_STORE, "readonly");
       const req = tx.objectStore(CACHE_STORE).get(key);
@@ -99,9 +102,9 @@ async function cacheGet(key: string): Promise<unknown> {
   }
 }
 
-async function cachePut(key: string, value: unknown): Promise<void> {
+async function cachePut(mapId: string, key: string, value: unknown): Promise<void> {
   try {
-    const db = await openCache();
+    const db = await openCache(mapId);
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(CACHE_STORE, "readwrite");
       tx.objectStore(CACHE_STORE).put(value, key);
@@ -707,6 +710,7 @@ function IconsLayer({ data, isNight, shichen, showActions = false }: { data: Fea
 /* ================= 主组件 ================= */
 
 export default function ClickableLayer({
+  mapId = MAP_ID,
   footprints,
   radiusKm = 0.5,
   isNight = false,
@@ -756,7 +760,7 @@ export default function ClickableLayer({
     };
 
     // 1. 先读本地缓存，命中则立即渲染（省下载 + 解析）
-    cacheGet(GEO_CACHE_KEY).then((entry) => {
+    cacheGet(mapId, GEO_CACHE_KEY).then((entry) => {
       const e = entry as { version?: string; features?: Feature[] } | null;
       if (alive && e?.version === GEO_VERSION && Array.isArray(e.features)) {
         apply(e.features);
@@ -764,14 +768,14 @@ export default function ClickableLayer({
     });
 
     // 2. 再请求网络，成功后回写缓存（内容不变则不触发重渲染）
-    fetch(GEO_URL)
+    fetch(dataUrlFor(mapId, "clickable.geojson"))
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
       })
       .then((json: FeatureCollection) => {
         if (Array.isArray(json?.features)) {
-          cachePut(GEO_CACHE_KEY, {
+          cachePut(mapId, GEO_CACHE_KEY, {
             version: GEO_VERSION,
             features: json.features,
           });
@@ -785,7 +789,7 @@ export default function ClickableLayer({
     return () => {
       alive = false;
     };
-  }, []);
+  }, [mapId]);
 
   // 要素「代表点 + 包围盒」只算一次（featureExtent 要遍历整个几何，重复算很贵）
   const extents = useMemo(() => {

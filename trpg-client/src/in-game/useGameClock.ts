@@ -206,7 +206,14 @@ export function useWorldTime(): WorldTime {
         };
         tick();
         const iv = window.setInterval(tick, 60000);
-        return () => { alive = false; window.clearInterval(iv); };
+        // 每次 /action 之后都会 requestClockSync（解除「请求窗口暂停」的偏移）。
+        // 这里也订上：否则睡到早上后，背景要等下一次 60s 轮询才换（看着就是「还是晚上」）。
+        _syncListeners.add(tick);
+        return () => {
+            alive = false;
+            window.clearInterval(iv);
+            _syncListeners.delete(tick);
+        };
     }, []);
     return t;
 }
