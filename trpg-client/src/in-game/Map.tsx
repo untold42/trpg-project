@@ -38,7 +38,7 @@ const playerIcon = L.divIcon({
 const DEBUG_HUD = true;
 
 /**
- * 逐层开关（诊断用，见 `交接-地图性能.md` §7.3）。
+ * 逐层开关（诊断用，见 `README.md` §13.4）。
  * 一次只关一层，最快定位卡顿来源：
  *   ?noicons=1  关掉图标层（DOM marker）
  *   ?nohit=1    关掉命中层（Canvas 矢量层）

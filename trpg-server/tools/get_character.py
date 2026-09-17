@@ -33,7 +33,7 @@ NPC 登场时**一次读全**其档案：**静态（正典）+ 动态（近记�
 from pathlib import Path
 import re
 
-from tools.world_state import ACTIVE_DIR, INACTIVE_DIR
+from tools.world_threads import ACTIVE_DIR, INACTIVE_DIR
 
 # 项目根：tools/ -> trpg-server/ -> trpg-project/
 _ROOT = Path(__file__).resolve().parent.parent.parent

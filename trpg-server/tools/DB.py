@@ -7,7 +7,7 @@ DB.py
     gm_memory   —— 主持人：客观事实，全局，只增
     char_memory —— 角色：主观记忆，必须带 owner
 
-检索铁律（ARCHITECTURE.md 第三节）：
+检索铁律（README.md §5.2）：
     查 char_memory 必须带 owner（当前视角角色）；查 gm_memory 才全局。跨 owner 视为 bug。
 """
 

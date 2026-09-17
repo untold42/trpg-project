@@ -18,12 +18,17 @@ save_pipeline.py
 from __future__ import annotations
 
 import json
+import os
+import threading
+import time
 from pathlib import Path
 
 from engine import parse_instructions, read_turns
-from tools import world_state
+from tools import world_threads
 from tools import character_archive
 from tools.get_character import CHARACTER_DIR
+from tools.map_query import query_place, structure_for
+from tools import audit
 
 SERVER_DIR = Path(__file__).resolve().parent
 GAME_DATA_DIR = SERVER_DIR / "游戏数据"
@@ -179,6 +184,110 @@ def contacted_characters(turns: list[dict], char_memory: dict | None = None,
     return sorted(set(names))
 
 
+#: 不是「建筑」的地点类型（不写内部结构）
+_NON_BUILDING = {
+    "坊", "坊巷", "大街", "官道", "城墙", "城门", "桥", "浮桥",
+    "村", "镇", "山", "湖", "林", "洲", "码头", "渡口", "钟鼓楼",
+}
+
+
+def _kind_of_place(name: str) -> str:
+    try:
+        rows = (query_place(name=name, limit=1) or {}).get("results") or []
+        return str(rows[0].get("kind") or "") if rows else ""
+    except Exception:
+        return ""
+
+
+def visited_buildings(turns: list[dict]) -> list[dict]:
+    """本局玩家确实去过的**建筑**（取 update_location 的 place_name，剔除非建筑）。
+
+    返回 `[{"name": 名, "has_structure": bool}, ...]`，供存档时确定内部结构。
+    """
+    names: list[str] = []
+    for t in turns:
+        for tc in t.get("tool_calls") or []:
+            if tc.get("name") != "update_location":
+                continue
+            a = tc.get("arguments") or {}
+            n = str(a.get("place_name") or "").strip()
+            if n:
+                names.append(n)
+    out = []
+    for n in dict.fromkeys(names):          # 去重保序
+        if _kind_of_place(n) in _NON_BUILDING:
+            continue
+        out.append({"name": n, "has_structure": bool(structure_for(n))})
+    return out
+
+
+def _speakers(turns: list[dict]) -> set:
+    out: set[str] = set()
+    for t in turns:
+        for it in parse_instructions(t.get("assistant_raw")):
+            if isinstance(it, dict) and it.get("type") == "chat":
+                sp = str(it.get("speaker") or "").strip()
+                if sp:
+                    out.add(sp)
+    return out
+
+
+def _existing_names() -> set:
+    """已有静态/动态档案的名字（文件名 stem）。"""
+    try:
+        return {p.stem for p in CHARACTER_DIR.glob("*.md") if not p.stem.startswith("_")}
+    except OSError:
+        return set()
+
+
+def unnamed_characters(turns: list[dict]) -> list[str]:
+    """本局开口、但还没有档案的人物（正式命名 / 建档的兜底清单）。
+
+    **不再要求「两局都出现」**：凡本局 `chat` 开口而尚无档案者都列出——配合「NPC 必须当场起名」策略，
+    这些人应由 `update_character_archive(static=…)` 用**正式姓名**建档。
+    与已有档案名互为子串的（如「老妇」⊂「怀茂青楼老妇」）视为已命名，不列。
+    """
+    existing = _existing_names()
+    out = []
+    for n in sorted(_speakers(turns)):
+        if not n or n in _NON_CHARACTERS or n == _PLAYER:
+            continue
+        if n in existing:
+            continue
+        if any(n in e or e in n for e in existing):
+            continue
+        out.append(n)
+    return out
+
+
+def save_hints(turns: list[dict]) -> str:
+    """存档蒸馏的**附加任务**（代码统计，附在规则后面）。"""
+    buildings = visited_buildings(turns)
+    unnamed = unnamed_characters(turns)[:20]
+    if not buildings and not unnamed:
+        return ""
+    parts = ["===== 本局存档附加任务（代码统计，务必处理）====="]
+    if buildings:
+        lines = []
+        for b in buildings:
+            tag = "（已有结构，除本局发现新情况外不用重写）" if b["has_structure"] else ""
+            lines.append(f"- {b['name']}{tag}")
+        parts.append(
+            "一、玩家本局**进入过的建筑**——请为**还没有结构**的那些调用 "
+            "`update_place_structure` 确定其内部结构（几层/格局/哪间是谁的/门通向哪）：\n"
+            + "\n".join(lines)
+        )
+    if unnamed:
+        parts.append(
+            "二、以下人物**本局出现过、但还没有档案**——请用 `update_character_archive` 的 "
+            "`static` 字段建档。`name` 一律用**正式姓名（姓＋名）**（江湖人物可给名号）；"
+            "若 TA 目前只有职业 / 身份代称（如「掌柜」「老妇」「挑炭人」），请**另起一个符合南宋的姓名**，"
+            "并在 `static` 里注明其**原称谓**（若判断是同一人的不同称呼，合并命名）：\n"
+            + "\n".join(f"- {n}" for n in unnamed)
+        )
+    return "\n\n".join(parts)
+
+
 def build_transcript(turns: list[dict]) -> str:
     """把回合日志渲染成逐字叙事存档（按游戏内时间分段）。"""
     if not turns:
@@ -234,6 +343,39 @@ def load_save_rules() -> str:
         return "（未找到 存档流程.md）"
 
 
+#: 蒸馏总超时（秒）：超过就跳过蒸馏、直接机械存档（env SAVE_DISTILL_TIMEOUT 可调）
+_DISTILL_TIMEOUT = float(os.environ.get("SAVE_DISTILL_TIMEOUT", "240"))
+
+
+def _distill(runner, transcript: str, turns: list, session) -> dict:
+    """跑蒸馏（**总超时看门狗** + 附加任务）；失败/超时一律返回空结果，绝不抛。"""
+    try:
+        hints = save_hints(turns)
+    except Exception as e:
+        audit.log(f"附加任务生成失败：{type(e).__name__}: {e}")
+        hints = ""
+    box: dict = {}
+
+    def _work():
+        try:
+            box["r"] = runner.run_save(transcript, load_save_rules(), hints)
+        except Exception as e:
+            box["e"] = e
+
+    th = threading.Thread(target=_work, daemon=True)
+    t0 = time.time()
+    th.start()
+    th.join(timeout=_DISTILL_TIMEOUT)
+    if th.is_alive():
+        audit.log(f"蒸馏总超时（>{_DISTILL_TIMEOUT:.0f}s）——跳过蒸馏，继续机械存档")
+        return {"content": "", "tool_calls": []}
+    if "e" in box:
+        audit.log(f"蒸馏异常：{type(box['e']).__name__}: {box['e']}")
+        return {"content": "", "tool_calls": []}
+    audit.log(f"蒸馏结束，用时 {time.time() - t0:.1f}s")
+    return box.get("r") or {"content": "", "tool_calls": []}
+
+
 def run_save(session, runner) -> dict:
     """执行完整存档管线。返回结果摘要。"""
     turns = read_turns(session.log_path)
@@ -243,8 +385,9 @@ def run_save(session, runner) -> dict:
     # 1) 誊写
     transcript = build_transcript(turns)
 
-    # 2) LLM 蒸馏（写长期记忆）
-    result = runner.run_save(transcript, load_save_rules())
+    # 2) LLM 蒸馏（写长期记忆 + 附加任务）；**总超时看门狗**，失败/超时都不阻断机械存档
+    audit.log(f"存档开始：{len(turns)} 回合，逐字记录 {len(transcript)} 字")
+    result = _distill(runner, transcript, turns, session)
     distilled = [c["name"] for c in result.get("tool_calls", [])]
 
     # 3) 写前情 + 归档
@@ -260,7 +403,7 @@ def run_save(session, runner) -> dict:
     try:
         for name in contacted_characters(turns, char_mem, archived):
             character_archive.ensure_static(name)  # 兼底：确保人人有静态档案
-            if world_state.promote_active(name, start, "玩家接触", char_mem.get(name)):
+            if world_threads.promote_active(name, start, "玩家接触", char_mem.get(name)):
                 promoted.append(name)
     except Exception:  # 活跃名单失败不应拖垮存档
         promoted = []

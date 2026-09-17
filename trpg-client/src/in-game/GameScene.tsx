@@ -50,7 +50,7 @@ function GameScene({ history, background, onFinish, startIndex }: GameSceneProps
           <Character
             type="chat"
             speaker={currentLine.speaker}
-            expression={currentLine.expression}
+            expression={currentLine.expression ?? ""}
             content=""
           />
 

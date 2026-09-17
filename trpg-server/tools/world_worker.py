@@ -13,7 +13,7 @@ world_worker.py
 
 要点：
     - **入队游标与推演游标分离**：避免"还没跑完就被重复入队"。
-      入队用内存里的 `_enqueued_to`；推演进度由 `世界状态.模拟游标` 记录。
+      入队用内存里的 `_enqueued_to`；推演进度由 `世界线程.模拟游标` 记录。
     - 进程重启后队列丢失，`_enqueued_to` 重置为当前推演游标 → 自动补上缺口。
     - `clear()`：存档/放弃时清空（底层状态已变，旧任务失效）。
     - 失败只记日志：世界推演是 off-screen，失败不影响玩。
@@ -21,9 +21,9 @@ world_worker.py
 线程模型（本次完善）：
     - 所有可变全局（`_enqueued_to` / `_generation` / 线程句柄）由 `_lock` 保护；
     - **世代号 `generation`**：`clear()` 时 +1；队列里/在途的旧任务出队时发现世代不符
-      即跳过 —— 避免「放弃本轮」已回滚世界状态后，旧推演又把数据写回去；
+      即跳过 —— 避免「放弃本轮」已回滚世界线程后，旧推演又把数据写回去；
     - **所有状态写入都只在 daemon 线程发生**：大跨度跳过的 `fast_forward` 也作为任务入队，
-      不再在请求线程里改 `世界状态.json`（消除请求线程与 daemon 的写竞争）；
+      不再在请求线程里改 `世界线程.json`（消除请求线程与 daemon 的写竞争）；
     - **`clear(wait=True)`**：清队后停在途任务结束，供 `abandon` 在**回滚之前**调用 ——
       保证在途写入也被一并回滚。（默认 `clear()` 不等，用于存档等无需回滚的场景。）
 """
@@ -33,7 +33,7 @@ import queue
 import threading
 import time
 
-from tools import world_sim, world_state
+from tools import world_sim, world_threads
 
 MAX_TICKS = 10  # 单次最多补演多少天（更早的直接跳过）
 # 总开关：TRPG_WORLD_SIM=0 可关掉世界推演（测试/无小模型时）
@@ -108,14 +108,14 @@ def on_turn_end():
     try:
         _ensure_thread()
         with _lock:
-            now = world_state.current_date()
+            now = world_threads.current_date()
             if not now:
                 return
             if not _enqueued_to:
                 # 首次：以当前推演游标为准；若空则以今天为起点（不回补历史）
-                _enqueued_to = world_state.cursor() or now
+                _enqueued_to = world_threads.cursor() or now
 
-            delta = world_state.days_between(_enqueued_to, now)
+            delta = world_threads.days_between(_enqueued_to, now)
             if delta <= 0:
                 return
 
@@ -123,15 +123,15 @@ def on_turn_end():
             start = _enqueued_to
             if delta > MAX_TICKS:
                 # 跳过早先的日子，只补最近 MAX_TICKS 天（fast_forward 也走队列，保序）
-                start = world_state.day_before(now, MAX_TICKS)
+                start = world_threads.day_before(now, MAX_TICKS)
                 _q.put({"kind": "fast_forward", "date": start, "generation": gen})
                 delta = MAX_TICKS
 
-            loc = world_state.current_location()
-            region = world_state.current_region()
+            loc = world_threads.current_location()
+            region = world_threads.current_region()
             d = start
             for _ in range(delta):
-                d = world_state.day_after(d)
+                d = world_threads.day_after(d)
                 _q.put({"kind": "day", "date": d,
                         "player_location": loc, "player_region": region,
                         "generation": gen})
@@ -153,7 +153,7 @@ def clear(wait: bool = False):
         _drain()
         if wait:
             _wait_idle()
-        _enqueued_to = world_state.cursor()
+        _enqueued_to = world_threads.cursor()
 
 
 def pending() -> int:

@@ -18,8 +18,16 @@ from tools.registry import ALL_TOOLS
 
 load_dotenv()
 
+# 超时/重试（秒）：不设的话，API 卡住会阻塞很久（默认 600s × 重试）。
+# 可用环境变量 LLM_TIMEOUT 调（存档蒸馏大请求可设大些，如 300）。
+_TIMEOUT = float(os.environ.get("LLM_TIMEOUT", "180"))
+_MAX_RETRIES = int(os.environ.get("LLM_MAX_RETRIES", "1"))
+
 client = OpenAI(
-    api_key=os.getenv("LLM_API_KEY"), base_url="https://api.deepseek.com"
+    api_key=os.getenv("LLM_API_KEY"),
+    base_url="https://api.deepseek.com",
+    timeout=_TIMEOUT,
+    max_retries=_MAX_RETRIES,
 )
 
 

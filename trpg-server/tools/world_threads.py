@@ -1,32 +1,37 @@
 # -*- coding: utf-8 -*-
 """
-world_state.py
-==============
-世界状态（live，结构化）：推演游标 + 宏观 + 定时线 + 人物线程。
+world_threads.py
+================
+世界线程（live）：小模型推演的 **NPC 人物线程**。
 
-存放：`游戏数据/世界状态.json`（经 state_manager 读写）
-    ⇒ 因而自动进入「状态现拼」，大模型每轮都能看到最新世界状态；
+存放：`游戏数据/世界线程.json`（经 state_manager 读写）
+    ⇒ 因而自动进入「状态现拼」，大模型每轮都能看到最新线程；
     ⇒ 也自动进入开局快照，`放弃本轮` 时随玩家状态一起回滚。
-
-活跃人物：扫 `trpg-world/角色动态档案/活跃/*.md`（谁在那，就该被推演）。
 
 结构：
     {
-      "模拟游标": "1220-01-16",           # 已推演到哪一天
-      "宏观":    [ {date, entity, text} ], # 已发生的宏观事件
-      "定时线":  [ {date, text, 已触发} ],  # 作者给定，代码按日期触发
+      "模拟游标": "1220-01-17",             # 世界推演已推到哪一天（bookkeeping，不注入）
       "人物线程": {
-         "上官萤": { "地点":"福州",
-                     "最新": {日期,类型,顺利度},
-                     "流水": [ {日期,类型,顺利度}, ... ] }   # 上限截断
+         "温夫人": { "地点":"君山",
+                     "最新": {日期,地点,类型,顺利度,纳入上下文},
+                     "流水": [ {日期,地点,类型,顺利度,纳入上下文}, ... ] }   # 上限截断
       }
     }
+
+⚠️ **宏观时间线不在这里**：宏观事件是「只读剧本 + 按当前日期切窗口」，
+   见 `tools/macro_timeline.py`（不拷贝、不记「已触发」）。
+
+活跃人物：扫 `trpg-world/角色动态档案/活跃/*.md`（谁在那，就该被推演）。
 """
+
+from __future__ import annotations
 
 import datetime
 from pathlib import Path
 
 from tools.state_manager import state
+
+STATE_KEY = "世界线程"
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 STATIC_DIR = _ROOT / "trpg-world" / "角色静态档案"
@@ -38,12 +43,12 @@ THREAD_LOG_LIMIT = 5
 
 
 def default() -> dict:
-    """一份全新的空世界状态（纯函数，不碰文件）。"""
-    return {"模拟游标": "", "宏观": [], "定时线": [], "人物线程": {}}
+    """一份全新的空世界线程（纯函数，不碰文件）。"""
+    return {"模拟游标": "", "人物线程": {}}
 
 
 def load() -> dict:
-    data = state.load("世界状态", {})
+    data = state.load(STATE_KEY, {})
     if not isinstance(data, dict):
         data = {}
     for k, v in default().items():
@@ -52,7 +57,7 @@ def load() -> dict:
 
 
 def save(data: dict):
-    state.save("世界状态", data)
+    state.save(STATE_KEY, data)
 
 
 def cursor() -> str:
@@ -191,8 +196,7 @@ def update_character(name: str, date: str, location: str, kind: str,
     """写入某人物当天的推演结果（最新 + 流水，流水按上限截断）。
 
     - `include`：小模型给出的「是否纳入大模型上下文」（依据离玩家远近）。
-      只影响 `context_view()` 的注入裁剪，**不影响存储**（存档仍是全量）。
-    - 每条流水也记 `地点`（此前只存顶层最新地点，导致地点历史丢失）。
+      只影响 `threads_view()` 的注入裁剪，**不影响存储**（存档仍是全量）。
     """
     def _mutate(data):
         if not isinstance(data, dict):
@@ -211,31 +215,26 @@ def update_character(name: str, date: str, location: str, kind: str,
             del log[: len(log) - THREAD_LOG_LIMIT]
         return data
 
-    state.update("世界状态", _mutate)
+    state.update(STATE_KEY, _mutate)
 
 
-def context_view() -> dict:
-    """给大模型的**裁剪视图**（只用于注入上下文，不改存储）。
+def threads_view() -> dict:
+    """给大模型的**注入视图**：只保留「纳入上下文」为真的流水条目。
 
-    - `人物线程`：只保留「纳入上下文」为真的流水条目；某人物若全被裁掉则不出现。
-    - `宏观` / `定时线` / `模拟游标`：不裁（一局至多一个游戏月，体量可控）。
+    某人物若全被裁掉则不出现；**不注入 `模拟游标`**（bookkeeping）。
+    存储始终全量（`世界线程.json` 不动）。
     """
     data = load()
-    threads = {}
+    out = {}
     for name, th in (data.get("人物线程") or {}).items():
         if not isinstance(th, dict):
             continue
         log = [e for e in (th.get("流水") or []) if e.get("纳入上下文", True)]
         if not log:
             continue
-        threads[name] = {
+        out[name] = {
             "地点": log[-1].get("地点", th.get("地点", "")),
             "最新": log[-1],
             "流水": log,
         }
-    return {
-        "模拟游标": data.get("模拟游标", ""),
-        "宏观": data.get("宏观", []),
-        "定时线": data.get("定时线", []),
-        "人物线程": threads,
-    }
+    return out

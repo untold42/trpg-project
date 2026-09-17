@@ -268,7 +268,7 @@ def abandon():
     return jsonify({"success": True, "restored": restored})
 
 
-@app.route("/save", methods=["POST"])
+@app.route("/save", methods=["POST", "GET"])   # GET 便于在浏览器地址栏直接触发 / 诊断
 def save():
     """存档收尾管线（存档 = 结束本局）。
 

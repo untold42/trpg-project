@@ -4,7 +4,7 @@ character_archive.py
 ====================
 角色**动态档案**（近记忆 · 热）的写入工具 + LRU 淘汰。
 
-设计（ARCHITECTURE.md 第三节）：
+设计（README.md §5.2）：
     热：`trpg-world/角色动态档案/活跃/<名>.md`（模板 §9–§13）——每局存档时更新
     冷：chroma `char_memory`——**只在动态档案溢出时**由 LRU 淘汰写入
 
@@ -21,7 +21,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from tools.world_state import ACTIVE_DIR, INACTIVE_DIR, STATIC_DIR
+from tools.world_threads import ACTIVE_DIR, INACTIVE_DIR, STATIC_DIR
 
 #: §10 情感记忆每个角色保留的最大行数（超出淘汰最旧）
 NEAR_MEMORY_LIMIT = 20

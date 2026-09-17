@@ -1,7 +1,8 @@
 export type chat = {
   type: "chat";
   speaker: string;
-  expression: string;
+  // 立绘表情：由引擎（小模型 expression_sim）填充，可能缺省（无立绘资源时）
+  expression?: string;
   content: string;
 };
 

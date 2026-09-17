@@ -13,7 +13,7 @@
 
 - **静态部分**（基本档案 / 说话方式 / 性格 / 身世…）不在这里，见
   `角色静态档案/<名>.md`（模板：`档案模板/静态模板.md`）。
-- `世界状态.json` 里另存结构化的「人物线程」；本文件是给大模型读的近记忆文本。
+- `世界线程.json` 里另存结构化的「人物线程」；本文件是给大模型读的近记忆文本。
 
 ## 谁往「活跃/」里放人（已自动化）
 
@@ -25,7 +25,7 @@
 - **建档 / 更新动态档案**：存档蒸馏回合按人调 `update_character_archive`（§9–§13）。
 - **加入活跃名单**（世界推演名单）：`save_pipeline.contacted_characters` 三处确定性抽取
   （`chat` 发言人 / `get_character` 解析名 / `update_character_archive` 建过档的人），
-  `world_state.promote_active` 落地；静态档案由 `character_archive.ensure_static` 兼底。
+  `world_threads.promote_active` 落地；静态档案由 `character_archive.ensure_static` 兼底。
 - **冷库不直写**：`char_memory` 只由动态档案 §10 超 20 条时 LRU 淘汰写入。
 - **幂等**：已在活跃名单则不动；曾落入 `不活跃/` 的会**迁回**（保留近记忆）。
 - 也支持手动放文件（照旧）。

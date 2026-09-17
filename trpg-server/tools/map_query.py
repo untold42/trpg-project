@@ -77,6 +77,16 @@ def _ensure_place_schema(conn):
                )"""
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_place_notes_name ON place_notes(name)")
+        # 建筑**内部结构**（存档时由主持人确定一次，之后一直有效）
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS place_structures (
+                   name      TEXT PRIMARY KEY,
+                   map_id    TEXT,
+                   structure TEXT NOT NULL,
+                   time      TEXT,
+                   updated   TEXT DEFAULT CURRENT_TIMESTAMP
+               )"""
+        )
         conn.commit()
         _SCHEMA_READY = True
     except sqlite3.Error:
@@ -179,6 +189,25 @@ def notes_for(name: str) -> list:
         conn.close()
 
 
+def _attach_structure(conn, results):
+    """把建筑**内部结构**合并进结果（`结构` 字段）。"""
+    names = [r.get("name") for r in results if r.get("name")]
+    if not names:
+        return
+    uniq = list(set(names))
+    ph = ",".join("?" * len(uniq))
+    try:
+        m = dict(conn.execute(
+            f"SELECT name, structure FROM place_structures WHERE name IN ({ph})", uniq
+        ).fetchall())
+    except sqlite3.Error:
+        return
+    for r in results:
+        s = m.get(r.get("name") or "")
+        if s:
+            r["结构"] = s
+
+
 def _attach_notes(conn, results):
     """把静态 description 与动态见闻合并进结果的 `description`（并附 `notes`）。"""
     nmap = _notes_map(conn, [r.get("name") for r in results])
@@ -193,6 +222,7 @@ def _attach_notes(conn, results):
         r["description"] = " ｜ ".join(parts) if parts else None
         if notes:
             r["notes"] = notes
+    _attach_structure(conn, results)
 
 
 def query_nearby(lon, lat, radius_km=1.0, kind=None, category=None, limit=20):
@@ -378,6 +408,49 @@ def update_place_note(place: str, note: str, time: str = "") -> dict:
     except sqlite3.Error as e:
         return {"success": False, "error": str(e)}
     return {"success": True, "place": place, "note": note, "total": n}
+
+
+def update_place_structure(place: str, structure: str, time: str = "") -> dict:
+    """写入/覆盖某建筑的**内部结构**（几层、哪间是谁的、后院有什么…）。
+
+    存在 `place_structures` 表（重建地图不丢）；以后 `query_nearby` / `query_place`
+    命中该地名时，会把 `结构` 一并返回——主持人不必再现编。
+    """
+    place = (place or "").strip()
+    structure = (structure or "").strip()
+    if not place or not structure:
+        return {"success": False, "error": "place 与 structure 均不能为空"}
+    try:
+        conn = _connect()
+        conn.execute(
+            """INSERT INTO place_structures(map_id, name, structure, time, updated)
+               VALUES(?,?,?,?,CURRENT_TIMESTAMP)
+               ON CONFLICT(name) DO UPDATE SET structure=excluded.structure,
+                                               time=excluded.time,
+                                               updated=CURRENT_TIMESTAMP""",
+            [DEFAULT_MAP, place, structure, time or ""],
+        )
+        conn.commit()
+        conn.close()
+    except sqlite3.Error as e:
+        return {"success": False, "error": str(e)}
+    return {"success": True, "place": place, "structure": structure}
+
+
+def structure_for(name: str) -> str:
+    """某建筑的内部结构（无则返回空串）。"""
+    if not name:
+        return ""
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT structure FROM place_structures WHERE name=?", [name]
+        ).fetchone()
+        return (row[0] if row else "") or ""
+    except Exception:
+        return ""
+    finally:
+        conn.close()
 
 
 def list_map_kinds(limit=200):

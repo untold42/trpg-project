@@ -4,7 +4,7 @@ engine.py
 =========
 游戏引擎：回合运行 + 会话状态 + 过程日志。
 
-职责边界（见 ARCHITECTURE.md 第五节）：
+职责边界（见 README.md §5.4）：
     - GameSession  : 持有 history（纯叙事）与 current.jsonl（过程真相），负责落盘/恢复
     - TurnRunner   : 一次玩家动作的完整回合（LLM 工具循环），产出给前端的
                     统一事件流（叙事指令 + 工具 UI 事件）
@@ -36,10 +36,14 @@ from tools.game_clock import clock
 from tools import derived
 from tools import hunger
 from tools.ui_events import UI_EVENTS_KEY, music_event, bg_event
-from tools import world_state
+from tools import world_threads
+from tools import macro_timeline
+from tools import director
 from tools import world_worker
 from tools import ui_sim
 from tools import map_query
+from tools import expression_sim
+from tools import audit
 from tools.registry import SAVE_TOOLS
 
 # ------------------------------------------------------------
@@ -72,15 +76,25 @@ def _rules_text(folder: str) -> str:
 # 上下文素材
 # ------------------------------------------------------------
 def state_dict() -> dict:
-    """现拼的机械状态 dict（排除 足迹 / 时钟；世界状态已按上下文裁剪）。"""
+    """现拼的机械状态 dict（排除 足迹 / 时钟；世界线程已按上下文裁剪）。
+
+    世界线程（NPC 推演）来自 `游戏数据/世界线程.json`，按「纳入上下文」裁后注入；
+    宏观时间线**不落档**——从只读剧本按当前日期现切窗口（`macro_timeline.view`）。
+    """
     clock.sync_state()  # 连续时钟 → 基本信息.时间（仅刻变化时落盘）
     derived.sync()      # 上限对齐属性（体力→生命上限、內力→精力上限）
     hunger.sync()       # 饥饿归一化为 0~100 并回写挡位
     snapshot = state.snapshot()
-    if "世界状态" in snapshot:
-        snapshot["世界状态"] = world_state.context_view()
+    if "世界线程" in snapshot:
+        snapshot["世界线程"] = world_threads.threads_view()
     for _skip in ("足迹", "时钟"):
         snapshot.pop(_skip, None)
+    # 导演简报：只在生成成功且有内容时注入（生成中/失败不占上下文）
+    _b = snapshot.get("导演简报")
+    if isinstance(_b, dict) and not str(_b.get("内容", "")).strip():
+        snapshot.pop("导演简报", None)
+    # 宏观时间线：只读剧本 + 时间窗（近 N 月已发生 / 未来 N 月预兆），不落档
+    snapshot["宏观时间线"] = macro_timeline.view(world_threads.current_date())
     return snapshot
 
 
@@ -99,7 +113,8 @@ def snapshot_state() -> str:
     """现拼当前机械状态（游戏数据/*.json）为一段文本。不含 游戏存档.md。
 
     特殊处理：
-      - **世界状态**：按「纳入上下文」裁剪人物线程（只裁**注入**，不裁存储）；
+      - **世界线程**：按「纳入上下文」裁剪人物线程（只裁**注入**，不裁存储）；
+      - **宏观时间线**：从只读剧本按当前日期现切窗口（不落档）；
       - **连续时钟**：先把派生时刻写回 `基本信息.时间`（保证 LLM 看到的是最新时间）；
       - **不进 LLM 上下文的文件**（`足迹` / `时钟`）：从前端 `/state` 仍可读到，
         但**不发给大模型**（足迹白占上下文；时钟只有一个裸秒数，徒增困惑）。
@@ -287,6 +302,9 @@ class GameSession:
         self.last_music = None    # 上次发给前端的音乐 track
         self._lock = threading.RLock()
         self._restore()
+        # 新一局开张：异步生成一次《导演简报》（每局一次；失败保留上一版）
+        if not self.history:
+            director.refresh_async(self.previous_story)
         # 本局尚未开始且没有快照 → 记录「本局开局状态」（放弃本轮时回滚用）
         if not self.history and not self._snapshot_path().exists():
             self._take_snapshot()
@@ -298,13 +316,13 @@ class GameSession:
     def _take_snapshot(self):
         """把当前玩家状态记为本局开局状态。
 
-        世界状态也纳入快照（它存在 游戏数据/ 下）：首次尚不存在时补一份空白的，
+        世界线程也纳入快照（它存在 游戏数据/ 下）：首次尚不存在时补一份空白的，
         保证「放弃本轮」也能把世界推演一起回滚。
         """
         with self._lock:
             clock.persist()  # 先把连续时钟冻结落盘，保证快照里的时钟是最新值
             snap = state.snapshot()
-            snap.setdefault("世界状态", world_state.default())
+            snap.setdefault("世界线程", world_threads.default())
             path = self._snapshot_path()
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(
@@ -372,6 +390,7 @@ class GameSession:
             if self.log_path.exists():
                 self.log_path.unlink()
             self.previous_story = load_previous_story()
+            director.refresh_async(self.previous_story)   # 新一局：重生成导演简报
             self._take_snapshot()
 
     def abandon(self) -> bool:
@@ -393,6 +412,7 @@ class GameSession:
             if self.log_path.exists():
                 self.log_path.unlink()
             self.previous_story = load_previous_story()
+            director.refresh_async(self.previous_story)   # 新一局：重生成导演简报
             self._take_snapshot()  # 新本局从回滚后的状态开始
             return restored
 
@@ -488,7 +508,7 @@ class TurnRunner:
         self.session = session
         self.send_messages = send_messages
         self.tools_map = tools_map
-        self._lock = threading.Lock()  # 串行化回合，避免并发请求交错
+        self._lock = threading.RLock()  # 串行化回合（**可重入**：run_save 会嵌套调 _run_save）
 
     def run(self, user_input: str, mode: str = "action", from_explore: bool = False) -> list[dict]:
         """跑完一个回合，返回统一事件流。
@@ -517,7 +537,9 @@ class TurnRunner:
         ui_events: list[dict] = []
 
         result = self.send_messages(session.build_messages(tool_msgs))
-        while result.tool_calls:
+        _rounds = 0
+        while result.tool_calls and _rounds < 12:      # 轮数上限，防模型无限调工具
+            _rounds += 1
             # 1) 保存 LLM 的 tool_calls 消息
             tool_msgs.append({
                 "role": "assistant",
@@ -558,6 +580,8 @@ class TurnRunner:
 
         # 5) 解析最终 JSON（必要时请求一次格式修正）
         raw, events = self._finalize(result, tool_msgs)
+        # 5a) 人物表情（小模型）：给 chat 补 expression（唯一影响返回事件流，不改 raw）
+        expression_sim.fill(events)
         # 5b) 时间权威：叙述推进了时间却没调 update_time → 记提醒，下一轮注入
         self._check_time_authority(events, tool_records)
         # 5c) UI 事件（小模型）：背景 / 音乐
@@ -584,35 +608,38 @@ class TurnRunner:
         return scene_ui + ui_events + events
 
     # ---- 存档蒸馏专用回合 ----
-    def run_save(self, transcript: str, rules: str) -> dict:
+    def run_save(self, transcript: str, rules: str, hints: str = "") -> dict:
         """把本局记录蒸馏进长期记忆。
 
         与普通回合不同：**不写 history、不写 current.jsonl**（这不是叙事回合）。
         注入《存档流程》规则 + 本局记录，跑工具循环（LLM 调数据库工具）。
+        `hints`：代码统计的附加任务（本局进过的建筑 / 两局都出现的无名人）。
         返回 {"content": 最终文本, "tool_calls": [...]}
         """
         with self._lock:
             # 存档蒸馏也是 LLM 请求：期间冻结时钟
             clock.pause("save")
             try:
-                return self._run_save(transcript, rules)
+                return self._run_save(transcript, rules, hints)
             finally:
                 clock.resume("save")
 
-    def _run_save(self, transcript: str, rules: str) -> dict:
+    def _run_save(self, transcript: str, rules: str, hints: str = "") -> dict:
         with self._lock:
-            base = [
-                {"role": "system", "content": rules},
-                {"role": "user", "content":
-                    "《本局完整记录》\n\n" + transcript +
-                    "\n\n请按规则将其蒸馏进长期记忆，只调用数据库工具，不要输出叙事。"},
-            ]
+            base = [{"role": "system", "content": rules}]
+            if hints:
+                base.append({"role": "system", "content": hints})
+            base.append({"role": "user", "content":
+                "《本局完整记录》\n\n" + transcript +
+                "\n\n请按规则将其蒸馏进长期记忆，只调用数据库工具，不要输出叙事。"})
             tool_msgs: list[dict] = []
             tool_records: list[dict] = []
             state_msg = {"role": "system", "content": "===== 当前状态 =====\n" + snapshot_state()}
 
-            result = self._send_save(base + [state_msg])
-            while result.tool_calls:
+            result = self._send_save(base + [state_msg], round_no=1)
+            _rounds = 0
+            while result.tool_calls and _rounds < 12:   # 轮数上限，防蒸馏回合无限调工具
+                _rounds += 1
                 tool_msgs.append({
                     "role": "assistant",
                     "content": result.content,
@@ -624,7 +651,10 @@ class TurnRunner:
                         arguments = json.loads(tc.function.arguments)
                     except (json.JSONDecodeError, TypeError):
                         arguments = {}
+                    audit.log(f"调用工具 {name} 参数 {arguments}")
+                    _tool_t0 = time.time()
                     tool_result = self._call_tool(name, arguments)
+                    audit.log(f"  工具 {name} 返回，{time.time() - _tool_t0:.1f}s")
                     tool_msgs.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
@@ -632,8 +662,9 @@ class TurnRunner:
                     })
                     tool_records.append({"name": name, "arguments": arguments,
                                          "result": tool_result})
-                result = self._send_save(base + tool_msgs + [state_msg])
+                result = self._send_save(base + tool_msgs + [state_msg], round_no=_rounds + 1)
 
+            audit.log(f"蒸馏完成：{_rounds} 轮工具循环，共 {len(tool_records)} 次工具调用")
             return {"content": result.content or "", "tool_calls": tool_records}
 
     def _say_time_guard(self, mode: str, name: str, arguments: dict):
@@ -663,12 +694,18 @@ class TurnRunner:
         print(f"[say] 驳回{mode}回合的时间推进：{arguments}")
         return {"success": False, "error": self._SAY_TIME_BLOCK.format(max_ke=self.SAY_MAX_KE)}
 
-    def _send_save(self, messages):
+    def _send_save(self, messages, round_no: int = 1):
         """存档蒸馏回合：带上存档专用工具（含 `update_character_archive`）。"""
+        n_chars = sum(len(str(m.get("content") or "")) for m in messages)
+        t0 = time.time()
         try:
-            return self.send_messages(messages, tools=SAVE_TOOLS)
-        except TypeError:  # 兼容不接受 tools 参数的 send_messages
-            return self.send_messages(messages)
+            r = self.send_messages(messages, tools=SAVE_TOOLS)
+            names = [tc.function.name for tc in (r.tool_calls or [])]
+            audit.log(f"第 {round_no} 轮 LLM {time.time() - t0:.1f}s，prompt {n_chars} 字，工具 {names}")
+            return r
+        except Exception as e:
+            audit.log(f"第 {round_no} 轮 LLM 失败（{time.time() - t0:.1f}s）：{type(e).__name__}: {e}")
+            raise
 
     def _call_tool(self, name: str, arguments: dict):
         tool = self.tools_map.get(name)
@@ -713,7 +750,7 @@ class TurnRunner:
             for it in events
             if isinstance(it, dict) and it.get("type") == "narration"
         )
-        loc = world_state.current_location()
+        loc = world_threads.current_location()
         # D. 只有「强制 / 首次 / 地点变化 / 叙事出现进出门·移动」才允许换背景；否则保持当前
         loc_changed = bool(loc) and loc != self.session.last_bg_location
         allow_bg = (

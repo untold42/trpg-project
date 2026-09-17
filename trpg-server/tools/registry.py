@@ -11,8 +11,11 @@ registry.py
 新增工具只需在 _ENTRIES 里加一行，不必再同时改 llm.py 与 main.py。
 （本文件由 _gen_registry.py 从旧 llm.py / main.py 生成，之后请手工维护。）
 
-注意：`_DISABLED` 里的工具（调试用文件工具）**不下发给 LLM**、也不可被调用；
-代码仍保留（`tools/file_tools.py`），设 `TRPG_FILE_TOOLS=1` 可临时启用。
+注意：`_DISABLED` 里的工具**不下发给 LLM**、也不可被调用，代码仍保留：
+  - 调试用文件工具（`tools/file_tools.py`）：设 `TRPG_FILE_TOOLS=1` 可临时启用；
+  - 内容生成型骰子（`daily_event_dice` / `travel_event_dice`，`tools/event_dice.py`）：
+    已停用，由「地点定时事件 + 世界系统」取代（见 `TODO.md`）；设 `TRPG_EVENT_DICE=1` 可临时启用；
+  - `check_expression`：立绘表情改由 `tools/expression_sim.py`（小模型）填充，大模型不再需要它。
 """
 
 import os
@@ -38,7 +41,8 @@ from tools.DB import (
     DB_add_and_update_tool,
     DB_query_tool,
 )
-from tools.map_query import query_nearby, query_place, list_map_kinds, update_place_note
+from tools.map_query import (query_nearby, query_place, list_map_kinds,
+                             update_place_note, update_place_structure)
 from tools.location import update_location
 from tools.time_weather import update_time, update_weather
 from tools.time_flow import rest as sleep_time
@@ -481,8 +485,7 @@ _ENTRIES = [
             "type": "function",
             "function": {
                 "name": "roll_dice",
-                "description": "可能性骰：判定玩家主动提出的某个不确定行动的结果（成功/失败/程度）。注意与 "
-                "daily_event_dice（城市随机事件）、travel_event_dice（旅途随机事件）区分。",
+                "description": "可能性骰：判定玩家主动提出的某个不确定行动的结果（成功/失败/程度）。",
                 "parameters": {"type": "object", "properties": {}, "required": []},
             },
         },
@@ -690,6 +693,31 @@ _ENTRIES = [
             },
         },
         update_place_note,
+    ),
+    (
+        "update_place_structure",
+        {
+            "type": "function",
+            "function": {
+                "name": "update_place_structure",
+                "description": (
+                    "【仅存档蒸馏时使用】确定某**建筑**（玩家本局进去过的）的**内部结构**，"
+                    "写入空间库后**以后一直有效**（每次 query 该地都会返回 `结构`，不必再现编）。"
+                    "内容：几层、前堂/后院、哪间是谁的（如「二楼丙字房为姑娘住处」）、有几个门通向哪里。"
+                    "只写**已确定且不会每局变**的空间事实；**已有结构的地点不要重复写**（除非本局确实发现了新情况）。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "place": {"type": "string", "description": "建筑名（与地图上一致，如「怀茂青楼」）"},
+                        "structure": {"type": "string", "description": "内部结构描述（几层、格局、谁住哪、门通向哪）"},
+                        "time": {"type": "string", "description": "游戏时间，如 1220-01-17"},
+                    },
+                    "required": ["place", "structure"],
+                },
+            },
+        },
+        update_place_structure,
     ),
     (
         "update_location",
@@ -976,19 +1004,31 @@ _ENTRIES = [
 
 TOOLS = {name: (schema, fn) for name, schema, fn in _ENTRIES}
 #: 仅存档蒸馏回合可见的工具（不发给游戏中的主持人，防误用）
-_SAVE_ONLY = {"update_character_archive", "update_place_note"}
+_SAVE_ONLY = {"update_character_archive", "update_place_note", "update_place_structure"}
 
 #: **已禁用**：代码保留，但不下发给 LLM、也不可被调用。
-#: 调试用文件工具——正式规则禁止 LLM 直接读写文件（游戏数据只走专用接口）。
-#: 设 `TRPG_FILE_TOOLS=1` 可临时启用（仅供开发调试）。
-_DISABLED = set() if os.environ.get("TRPG_FILE_TOOLS") == "1" else {
-    "list_directory", "read_file", "write_file", "edit_file",
-}
+#:   - 调试用文件工具——正式规则禁止 LLM 直接读写文件（游戏数据只走专用接口）；
+#:     设 `TRPG_FILE_TOOLS=1` 可临时启用（仅供开发调试）。
+#:   - 内容生成型骰子——已由「地点定时事件 + 世界系统」取代，见 `TODO.md`；
+#:     设 `TRPG_EVENT_DICE=1` 可临时启用（回滚/对照用）。
+#:   - `check_expression`——立绘表情改由 `tools/expression_sim.py`（小模型）填充，大模型不再需要它。
+_DISABLED: set[str] = set()
+if os.environ.get("TRPG_FILE_TOOLS") != "1":
+    _DISABLED |= {"list_directory", "read_file", "write_file", "edit_file"}
+if os.environ.get("TRPG_EVENT_DICE") != "1":
+    _DISABLED |= {"daily_event_dice", "travel_event_dice"}
+_DISABLED.add("check_expression")
 
 #: 游戏中（正常回合）用
 ALL_TOOLS = [schema for name, schema, _fn in _ENTRIES
              if name not in _SAVE_ONLY and name not in _DISABLED]
-#: 存档蒸馏回合用（含存档专用工具）
-SAVE_TOOLS = [schema for name, schema, _fn in _ENTRIES if name not in _DISABLED]
+#: 存档蒸馏回合**只发这些**工具（其余与蒸馏无关；全发会把 prompt 撑大、拖慢甚至超时）
+_SAVE_NAMES = {
+    "DB_add_and_update_tool", "DB_query_tool", "DB_query_tool_in_saving",
+    "update_character_archive", "update_place_note", "update_place_structure",
+    "get_character", "query_place", "query_nearby",
+}
+SAVE_TOOLS = [schema for name, schema, _fn in _ENTRIES
+              if name in _SAVE_NAMES and name not in _DISABLED]
 #: 名称 -> 实现（已禁用的不入表：即使 LLM 幻觉调用也无法执行）
 TOOLS_MAP = {name: fn for name, _schema, fn in _ENTRIES if name not in _DISABLED}

@@ -114,7 +114,6 @@ type NarrativeLine = Extract<instruction, { type: "chat" } | { type: "narration"
 // 地点「回忆」结果
  type RecallInfo = {
     place: string;
-    notes: { time?: string; note: string }[];
     memories: { content: string; time?: string }[];
 };
 
@@ -212,6 +211,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     const prevCursorRef = useRef<{ lon: number; lat: number } | null>(null); // 上一次「输入」时的位置
     const [clockRate, setClockRate] = useState(15);                           // 时钟倍率（移动速度随它缩放）
     const [sending, setSending] = useState(false);                            // LLM 请求进行中（时钟冻结）
+    const [saving, setSaving] = useState(false);                              // 存档进行中（蒸馏可能 1~3 分钟）
     const { isNight, shichen } = useWorldTime();                            // 昼夜 + 时辰：地图夜色 + 打烊不亮灯
 
     // 统一处理 /state 返回：更新状态
@@ -259,9 +259,9 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
             try {
                 const r = await fetch(`http://localhost:5000/recall?place=${encodeURIComponent(place)}`);
                 const d = await r.json();
-                setRecallInfo({ place, notes: d.notes || [], memories: d.memories || [] });
+                setRecallInfo({ place, memories: d.memories || [] });
             } catch {
-                setRecallInfo({ place, notes: [], memories: [] });
+                setRecallInfo({ place, memories: [] });
             }
         }
     }
@@ -271,12 +271,29 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
 
     // 存档：调用后端收尾管线（蒸馏→誊写→归档→重置），完成后返回主菜单
     async function triggerSave() {
+        console.info("[save] 点击“存档游戏”，saving=", saving);
+        if (saving) return;
+        setSaving(true);
         try {
-            const res = await fetch("http://localhost:5000/save", { method: "POST" });
-            console.debug("[save]", await res.json());
-        } catch {
-            // 后端没起：忽略
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 300000);   // 5 分钟上限
+            console.info("[save] → POST http://localhost:5000/save");
+            const res = await fetch("http://localhost:5000/save", { method: "POST", signal: ctrl.signal });
+            clearTimeout(timer);
+            const data = await res.json().catch(() => ({}));
+            console.info("[save] ← HTTP", res.status, data);
+            if (!res.ok || data.success === false) {
+                setSaving(false);
+                window.alert("存档失败：" + (data.error || res.status) + "\n本局未清空，可稍后再点一次存档。");
+                return;
+            }
+        } catch (e) {
+            console.warn("[save] 失败/超时", e);
+            setSaving(false);
+            window.alert("存档超时/失败（后端可能仍在忙）。\n本局未清空，可稍后再点一次存档。");
+            return;
         }
+        setSaving(false);
         onBackMenu();
     }
 
@@ -719,17 +736,20 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                                     {m.content}
                                 </div>
                             ))}
-                            {recallInfo.notes.map((n, i) => (
-                                <div className="recall-item recall-note" key={`n${i}`}>
-                                    {n.time && <span className="recall-time">{n.time}</span>}
-                                    {n.note}
-                                </div>
-                            ))}
-                            {!recallInfo.memories.length && !recallInfo.notes.length && (
+                            {!recallInfo.memories.length && (
                                 <div className="recall-empty">（对此地毫无印象）</div>
                             )}
                         </div>
                         <button className="recall-close" onClick={() => setRecallInfo(null)}>关闭</button>
+                    </div>
+                )}
+
+                {saving && (
+                    <div className="save-overlay">
+                        <div className="save-box">
+                            正在存档…
+                            <small>把本局蒸馏进长期记忆（gm_memory / 档案 / 见闻 / 建筑结构），可能需 1~3 分钟，请勿关闭</small>
+                        </div>
                     </div>
                 )}
 

@@ -4,7 +4,7 @@ small_model.py
 ==============
 本地小模型（Qwen3-4B）的调用封装。
 
-用途（两条管线，见 ARCHITECTURE.md 第七节）：
+用途（两条管线，见 README.md §5.6）：
     - ui_event 生成（✅ 已封装 ask_json）
     - 世界推演的离散采样：只出「地点 / 事件类型」两个极简字段
 

@@ -21,7 +21,7 @@ const character_height_st = new Set(["万里鹏程","龙渊"])
 
 //角色绘制函数（等着被GameScene传参调与用）
 function Character(props: chat) {
-  const image = getCharacterImage(props.speaker, props.expression);
+  const image = getCharacterImage(props.speaker, props.expression ?? "");
   if (image){
     let character_style: string = "character"
 

@@ -4,7 +4,7 @@ ui_sim.py
 =========
 小模型 UI 事件管线（背景 `bg` / 音乐 `music`）。
 
-设计（ARCHITECTURE.md 第六、七节）：
+设计（README.md §5.5 / §5.6）：
     - 大模型只产 `chat` / `narration`；
     - 背景与音乐由**本地小模型**根据「这一幕的叙事 + 当前地点 + 当前背景/音乐」判断；
     - 产出统一 UI 事件（`tools/ui_events.ui_event`），由引擎旁路送到前端。

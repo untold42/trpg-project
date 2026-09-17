@@ -4,7 +4,7 @@ mem_store.py
 ============
 chroma 长期记忆的访问层（懒加载）。
 
-两个 collection（对应两种记忆，见 ARCHITECTURE.md 第三节）：
+两个 collection（对应两种记忆，见 README.md §5.2）：
 
     gm_memory   —— 主持人：客观事实（世界发生了什么）。全局检索，只增。
     char_memory —— 角色：主观记忆（记忆/感情/认知）。**必须带 owner**，按 owner 检索。
