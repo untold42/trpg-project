@@ -13,6 +13,7 @@ from tools.factions import list_factions
 from tools.recap import build_recap
 from tools.place_recall import recall_place
 from tools.difficulty_settings import get_settings, set_difficulty
+from tools.map_settings import get_settings as get_map_settings, set_map
 
 # 工具注册表（schema + 实现的单一真相源）
 from tools.registry import TOOLS_MAP
@@ -118,6 +119,53 @@ def set_settings_route():
     """修改设置（目前：难度）。请求体 {\"难度\": \"普通\"}。"""
     data = request.json or {}
     return jsonify(set_difficulty(data.get("难度", "")))
+
+
+# ------------------------------------------------------------
+# 地图（多城市）：前端主菜单「环境设定 → 地图」调用
+#   切图会换掉整张地图（瓦片/点击层/碰撞层/空间库），前端需同步重载 `?map=<id>`
+# ------------------------------------------------------------
+
+@app.route("/maps", methods=["GET"])
+def get_maps_route():
+    """可用地图 + 当前地图。数据源：trpg-map/城市.py + 游戏数据/地图设置.json。"""
+    return jsonify(get_map_settings())
+
+
+@app.route("/map", methods=["POST"])
+def set_map_route():
+    """切换地图。请求体 {"地图": "yueyang"}。"""
+    data = request.json or {}
+    return jsonify(set_map(data.get("地图", "")))
+
+
+@app.route("/search", methods=["GET"])
+def search_route():
+    """跳地图用：跨所有地图按名字搜城市/地点。`?q=锦香`"""
+    from tools.map_query import search_all_maps
+    return jsonify({"results": search_all_maps(request.args.get("q", ""), limit=20)})
+
+
+@app.route("/scene", methods=["GET"])
+def get_scene_route():
+    """当前地点建议的背景场景（进游戏时给初值用，不用等第一轮叙事）。
+
+    返回 {地点, 类型, 时辰, 场景, 候选}；场景名与前端 assets/背景/ 目录同名。
+    """
+    from tools.ui_sim import _kind_of, scene_candidates
+
+    basic = state.load("基本信息", {}) or {}
+    pos = basic.get("位置", {}) or {}
+    loc = pos.get("地点") or ""
+    shichen = (basic.get("时间", {}) or {}).get("时辰") or ""
+    cands = scene_candidates(loc, indoor=False) or scene_candidates(loc, indoor=True) or []
+    return jsonify({
+        "地点": loc,
+        "类型": _kind_of(loc),
+        "时辰": shichen,
+        "场景": cands[0] if cands else "",
+        "候选": cands,
+    })
 
 
 # ------------------------------------------------------------

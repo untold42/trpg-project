@@ -2,20 +2,22 @@
 """
 map_query.py
 ============
-南宋扬州地图空间查询工具（供 LLM function calling 调用）。
+地图空间查询工具（供 LLM function calling 调用）。**多城市**：当前地图由 游戏数据/地图设置.json
+决定（前端主菜单「环境设定 → 地图」切换）。
 
-读取 trpg-map/draw_tiles/db/map_spatial.db（R-tree + 完整几何），提供：
+读取 trpg-map/draw_tiles/db/map_spatial_<map_id>.db（R-tree + 完整几何），提供：
     query_nearby(lon, lat, radius_km, kind, category, limit)  精确范围查询
     query_place(name, kind, category, limit)                   名称/类别查找
     list_map_kinds()                                            列出所有地点类别及数量
 
-坐标均为 WGS84：经度约 118.9~119.96，纬度约 32.17~32.68。
+坐标均为 WGS84。
 """
 
 import json
 import math
 import os
 import sqlite3
+import sys
 
 import shapely.geometry as sg
 from shapely.ops import nearest_points, transform
@@ -24,20 +26,98 @@ from tools.place_hours import hours_for, is_open, now_shichen_index
 
 # trpg-server 的上一级是 trpg-project；空间库在 trpg-map/draw_tiles/db/ 下
 SERVER_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_FILE = os.path.abspath(os.path.join(
-    SERVER_DIR, "..", "trpg-map", "draw_tiles", "db", "map_spatial.db"))
-DEFAULT_MAP = "yangzhou"
-#: 该地图对应的「区域」名（写入 基本信息.位置.区域；天气分区 / 世界推演用）
-DEFAULT_REGION = "扬州"
+
+_MAP_REGIONS = {"yangzhou": "扬州", "yueyang": "岳阳"}
+
+
+# 当前地图是**动态**的：前端「环境设定 → 地图」可切，存 游戏数据/地图设置.json。
+# 故不能做成模块常量——要在每次查询时现取（见 tools/map_settings.py）。
+# 地图库路径：db/map_spatial_<map_id>.db（一城市一个，互不覆盖）
+def current_map() -> str:
+    try:
+        from tools.map_settings import get_map
+        return get_map()
+    except Exception:
+        return os.environ.get("TRPG_MAP", "yangzhou")
+
+
+def current_region() -> str:
+    """该地图对应的「区域」名（写入 基本信息.位置.区域；天气分区 / 世界推演用）"""
+    return os.environ.get("TRPG_REGION") or _MAP_REGIONS.get(current_map(), "扬州")
+
+
+def db_file_for(map_id: str) -> str:
+    """指定地图的空间库路径（跨城查询 / 搜索用）。"""
+    return os.path.abspath(os.path.join(
+        SERVER_DIR, "..", "trpg-map", "draw_tiles", "db",
+        f"map_spatial_{map_id}.db"))
+
+
+def db_file() -> str:
+    return db_file_for(current_map())
+
+
+def current_city() -> str:
+    """当前地图的中文城市名（如 岳阳）。"""
+    return region_of(current_map())
+
+
+def region_of(map_id: str) -> str:
+    """map_id -> 中文区域名。"""
+    p = os.path.join(SERVER_DIR, "..", "trpg-map")
+    if p not in sys.path:
+        sys.path.insert(0, p)
+    try:
+        from 城市 import CITIES, map_id as _mid  # noqa: E402
+        for cn in CITIES:
+            if _mid(cn) == map_id:
+                return cn
+    except Exception:
+        pass
+    return _MAP_REGIONS.get(map_id, map_id)
+
+
+def map_at(lon: float, lat: float):
+    """坐标落在哪张图的画框里；都不在返回 None（跨城移动用）。"""
+    try:
+        from tools.map_settings import map_at as _ma
+        return _ma(lon, lat)
+    except Exception:
+        return None
+
+
+def current_frame():
+    """当前地图的画框 (min_lon, min_lat, max_lon, max_lat)；取不到返回 None。
+
+    与 PBF 裁剪 / 瓦片取景共用同一份定义（trpg-map/城市.py）。
+    """
+    p = os.path.join(SERVER_DIR, "..", "trpg-map")
+    if p not in sys.path:
+        sys.path.insert(0, p)
+    try:
+        from 城市 import CITIES, frame_bbox, map_id as _mid  # noqa: E402
+        cur = current_map()
+        for cn in CITIES:
+            if _mid(cn) == cur:
+                return frame_bbox(cn)
+    except Exception:
+        pass
+    return None
+
+
+# 兼容旧引用（模块级常量已废弃，请改用上面的函数）
+DEFAULT_MAP = current_map()
+DEFAULT_REGION = current_region()
 
 M_PER_DEG_LAT = 111132.95
 M_PER_DEG_LON0 = 111320.0
 
 
 def _connect():
-    if not os.path.exists(DB_FILE):
-        raise FileNotFoundError(f"找不到空间数据库：{DB_FILE}")
-    conn = sqlite3.connect(DB_FILE)
+    path = db_file()
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"找不到空间数据库：{path}")
+    conn = sqlite3.connect(path)
     _ensure_place_schema(conn)
     return conn
 
@@ -243,7 +323,7 @@ def query_nearby(lon, lat, radius_km=1.0, kind=None, category=None, limit=20):
           AND r.maxx >= ? AND r.minx <= ?
           AND r.maxy >= ? AND r.miny <= ?
     """
-    params = [DEFAULT_MAP, lon - dx, lon + dx, lat - dy, lat + dy]
+    params = [current_map(), lon - dx, lon + dx, lat - dy, lat + dy]
     if kind:
         sql += " AND f.ancient_kind = ?"
         params.append(kind)
@@ -339,7 +419,7 @@ def query_place(name=None, kind=None, category=None, limit=20):
         FROM features f
         WHERE f.map_id = ?
     """
-    params = [DEFAULT_MAP]
+    params = [current_map()]
     if name:
         sql += " AND f.name LIKE ?"
         params.append(f"%{name}%")
@@ -400,7 +480,7 @@ def update_place_note(place: str, note: str, time: str = "") -> dict:
         conn = _connect()
         conn.execute(
             "INSERT INTO place_notes(map_id, name, note, time) VALUES(?,?,?,?)",
-            [DEFAULT_MAP, place, note, time or ""],
+            [current_map(), place, note, time or ""],
         )
         conn.commit()
         n = conn.execute("SELECT COUNT(*) FROM place_notes WHERE name=?", [place]).fetchone()[0]
@@ -428,7 +508,7 @@ def update_place_structure(place: str, structure: str, time: str = "") -> dict:
                ON CONFLICT(name) DO UPDATE SET structure=excluded.structure,
                                                time=excluded.time,
                                                updated=CURRENT_TIMESTAMP""",
-            [DEFAULT_MAP, place, structure, time or ""],
+            [current_map(), place, structure, time or ""],
         )
         conn.commit()
         conn.close()
@@ -466,7 +546,7 @@ def list_map_kinds(limit=200):
         ORDER BY n DESC
         LIMIT ?
         """,
-        [DEFAULT_MAP, limit],
+        [current_map(), limit],
     )
     rows = cur.fetchall()
     conn.close()
@@ -480,30 +560,35 @@ def list_map_kinds(limit=200):
 # ------------------------------------------------------------
 # 城池内外判定（供主持人获得权威空间感，避免"不知何时出了城"）
 # ------------------------------------------------------------
-_wall_polygon_cache = None
+_wall_polygon_cache = {}   # map_id -> Polygon | None
 
 
 def _wall_polygon():
-    """把「大城城墙」（闭合 LineString）建成 Polygon，供点内外判定。"""
-    global _wall_polygon_cache
-    if _wall_polygon_cache is None:
-        poly = False
-        try:
-            conn = _connect()
-            row = conn.execute(
-                "SELECT coords FROM features WHERE map_id=? AND ancient_kind='城墙' "
-                "AND geometry_type LIKE '%LineString%' LIMIT 1",
-                [DEFAULT_MAP],
-            ).fetchone()
-            conn.close()
-            if row:
-                geom = sg.shape({"type": "LineString", "coordinates": json.loads(row[0])})
-                if geom.is_ring:
-                    poly = sg.Polygon(geom)
-        except Exception:
-            poly = False
-        _wall_polygon_cache = poly
-    return _wall_polygon_cache or None
+    """把「大城城墙」（闭合 LineString）建成 Polygon，供点内外判定。
+
+    ⚠️ **按地图缓存**——全局单缓存的话，切城后会拿旧城的城墙去量新城的点
+    （实测出现过「距城墙 604 公里」）。
+    """
+    mid = current_map()
+    if mid in _wall_polygon_cache:
+        return _wall_polygon_cache[mid]
+    poly = None
+    try:
+        conn = _connect()
+        row = conn.execute(
+            "SELECT coords FROM features WHERE map_id=? AND ancient_kind='城墙' "
+            "AND geometry_type LIKE '%LineString%' LIMIT 1",
+            [mid],
+        ).fetchone()
+        conn.close()
+        if row:
+            geom = sg.shape({"type": "LineString", "coordinates": json.loads(row[0])})
+            if geom.is_ring:
+                poly = sg.Polygon(geom)
+    except Exception:
+        poly = None
+    _wall_polygon_cache[mid] = poly
+    return poly
 
 
 def city_context(lon, lat) -> dict:
@@ -519,8 +604,15 @@ def city_context(lon, lat) -> dict:
         pt = sg.Point(lon, lat)
         inside = bool(poly.covers(pt))  # covers 含边界（城门就在墙线上）
         out["在城内"] = inside
-        d_deg = poly.exterior.distance(pt)
-        out["距城墙（米）"] = round(d_deg * M_PER_DEG_LON0 * math.cos(math.radians(lat)))
+        # 距城墙（米）：先求最近点，再换算成局部米制（经纬分开缩放）
+        try:
+            ring = poly.exterior
+            near = ring.interpolate(ring.project(pt))
+            d_m = math.hypot((near.x - lon) * M_PER_DEG_LON0 * math.cos(math.radians(lat)),
+                             (near.y - lat) * M_PER_DEG_LAT)
+            out["距城墙（米）"] = round(d_m)
+        except Exception:
+            pass
         # 城区方位（相对城墙中心）：如「城内东北」「城外西南」
         cx, cy = poly.centroid.x, poly.centroid.y
         ns = "北" if lat > cy else "南"
@@ -533,3 +625,55 @@ def city_context(lon, lat) -> dict:
     except Exception:
         pass
     return out
+
+
+# ------------------------------------------------------------
+# 跨地图搜索（前端地图里的「搜索」框：搜城市 / 搜地点，命中即跳）
+# ------------------------------------------------------------
+
+def search_all_maps(q: str, limit: int = 20) -> list:
+    """在所有已生成的地图里按名字搜地点，返回带城市坐标的列表。
+
+    每项：{map_id, 地图, 名称, 类型, lon, lat}。城市名本身也会命中（lon/lat=None）。
+    """
+    from tools.map_settings import available_maps
+
+    q = (q or "").strip()
+    if not q:
+        return []
+    out = []
+    seen = set()          # (map_id, 名称) 去重：同名的路/坊有很多段
+    for m in available_maps():
+        mid, city = m["id"], m["name"]
+        if q in city or q in mid:
+            out.append({"map_id": mid, "地图": city, "名称": city, "类型": "城市",
+                        "lon": None, "lat": None})
+            seen.add((mid, city))
+        path = db_file_for(mid)
+        if not os.path.exists(path):
+            continue
+        try:
+            conn = sqlite3.connect(path)
+            rows = conn.execute(
+                "SELECT name, ancient_kind, geometry_type, coords FROM features "
+                "WHERE map_id = ? AND name LIKE ? "
+                "ORDER BY CASE WHEN name = ? THEN 0 "
+                "              WHEN name LIKE ? THEN 1 ELSE 2 END, LENGTH(name) "
+                "LIMIT ?",
+                (mid, f"%{q}%", q, f"{q}%", limit)).fetchall()
+            conn.close()
+        except Exception:
+            continue
+        for name, kind, gt, ct in rows:
+            if (mid, name) in seen:
+                continue
+            seen.add((mid, name))
+            pt = None
+            try:
+                pt = _reppoint(sg.shape({"type": gt, "coordinates": json.loads(ct)}))
+            except Exception:
+                pass
+            out.append({"map_id": mid, "地图": city, "名称": name,
+                        "类型": kind or "", "lon": pt[0] if pt else None,
+                        "lat": pt[1] if pt else None})
+    return out[:limit]

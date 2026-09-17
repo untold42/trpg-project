@@ -153,13 +153,20 @@ def _kind_of(location: str) -> str:
     **路网要素（坊巷 / 大街 / 官道）没有名字**，按名查不到 → 退回「玩家坐标附近的
     最近有类型要素」。都不行返回 ""（此时不做场景限制，但有城内的安全网）。
     """
-    # ① 按地名查（如「怀茂青楼」→ 青楼）
+    # ① 按地名查（如「怀茂青楼」→ 青楼）。
+    #    优先**完全同名**：query_place 是 LIKE 模糊匹配，
+    #    「岳阳楼」会先撞上「岳阳楼街道」(kind=村)，得跳过。
     if location:
         try:
             from tools.map_query import query_place
-            rows = (query_place(name=location, limit=1) or {}).get("results") or []
-            if rows:
-                k = (rows[0].get("kind") or "").strip()
+            rows = (query_place(name=location, limit=8) or {}).get("results") or []
+            for r in rows:
+                if (r.get("name") or "") == location:
+                    k = (r.get("kind") or "").strip()
+                    if k:
+                        return k
+            for r in rows:
+                k = (r.get("kind") or "").strip()
                 if k:
                     return k
         except Exception:
@@ -193,6 +200,12 @@ def scene_candidates(location: str = None, indoor: bool = False) -> list[str]:
     kind = _kind_of(location)
     if kind and mapping.get(kind):
         allowed = [s for s in all_scenes if s in mapping[kind]]
+        # 城内安全网也要管「已映射」的类型：
+        # 否则官道的映射里有「田野」，人在城里会被切到田里
+        if _player_inside_city() is True:
+            inside = [s for s in allowed if s not in _WILD_SCENES]
+            if inside:
+                allowed = inside
         if allowed:
             return allowed[:5]
     group = mapping.get("室内" if indoor else "室外")
