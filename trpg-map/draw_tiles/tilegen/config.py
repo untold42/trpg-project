@@ -33,13 +33,15 @@ _MAP_ROOT = os.path.dirname(PROJECT_ROOT)
 if _MAP_ROOT not in _sys.path:
     _sys.path.insert(0, _MAP_ROOT)
 
-from 城市 import frame_bbox as _frame_bbox  # noqa: E402
+from 城市 import frame_bbox as _frame_bbox, map_id as _map_id  # noqa: E402
 
 FRAME = _frame_bbox(CITY)                 # (min_lon, min_lat, max_lon, max_lat)
 
+# 一城市一个瓦片目录：draw_tiles/tiles/<map_id>/，避免双城互相覆盖
 OUTPUT_DIR = os.path.join(
     PROJECT_ROOT,
-    "tiles"
+    "tiles",
+    _map_id(CITY)
 )
 
 TILE_SIZE = 256

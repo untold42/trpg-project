@@ -47,7 +47,7 @@ except Exception:
 BASE_ENV = dict(os.environ, PYTHONIOENCODING="utf-8")
 
 sys.path.insert(0, BASE)
-from 城市 import CITIES, frame_bbox, DEFAULT_CITY  # noqa: E402
+from 城市 import CITIES, frame_bbox, map_id, DEFAULT_CITY  # noqa: E402
 
 
 # ============================================================
@@ -65,10 +65,10 @@ STEPS = [
 ]
 
 
-def run(cmd, cwd):
+def run(cmd, cwd, env=None):
     print("$", " ".join(str(c) for c in cmd))
     t = time.time()
-    p = subprocess.run(cmd, cwd=cwd, env=BASE_ENV)
+    p = subprocess.run(cmd, cwd=cwd, env=env or BASE_ENV)
     if p.returncode != 0:
         print(f"\n!! 步骤失败（exit {p.returncode}）")
         sys.exit(p.returncode)
@@ -80,37 +80,36 @@ def run(cmd, cwd):
 # ============================================================
 
 def step_pbf(city):
-    pbf = os.path.join(BASE, "数据", "源pbf", f"{city}.pbf")
+    # 源 PBF 可与城市名不同（如岳阳用 湖南.pbf 全量，才能拿到完整洞庭湖）
+    stem = CITIES[city].get("pbf", city)
+    pbf = os.path.join(BASE, "数据", "源pbf", f"{stem}.pbf")
     if not os.path.exists(pbf):
         print(f"!! 找不到 {pbf}")
-        print("   请先把 OSM 的 .pbf 放到 数据/源pbf/<城市>.pbf")
+        print(f"   请先把 OSM 的 .pbf 放到 数据/源pbf/{stem}.pbf")
         sys.exit(1)
-    run([PY, "pbf_to_json.py", os.path.join("数据", "源pbf", f"{city}.pbf"),
-         "--city", city], cwd=BASE)
+    run([PY, "pbf_to_json.py", os.path.join("数据", "源pbf", f"{stem}.pbf"),
+         "--city", city,
+         "-o", os.path.join("数据", f"{city}_OSM精简.json"),
+         "--name", f"{city}地图"], cwd=BASE)
 
 
 def step_world(city):
-    if city != "扬州":
-        print(f"!! build_world.py 目前只实现了「扬州」的城区生成逻辑")
-        print("   （坊/城墙/官道/坊巷/POI 都是扬州的硬编码布局）")
-        print("   要支持新城市，需要：")
-        print("     1) 数据/<城市>_布点锚点.json（人工/算法布点）")
-        print("     2) 把 build_world.py 里扬州的 LAYOUT 参数抽成城市配置")
-        sys.exit(2)
-    run([PY, "build_world.py"], cwd=DRAW)
+    # 城市布局参数在 draw_tiles/build_world.py 的 CITY_CONFIGS；不支持的城市会自行报错退出
+    run([PY, "build_world.py"], cwd=DRAW, env=dict(BASE_ENV, TRPG_CITY=city))
 
 
 def step_clickable(city):
-    run([PY, "export_clickable.py"], cwd=DRAW)
+    run([PY, "export_clickable.py"], cwd=DRAW, env=dict(BASE_ENV, TRPG_CITY=city))
 
 
 def step_db(city):
-    run([PY, os.path.join("db", "create_spatial_db.py")], cwd=DRAW)
+    run([PY, os.path.join("db", "create_spatial_db.py")], cwd=DRAW,
+        env=dict(BASE_ENV, TRPG_CITY=city))
 
 
 def step_walkable(city):
     # 读 db/map_spatial.db，故必须在 db 之后
-    run([PY, "export_walkable.py"], cwd=DRAW)
+    run([PY, "export_walkable.py"], cwd=DRAW, env=dict(BASE_ENV, TRPG_CITY=city))
 
 
 def step_tiles(city):
@@ -126,8 +125,9 @@ def step_tiles(city):
 
 
 def step_sync(city):
-    src = os.path.join(DRAW, "tiles")
-    dst = os.path.join(FRONTEND_PUBLIC, "tiles")
+    src = os.path.join(DRAW, "tiles", map_id(city))
+    # 一城市一个目录：public/tiles/<map_id>/（绝不删别的城市）
+    dst = os.path.join(FRONTEND_PUBLIC, "tiles", map_id(city))
     if not os.path.isdir(src):
         print("!! 没有瓦片可同步:", src)
         sys.exit(1)

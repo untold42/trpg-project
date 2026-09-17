@@ -7,8 +7,9 @@ create_spatial_db.py
 设计（面向将来多张地图扩展）：
     maps(map_id, name)               -- 一张地图一行
     features(fid, map_id, oid, name, name_modern,
-              category, ancient_kind, geometry_type, coords)
+              category, ancient_kind, geometry_type, coords, tags)
         -- coords 是完整几何坐标（JSON 文本），可随时还原成 shapely / GeoJSON
+        -- tags 是 OSM 标签（JSON 文本），供地形分类 / 查询用
     features_rtree(fid, minx, maxx, miny, maxy)
         -- SQLite 原生 R-tree 空间索引（按包围盒粗筛）
 
@@ -22,6 +23,7 @@ import json
 import math
 import os
 import sqlite3
+import sys
 
 # ---- 目录约定（v2：已按功能分文件夹）----
 # 本项目根目录：db/ 的上一级
@@ -34,10 +36,17 @@ DB_DIR = os.path.dirname(os.path.abspath(__file__))
 # 数据目录：trpg-map/数据/
 DATA_DIR = os.path.join(os.path.dirname(PROJECT_ROOT), "数据")
 
-INPUT_FILE = os.path.join(DATA_DIR, "扬州_南宋世界.json")
-DB_FILE = os.path.join(DB_DIR, "map_spatial.db")
-MAP_ID = "yangzhou"
-MAP_NAME = "南宋扬州"
+# 城市（可用 TRPG_CITY 覆盖）——决定输入文件与 map_id
+CITY = os.environ.get("TRPG_CITY", "扬州")
+
+sys.path.insert(0, os.path.dirname(PROJECT_ROOT))   # trpg-map/（城市.py 所在）
+from 城市 import map_id as _map_id  # noqa: E402
+
+INPUT_FILE = os.path.join(DATA_DIR, f"{CITY}_南宋世界.json")
+MAP_ID = _map_id(CITY)
+# 一城市一个库（双城共存，互不覆盖）
+DB_FILE = os.path.join(DB_DIR, f"map_spatial_{MAP_ID}.db")
+MAP_NAME = f"南宋{CITY}"
 
 # 营业时间：单一真相源 trpg-world/营业时间.json（kind → 时段）
 _HOURS_JSON = os.path.join(os.path.dirname(os.path.dirname(PROJECT_ROOT)), "trpg-world", "营业时间.json")
@@ -121,7 +130,8 @@ def main():
             geometry_type TEXT,
             coords        TEXT NOT NULL,
             description   TEXT,
-            hours         TEXT
+            hours         TEXT,
+            tags          TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_features_map ON features(map_id);
         CREATE INDEX IF NOT EXISTS idx_features_kind ON features(ancient_kind);
@@ -181,14 +191,15 @@ def main():
             json.dumps(coords),
             o.get("description"),
             hours_for_kind(o.get("ancient_kind")),
+            json.dumps(o.get("tags") or {}, ensure_ascii=False, separators=(",", ":")),
         ))
         # 先用临时占位 fid，插入后再回填 rtree
         batch_rt.append((0, minx, maxx, miny, maxy))
 
     cur.executemany(
         """INSERT INTO features(map_id, oid, name, name_modern, category,
-                                ancient_kind, geometry_type, coords, description, hours)
-           VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                                ancient_kind, geometry_type, coords, description, hours, tags)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
         batch_feat,
     )
 

@@ -407,6 +407,27 @@
   "group": "—",
   "zone": "—"
  },
+ "garden": {
+  "icon": "garden",
+  "kinds": [
+   "园",
+   "园苑"
+  ],
+  "groups": [
+   "游乐"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "园：私家园林/花园",
+   "园苑：苑囿/大园林"
+  ],
+  "count": 35,
+  "source": "archetype",
+  "group": "游乐",
+  "zone": "general"
+ },
  "jiaofang": {
   "icon": "jiaofang",
   "kinds": [
@@ -550,27 +571,6 @@
   "source": "archetype",
   "group": "官署",
   "zone": "core/general"
- },
- "garden": {
-  "icon": "garden",
-  "kinds": [
-   "园",
-   "园苑"
-  ],
-  "groups": [
-   "游乐"
-  ],
-  "zones": [
-   "general"
-  ],
-  "notes": [
-   "园：私家园林/花园",
-   "园苑：苑囿/大园林"
-  ],
-  "count": 31,
-  "source": "archetype",
-  "group": "游乐",
-  "zone": "general"
  },
  "coffin": {
   "icon": "coffin",
@@ -768,6 +768,25 @@
   "group": "百工",
   "zone": "general"
  },
+ "water": {
+  "icon": "water",
+  "kinds": [
+   "湖"
+  ],
+  "groups": [
+   "山水"
+  ],
+  "zones": [
+   "water"
+  ],
+  "notes": [
+   "湖：湖泊"
+  ],
+  "count": 14,
+  "source": "archetype",
+  "group": "山水",
+  "zone": "water"
+ },
  "gate": {
   "icon": "gate",
   "kinds": [
@@ -906,24 +925,43 @@
   "group": "行旅",
   "zone": "water"
  },
- "water": {
-  "icon": "water",
+ "forest": {
+  "icon": "forest",
   "kinds": [
-   "湖"
+   "林"
   ],
   "groups": [
    "山水"
   ],
   "zones": [
-   "water"
+   "edge"
   ],
   "notes": [
-   "湖：湖泊"
+   "林：林地"
   ],
-  "count": 1,
+  "count": 4,
   "source": "archetype",
   "group": "山水",
-  "zone": "water"
+  "zone": "edge"
+ },
+ "mountain": {
+  "icon": "mountain",
+  "kinds": [
+   "山"
+  ],
+  "groups": [
+   "山水"
+  ],
+  "zones": [
+   "edge"
+  ],
+  "notes": [
+   "山：山丘"
+  ],
+  "count": 3,
+  "source": "archetype",
+  "group": "山水",
+  "zone": "edge"
  },
  "arena": {
   "icon": "arena",
@@ -978,25 +1016,6 @@
   "source": "archetype",
   "group": "城防",
   "zone": "general"
- },
- "forest": {
-  "icon": "forest",
-  "kinds": [
-   "林"
-  ],
-  "groups": [
-   "山水"
-  ],
-  "zones": [
-   "edge"
-  ],
-  "notes": [
-   "林：林地"
-  ],
-  "count": 0,
-  "source": "archetype",
-  "group": "山水",
-  "zone": "edge"
  },
  "granary": {
   "icon": "granary",
@@ -1058,25 +1077,6 @@
   "group": "—",
   "zone": "—"
  },
- "mountain": {
-  "icon": "mountain",
-  "kinds": [
-   "山"
-  ],
-  "groups": [
-   "山水"
-  ],
-  "zones": [
-   "edge"
-  ],
-  "notes": [
-   "山：山丘"
-  ],
-  "count": 0,
-  "source": "archetype",
-  "group": "山水",
-  "zone": "edge"
- },
  "museum": {
   "icon": "museum",
   "kinds": [],
@@ -1087,6 +1087,27 @@
   "source": "archetype",
   "group": "—",
   "zone": "—"
+ },
+ "palace": {
+  "icon": "palace",
+  "kinds": [
+   "宫",
+   "山庄"
+  ],
+  "groups": [
+   "门派"
+  ],
+  "zones": [
+   "general"
+  ],
+  "notes": [
+   "宫：宫观/门派驻地（如洞庭锦香宫）",
+   "山庄：山庄/别业"
+  ],
+  "count": 0,
+  "source": "bespoke",
+  "group": "门派",
+  "zone": "general"
  },
  "river": {
   "icon": "river",

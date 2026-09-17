@@ -421,7 +421,7 @@ y= 88 | 38-39:# 40-44:R 46-54:Y 59-69:Y 73-80:Y 84-87:R 88-89:#
 ```
 song_kinds.py                  kind → icon 键（单一真相源）
         │
-export_clickable.py ──► trpg-client/public/data/clickable.geojson（含 properties.icon）
+export_clickable.py ──► trpg-client/public/data/<map_id>/clickable.geojson（含 properties.icon）
         │            └─► trpg-client/public/mapicons/manifest.txt（需要哪些键 + 数量）
         │
 ClickableLayer.tsx  ICON_DIR="/mapicons" · MIN_ICON_ZOOM=15

@@ -120,6 +120,57 @@ def render_ward():
 
 
 # ==========================================================================
+# 宫 —— 重檐廑殿顶大殿 · 高台基 + 宽踏道
+#   识别要点（与青楼/教坊的区别）：
+#     · **重檐**（上下两层屋面）—— 教坊只有单檐
+#     · **高台基 + 宽踏道**（官式最高规格）
+#     · 无二层大窗、无徒子剪影、无舞者
+#   用于「宫」组（锦香宫等门派驻地 / 宫观）
+# ==========================================================================
+def render_palace():
+    body, d = blank()
+    shadow = ground_shadow(box=(20, 104, 108, 116))
+    cx = 64.0
+
+    # ---- 台基 + 宽踏道（带踏步线）----
+    poly(d, [(20, 86), (108, 86), (112, 100), (16, 100)], fill=STONE, width=1.4)
+    band(d, 16, 95, 112, 100, STONE_DK)
+    poly(d, [(52, 100), (76, 100), (78, 110), (50, 110)], fill=STONE_DK, width=1.2)
+    for i, y in enumerate((103, 106)):
+        shrink = (i + 1) * 1.2
+        seg(d, [(52 + shrink, y), (76 - shrink, y)], INK, 0.9)
+
+    # ---- 殿身：石砖墙 + 朱红角柱 + 明间灯火 + 朱匾 ----
+    rect(d, 36, 58, 92, 86, fill=STONE, width=1.4)
+    band(d, 36, 81, 92, 86)                                  # 墙脚水渍
+    for x0, x1 in ((36, 41), (87, 92)):                      # 朱红角柱
+        rect(d, x0, 58, x1, 86, fill=VERM, width=1.1)
+    rect(d, 50, 66, 54, 86, fill=VERM, width=1.0)            # 次间柱
+    rect(d, 74, 66, 78, 86, fill=VERM, width=1.0)
+    window_glow(d, 56, 66, 72, 86, width=1.3)                # 明间（内透灯火）
+    rect(d, 54, 60, 74, 66, fill=VERM, width=1.1)            # 朱匾
+
+    # ---- 双宫灯（立杆，非悬挂）----
+    for x in (25, 103):
+        seg(d, [(x, 99), (x, 80)], INK, 1.4)
+        ellipse(d, x - 5.5, 80, x + 5.5, 92, fill=LANTERN, width=1.1)
+
+    # ---- 上层墙（下檐之上的上檐身）----
+    rect(d, 48, 40, 80, 58, fill=STONE, width=1.3)
+    band(d, 48, 52, 80, 58)
+    for x0, x1 in ((48, 52), (76, 80)):
+        rect(d, x0, 40, x1, 58, fill=VERM, width=1.0)
+
+    # ---- 下檐（腰檐，比上檐宽）----
+    eave(d, cx, 46, 58, 5.0, 6.5)
+
+    # ---- 上檐（重檐廑殿顶）----
+    roof(d, cx, 34, 11, 14, 40, 29, chiwei=True)
+
+    return compose(shadow, body)
+
+
+# ==========================================================================
 # 登记表：key 必须与
 #   trpg-map/draw_tiles/song_kinds.py 里的 icon= 值
 #   trpg-client/public/mapicons/manifest.txt 的键名
@@ -129,4 +180,5 @@ BUILDINGS = {
     "qinglou": render_qinglou,
     "jiaofang": render_jiaofang,
     "ward": render_ward,
+    "palace": render_palace,
 }

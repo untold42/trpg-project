@@ -294,6 +294,75 @@ def _draw_roads(draw, layer, zoom, origin_x, origin_y):
 
 
 # ============================================================
+# 建筑（面）
+#
+# 民居不画（classifier 返回 other，避免满城灰块）。
+# 其余建筑（宫观殿宇/院墙/楼阁）按功能上色：
+#   宫观类（殿/宫/宫门/楼/廊） → TEMPLE_*
+#   带 historic 标签           → HISTORIC_*
+#   其它                       → BUILDING_*
+# ============================================================
+
+_PALACE_KINDS = ("殿", "宫", "宫门", "楼", "廊")
+
+
+def _building_style(prepared):
+
+    from config import (
+        BUILDING_COLOR,
+        BUILDING_OUTLINE,
+        HISTORIC_BUILDING_COLOR,
+        HISTORIC_BUILDING_OUTLINE,
+        TEMPLE_COLOR,
+        TEMPLE_OUTLINE
+    )
+
+    obj = prepared["obj"]
+
+    tags = obj.get("tags") or {}
+
+    kind = obj.get("ancient_kind") or ""
+
+    if kind in _PALACE_KINDS:
+        return TEMPLE_COLOR, TEMPLE_OUTLINE
+
+    if tags.get("historic"):
+        return HISTORIC_BUILDING_COLOR, HISTORIC_BUILDING_OUTLINE
+
+    return BUILDING_COLOR, BUILDING_OUTLINE
+
+
+def _draw_buildings(draw, layer, zoom, origin_x, origin_y):
+
+    from projection import meters_to_px
+
+    edge = meters_to_px(2.0, zoom, minimum=1, maximum=3)
+
+    for prepared in layer:
+
+        fill, outline = _building_style(prepared)
+
+        for polygon in _iter_polygons(prepared):
+
+            if not polygon:
+                continue
+
+            outer_ring = _local_points(polygon[0], origin_x, origin_y)
+
+            if len(outer_ring) < 3:
+                continue
+
+            draw.polygon(outer_ring, fill=fill)
+
+            draw.line(
+                outer_ring + [outer_ring[0]],
+                fill=outline,
+                width=edge,
+                joint="curve"
+            )
+
+
+# ============================================================
 # 城墙（纯黑实心）
 # ============================================================
 
@@ -355,6 +424,14 @@ def generate_tile(layers, zoom, tile_x, tile_y, save=True):
     _draw_waterways(
         draw,
         layers.get("waterway", []),
+        zoom,
+        origin_x,
+        origin_y
+    )
+
+    _draw_buildings(
+        draw,
+        layers.get("building", []),
         zoom,
         origin_x,
         origin_y

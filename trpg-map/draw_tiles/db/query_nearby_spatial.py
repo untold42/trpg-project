@@ -26,7 +26,9 @@ from shapely.ops import transform
 
 # db/ 目录里放数据库文件
 DB_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_FILE = os.path.join(DB_DIR, "map_spatial.db")
+# 一城市一个库：map_spatial_<map_id>.db（TRPG_MAP 切换，默认扬州）
+_MAP = os.environ.get("TRPG_MAP", "yangzhou")
+DB_FILE = os.path.join(DB_DIR, f"map_spatial_{_MAP}.db")
 DEFAULT_MAP = "yangzhou"
 
 # 局部米制换算：小范围查询足够精确

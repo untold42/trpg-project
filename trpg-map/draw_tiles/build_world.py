@@ -2,12 +2,15 @@
 """
 build_world.py
 ==============
-南宋扬州世界生成器（推翻现代 OSM 城区，只保留自然地理 + 史实锚点，其余算法生成）。
+南宋世界生成器（推翻现代 OSM 城区，只保留自然地理 + 史实锚点，其余算法生成）。
+
+支持多城市：布局参数集中在下面的 `CITY_CONFIGS`（投影中心 / 老城范围 / 坊名池 /
+街巷改名 / 史实锚点 / 城外聚落）。用 `TRPG_CITY=<城市>` 或 `生成.py --city <城市>` 切换。
 
 数据流：
-    ../数据/扬州_OSM精简.json (抽稀后 OSM) ─┐
-    ../数据/扬州_布点锚点.json (76 布点锚点) ─┼─► build_world.py
-                                        └─► ../数据/扬州_南宋世界.json（同名覆盖，下游零改动）
+    ../数据/<城市>_OSM精简.json (抽稀后 OSM) ─┐
+    ../数据/<城市>_布点锚点.json (布点锚点)  ─┼─► build_world.py
+                                           └─► ../数据/<城市>_南宋世界.json（同名覆盖，下游零改动）
 
 生成顺序（--stage 控制）：
     1 = 保留层(自然地理+锚点) + 城墙/城门 + 老城道路 + 坊面层
@@ -48,6 +51,26 @@ OUTPUT_FILE = os.path.join(DATA_DIR, f"{CITY}_南宋世界.json")
 # 为什么：build_pois 原本每次跑都随机采样位置 + 随机取名，
 # 导致存档/足迹/见闻里的地名每次重跑都对不上（实测保留率仅 16%）。
 POI_FILE = os.path.join(DATA_DIR, f"{CITY}_POI.json")
+
+# 建筑群（宫观 / 府邸 / 别业）：<城市>_建筑群.json
+#   与 POI 不同，建筑群是**手工定点的院落**，build_world 按布局生成院墙/殿宇/廊庑/园圃
+COMPOUND_FILE = os.path.join(DATA_DIR, f"{CITY}_建筑群.json")
+
+# 「中轴三进」宫观布局（归一化：u,v ∈ [-0.5,0.5]；v 正 = 北/后，负 = 南/前/
+# 即面南临水）。每项：(名称后缀, ancient_kind, u, v, 宽占比例, 高占比例)
+PALACE_PARTS = [
+    ("宫门", "宫门", 0.000, -0.415, 0.220, 0.080),
+    ("正殿", "殿",   0.000, -0.120, 0.360, 0.170),
+    ("西厢", "殿",  -0.355, -0.060, 0.100, 0.300),
+    ("东厢", "殿",   0.355, -0.060, 0.100, 0.300),
+    ("后殿", "殿",   0.000,  0.175, 0.300, 0.140),
+    ("高楼", "楼",   0.000,  0.395, 0.110, 0.110),
+]
+# 竹廊：中轴两侧的长廊（连接宫门 → 正殿 → 后殿）
+PALACE_CORRIDORS = [
+    (-0.240, -0.130, 0.028, 0.600),
+    (0.240, -0.130, 0.028, 0.600),
+]
 
 SEED = 42
 
@@ -122,15 +145,120 @@ def xy_geom_to_geojson(g):
 
 
 # ----------------------------------------------------------------------
-# 城市几何常量（据真实 OSM 锚点量取）
+# 城市布局配置（新增城市：在 CITY_CONFIGS 里加一条即可）
+#
+#   ⚠️ 「扬州」条目是原先的硬编码值，SEED=42 下输出必须逐字节不变，勿改。
+#   岳阳 = 岳州古城：西墙即洞庭湖岸（岳阳门/岳阳楼），东至岳州文庙一带，
+#          约 2.1×2.4 km；投影中心取古城中心。
 # ----------------------------------------------------------------------
-CENTER_LON = 119.4282   # 文昌阁
-CENTER_LAT = 32.3964
+CITY_CONFIGS = {
+    "扬州": {
+        # 投影中心（文昌阁）
+        "center": (119.4282, 32.3964),
+        # 老城核心区（护城河/小秦淮河/古运河/挹江门 围合，约 2.3×2.3 km）
+        "old_city_bbox": (119.4245, 32.3835, 119.4485, 32.4045),
+        "content_radius_m": 30000.0,
+        "ward_names": [
+            "太平坊", "仁丰坊", "开明坊", "甘泉坊", "东关坊", "通泗坊",
+            "大东门坊", "小东门坊", "湾子坊", "彩衣坊", "文峰坊", "琼花坊",
+            "广陵坊", "汶河坊", "盐阜坊", "便益门坊", "徐凝门坊", "南河下坊",
+            "梅岭坊", "竹西坊", "皮市坊", "教场坊", "辕门坊", "御码头坊",
+            "莲花坊", "双桂坊", "崇儒坊", "崇俭坊", "务本坊", "观德坊",
+            "清宁坊", "敦化坊", "乐善坊", "兴仁坊", "积善坊", "迎恩坊",
+        ],
+        # 老城历史街巷改名（现代名 -> 南宋名）
+        "road_rename": {
+            "四望亭路": "四望亭街", "国庆路": "国庆街", "大东门街": "大东门街",
+            "彩衣街": "彩衣街", "徐凝门路": "徐凝门街", "汶河北路": "汶河街",
+            "汶河南路": "汶河街", "泰州路": "泰州街", "甘泉路": "甘泉街",
+            "盐阜东路": "盐阜街", "盐阜西路": "盐阜街", "通泗街": "通泗街",
+            "便益门大街": "便益门大街", "北门外大街": "北门外大街",
+            "广陵路": "广陵街", "竹西路": "竹西街", "梅岭西路": "梅岭街",
+            "文昌中路": "文昌街", "文昌西路": "文昌街", "文昌东路": "文昌街",
+            "江阳中路": "江阳街", "江阳西路": "江阳街", "文汇西路": "文汇街",
+            "维扬路": "维扬街", "史可法路": "史可法街", "高桥路": "高桥街",
+        },
+        # 史实锚点 name -> 南宋 kind
+        "anchor_kind": {
+            "文昌阁": "高台", "鼓楼": "钟鼓楼", "四望亭": "亭", "五亭桥": "桥",
+            "文峰塔": "高台", "天宁塔": "高台", "琼花观": "观", "个园": "园苑",
+            "何园": "园苑", "瘦西湖": "湖", "东关古渡": "渡口",
+            "北门遗址": "城门", "挹江门": "城门", "隋炀帝陵遗址博物馆": "义冢",
+            "崔致远纪念馆": "祠", "朱自清故居": "民居", "张若虚雕塑": "高台",
+            # 史实景点补充（避免 tourism/historic 白名单化时被误删）
+            "汪氏小苑": "民居", "小盘谷": "园", "小金山": "园",
+            "熙春台": "高台", "钓鱼台": "亭", "仪征联营墓葬群": "义冢",
+        },
+        # 城外官道连接的聚落（取自源 OSM place 点）
+        "towns": [
+            "瓜洲镇", "邵伯镇", "湾头镇", "仪征市", "江都区", "槐泗镇",
+            "施桥镇", "杭集镇", "蒋王街道", "西湖街道", "汊河街道", "头桥镇",
+            "八里镇", "李典镇", "泰安镇", "新集镇", "朴席镇", "甘泉街道",
+        ],
+    },
 
-# 老城核心区（护城河/小秦淮河/古运河/挹江门 围合，约 2.3×2.3 km）
-OLD_CITY_BBOX = (119.4245, 32.3835, 119.4485, 32.4045)
+    "岳阳": {
+        # 投影中心：岳州古城中心（岳阳楼西门 ~20 km 内为城区）
+        "center": (113.0975, 29.3765),
+        # 岳州古城：西墙即洞庭湖岸（岳阳门/岳阳楼），东至岳州文庙
+        "old_city_bbox": (113.0865, 29.3655, 113.1085, 29.3875),
+        "content_radius_m": 30000.0,
+        # 岳州坊名（不足的由通用吉祥字根池补齐）
+        "ward_names": [
+            "巴陵坊", "洞庭坊", "岳阳坊", "君山坊", "南津坊", "城陵坊",
+            "云梦坊", "三江坊", "鹿角坊", "岳州坊", "白沙坊", "青草坊",
+            "龙湾坊", "新墙坊", "太平坊", "迎恩坊",
+        ],
+        # 岳阳老城街巷改名（现代名 -> 南宋名）
+        "road_rename": {
+            "洞庭北路": "洞庭街", "洞庭南路": "洞庭街", "洞庭大道": "洞庭街",
+            "巴陵西路": "巴陵街", "巴陵中路": "巴陵街", "巴陵东路": "巴陵街",
+            "巴陵大桥": "巴陵桥", "城陵矶路": "城陵矶街",
+            "南湖路": "南湖街", "云梦路": "云梦街", "得胜路": "得胜街",
+            "建设路": "建设街", "站前路": "站前街", "青年路": "青年街",
+        },
+        # 岳阳史实锚点 name -> 南宋 kind（OSM 里 historic/tourism 的对象）
+        "anchor_kind": {
+            "文庙": "州学",      # 岳州文庙 / 岳州学宫
+            "岳阳楼": "高台",    # OSM 暂无本体，留作备用
+            "慈氏塔": "高台",
+            "南津古渡": "渡口",
+            "岳州关": "税场",    # 城陵矶海关
+            "三醉亭": "亭", "仙梅亭": "亭",
+            "小乔墓": "义冢", "鲁肃墓": "义冢",
+        },
+        # 城外聚落（画框内 30 km 的镇/街道，取自源 OSM place 点）
+        "towns": [
+            "城陵矶街道", "郭镇乡", "康王乡", "麻塘街道", "新开镇", "新墙镇",
+            "筻口镇", "鹿角镇", "鹿角", "广兴洲镇", "云溪街道", "西塘镇",
+            "长塘镇",
+        ],
+        # 地名改名（现代/中性名 -> 南宋名）；只改名字，几何不动
+        "rename": {
+            # OSM 的「君山银针茶园」面本来就覆盖整个君山岛。
+            # 茶园归君山（去现代品种名「银针」），**不得叫「锦香宫茶园」**——
+            # 锦香宫是宫，不是茶园。
+            "君山银针茶园": "君山茶园",
+        },
+    },
+}
 
-CONTENT_RADIUS_M = 30000.0   # 30km
+if CITY not in CITY_CONFIGS:
+    raise SystemExit(
+        "build_world.py 没有「%s」的布局配置；请在 CITY_CONFIGS 里补一条（见文件顶部说明）" % CITY
+    )
+
+_CFG = CITY_CONFIGS[CITY]
+
+CENTER_LON, CENTER_LAT = _CFG["center"]
+OLD_CITY_BBOX = tuple(_CFG["old_city_bbox"])
+CONTENT_RADIUS_M = float(_CFG.get("content_radius_m", 30000.0))
+WARD_NAMES = list(_CFG["ward_names"])
+ROAD_RENAME = dict(_CFG["road_rename"])
+ANCHOR_KIND = dict(_CFG["anchor_kind"])
+TOWNS = list(_CFG["towns"])
+# 地名改名（现代/中性名 -> 南宋名）；在 load_keep_objects 里统一应用
+NAME_RENAME = dict(_CFG.get("rename", {}))
 
 # ----------------------------------------------------------------------
 # 命名
@@ -148,40 +276,6 @@ _PREFIX_B = [
     "济", "福", "元", "景", "成", "源", "茂", "发", "通", "义",
 ]
 PREFIX2 = [a + b for a in _PREFIX_A for b in _PREFIX_B]
-
-WARD_NAMES = [
-    "太平坊", "仁丰坊", "开明坊", "甘泉坊", "东关坊", "通泗坊",
-    "大东门坊", "小东门坊", "湾子坊", "彩衣坊", "文峰坊", "琼花坊",
-    "广陵坊", "汶河坊", "盐阜坊", "便益门坊", "徐凝门坊", "南河下坊",
-    "梅岭坊", "竹西坊", "皮市坊", "教场坊", "辕门坊", "御码头坊",
-    "莲花坊", "双桂坊", "崇儒坊", "崇俭坊", "务本坊", "观德坊",
-    "清宁坊", "敦化坊", "乐善坊", "兴仁坊", "积善坊", "迎恩坊",
-]
-
-# 老城历史街巷改名（现代名 -> 南宋名）
-ROAD_RENAME = {
-    "四望亭路": "四望亭街", "国庆路": "国庆街", "大东门街": "大东门街",
-    "彩衣街": "彩衣街", "徐凝门路": "徐凝门街", "汶河北路": "汶河街",
-    "汶河南路": "汶河街", "泰州路": "泰州街", "甘泉路": "甘泉街",
-    "盐阜东路": "盐阜街", "盐阜西路": "盐阜街", "通泗街": "通泗街",
-    "便益门大街": "便益门大街", "北门外大街": "北门外大街",
-    "广陵路": "广陵街", "竹西路": "竹西街", "梅岭西路": "梅岭街",
-    "文昌中路": "文昌街", "文昌西路": "文昌街", "文昌东路": "文昌街",
-    "江阳中路": "江阳街", "江阳西路": "江阳街", "文汇西路": "文汇街",
-    "维扬路": "维扬街", "史可法路": "史可法街", "高桥路": "高桥街",
-}
-
-# 史实锚点 name -> 南宋 kind
-ANCHOR_KIND = {
-    "文昌阁": "高台", "鼓楼": "钟鼓楼", "四望亭": "亭", "五亭桥": "桥",
-    "文峰塔": "高台", "天宁塔": "高台", "琼花观": "观", "个园": "园苑",
-    "何园": "园苑", "瘦西湖": "湖", "东关古渡": "渡口",
-    "北门遗址": "城门", "挹江门": "城门", "隋炀帝陵遗址博物馆": "义冢",
-    "崔致远纪念馆": "祠", "朱自清故居": "民居", "张若虚雕塑": "高台",
-    # 史实景点补充（避免 tourism/historic 白名单化时被误删）
-    "汪氏小苑": "民居", "小盘谷": "园", "小金山": "园",
-    "熙春台": "高台", "钓鱼台": "亭", "仪征联营墓葬群": "义冢",
-}
 
 # 现代设施名称标记：landuse/natural 保留层若名字命中则丢弃。
 # tourism/historic 已走 ANCHOR_KIND 白名单，无需此表。
@@ -216,6 +310,11 @@ def _nature_kind(name, cat, tags):
     if cat in ("water", "waterway"):
         return "湖" if any(k in name for k in _WATER_KIND_KEYS) else None
     if cat in ("natural", "landuse"):
+        # 先按**结尾**匹配：中文地名多为「专名 + 通名」，通名在末尾。
+        # 否则「君山茶园」「五岭公园」会先命中「山」而被误判为山体。
+        for kind, keys in _NATURE_KIND:
+            if any(name.endswith(k) for k in keys):
+                return kind
         for kind, keys in _NATURE_KIND:
             if any(k in name for k in keys):
                 return kind
@@ -293,13 +392,6 @@ ZONE_POOLS = {
     },
 }
 
-# 城外官道连接的聚落（取自源 OSM place 点）
-TOWNS = [
-    "瓜洲镇", "邵伯镇", "湾头镇", "仪征市", "江都区", "槐泗镇",
-    "施桥镇", "杭集镇", "蒋王街道", "西湖街道", "汊河街道", "头桥镇",
-    "八里镇", "李典镇", "泰安镇", "新集镇", "朴席镇", "甘泉街道",
-]
-
 # ----------------------------------------------------------------------
 # 几何小工具
 # ----------------------------------------------------------------------
@@ -371,6 +463,10 @@ class WorldBuilder:
             cat = o.get("category")
             tags = o.get("tags") or {}
             name = o.get("name")
+            if name and name in NAME_RENAME:
+                o = dict(o)
+                o["name"] = NAME_RENAME[name]
+                name = o["name"]
             if cat in ("water", "waterway"):
                 o = _with_nature_kind(o, cat, tags)
                 keep.append(o)
@@ -401,6 +497,11 @@ class WorldBuilder:
                 o = dict(o)
                 p = tags.get("place")
                 o["ancient_kind"] = "镇" if p in ("town",) else "村"
+                keep.append(o)
+            elif name and cat == "area" and tags.get("place") in ("island", "islet"):
+                # 岛屿（如洞庭君山岛）——保留为独立面，否则岛上没有任何地物
+                o = dict(o)
+                o["ancient_kind"] = "洲"
                 keep.append(o)
         # 76 布点锚点
         if os.path.exists(CUSTOM_FILE):
@@ -1108,6 +1209,81 @@ class WorldBuilder:
         print("城外聚落民居:", len(houses))
         return houses
 
+    # ---------------- 7. 建筑群（宫观 / 府邸） ----------------
+    def build_compounds(self):
+        """手工定点的大型院落：院墙 + 殿宇 + 廊庑 + 园圃 + 泊船处。
+
+        数据源：`数据/<城市>_建筑群.json`。没有该文件就是不生成（不影响其它城市）。
+        """
+        if not os.path.exists(COMPOUND_FILE):
+            print("建筑群: 0（无 %s）" % os.path.basename(COMPOUND_FILE))
+            return []
+        with open(COMPOUND_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        out = []
+        for c in data.get("compounds", []):
+            out += self._build_compound(c)
+        print("建筑群: %d 个对象（%d 座院落）"
+              % (len(out), len(data.get("compounds", []))))
+        return out
+
+    def _build_compound(self, c):
+        name = c["name"]
+        w = float(c.get("w_m", 500.0))
+        h = float(c.get("h_m", 360.0))
+        ang = math.radians(float(c.get("angle_deg", 0.0)))
+        cx, cy = lonlat_to_xy(float(c["lon"]), float(c["lat"]))
+        rename = c.get("rename") or {}
+        layout = c.get("layout", "palace")
+        objs = []
+
+        def add(nm, kind, geom, cat="building", tags=None):
+            objs.append({
+                "id": self.new_id(),
+                "name": nm,
+                "category": cat,
+                "geometry": xy_geom_to_geojson(geom),
+                "tags": tags if tags is not None else {"building": "yes"},
+                "ancient_kind": kind,
+            })
+
+        # ---- 院墙：4 段细矩形（不用城墙层，免得与州城城墙的 26m 粗黑线混同）----
+        t = float(c.get("wall_t_m", 6.0))
+        add(name + "院墙", "院墙", rect_poly(cx, cy + (h - t) / 2, w, t, ang))
+        add(name + "院墙", "院墙", rect_poly(cx, cy - (h - t) / 2, w, t, ang))
+        add(name + "院墙", "院墙", rect_poly(cx - (w - t) / 2, cy, t, h - 2 * t, ang))
+        add(name + "院墙", "院墙", rect_poly(cx + (w - t) / 2, cy, t, h - 2 * t, ang))
+
+        if layout == "palace":
+            # ---- 殿宇（中轴三进）----
+            for suffix, kind, u, v, wf, hf in PALACE_PARTS:
+                nm = rename.get(suffix) or (name + suffix)
+                add(nm, kind,
+                    rect_poly(cx + u * w, cy + v * h, w * wf, h * hf, ang))
+            # ---- 竹廊 ----
+            for i, (u, v, wf, hf) in enumerate(PALACE_CORRIDORS):
+                add(name + "竹廊", "廊",
+                    rect_poly(cx + u * w, cy + v * h, w * wf, h * hf, ang),
+                    tags={"building": "roof", "roof:material": "bamboo"})
+
+        # ---- 园圃（茶园 / 果林）----
+        for g in c.get("gardens", []):
+            gx, gy = lonlat_to_xy(float(g["lon"]), float(g["lat"]))
+            gl = g.get("landuse", "farmland")
+            add(g.get("name") or (name + ("茶园" if gl == "farmland" else "果林")),
+                "茶园" if gl == "farmland" else "果园",
+                rect_poly(gx, gy, float(g["w_m"]), float(g["h_m"]),
+                          math.radians(float(g.get("angle_deg", 0.0)))),
+                cat="landuse", tags={"landuse": gl})
+
+        # ---- 泊船处 / 码头 ----
+        for d in c.get("docks", []):
+            add(d.get("name") or (name + "泊船处"), "码头",
+                Point(*lonlat_to_xy(float(d["lon"]), float(d["lat"]))),
+                cat="custom", tags={})
+
+        return objs
+
     def _nearest_gate(self, lon, lat):
         x, y = lonlat_to_xy(lon, lat)
         minx, miny, maxx, maxy = self.core_poly.bounds
@@ -1135,6 +1311,7 @@ class WorldBuilder:
         if self.stage >= 3:
             self.objects += self.build_pois()
             self.objects += self.build_country()
+            self.objects += self.build_compounds()
 
         data = {
             "name": f"{CITY}地图",

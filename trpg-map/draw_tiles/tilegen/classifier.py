@@ -58,6 +58,8 @@ def classify_object(prepared):
         "farmland",
         "forest",
         "wood",
+        "orchard",
+        "vineyard",
         "grass",
         "meadow",
         "recreation_ground",

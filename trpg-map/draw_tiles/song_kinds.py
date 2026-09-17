@@ -107,6 +107,10 @@ KINDS = {
     "义冢":   dict(group="信仰", icon="grave",  zone="edge", note="乱葬/义葬地"),
     "坟地":   dict(group="信仰", icon="grave",  zone="edge", note="墓园"),
 
+    # ---------- 门派 / 驻地 ----------
+    "宫":     dict(group="门派", icon="palace",  zone="general", note="宫观/门派驻地（如洞庭锦香宫）"),
+    "山庄":   dict(group="门派", icon="palace",  zone="general", note="山庄/别业"),
+
     # ---------- 山水 / 地标 ----------
     "湖":     dict(group="山水", icon="water",   zone="water", note="湖泊"),
     "洲":     dict(group="山水", icon="islet",   zone="water", note="河洲"),

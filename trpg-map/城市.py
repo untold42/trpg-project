@@ -24,20 +24,33 @@ M_PER_DEG_LAT = 110574.0
 
 CITIES = {
     "扬州": {
+        "map_id": "yangzhou",
         "center_lon": 119.4175,
         "center_lat": 32.41,
         "frame_w_km": 100.7,      # 画框宽（东西向）
         "aspect": (16, 9),
+        # 切换地图时玩家的落脚点（切图会把 位置 挪到这里，否则会离新城几百公里）
+        "start": {"lon": 119.4282, "lat": 32.3964, "name": "文昌阁"},
     },
     "岳阳": {
+        "map_id": "yueyang",
         "center_lon": 113.13,
         "center_lat": 29.37,
         "frame_w_km": 100.7,
         "aspect": (16, 9),
+        # 源 PBF：岳阳无独立 extract，用湖南省全量（含完整洞庭湖）
+        "pbf": "湖南",
+        # 落脚点：岳州城西门（岳阳楼）
+        "start": {"lon": 113.0884, "lat": 29.3807, "name": "岳阳楼"},
     },
 }
 
 DEFAULT_CITY = "扬州"
+
+
+def map_id(city=DEFAULT_CITY):
+    """城市 -> 英文 map_id（目录名 / 服务端 TRPG_MAP 用）。"""
+    return CITIES[city].get("map_id", city)
 
 
 def m_per_deg_lon(lat):

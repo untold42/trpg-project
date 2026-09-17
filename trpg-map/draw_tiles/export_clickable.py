@@ -29,7 +29,14 @@ DATA_DIR = os.path.join(
     "数据"
 )
 
-INPUT_FILE = os.path.join(DATA_DIR, "扬州_南宋世界.json")
+# 城市（可用 TRPG_CITY 覆盖）——决定输入世界文件与前端输出目录
+import sys as _sys
+_sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from 城市 import map_id as _map_id  # noqa: E402
+
+CITY = os.environ.get("TRPG_CITY", "扬州")
+MAP_ID = _map_id(CITY)
+INPUT_FILE = os.path.join(DATA_DIR, f"{CITY}_南宋世界.json")
 
 # 前端项目 public 目录（可点击数据放这里）
 # 目录布局：<root>/trpg-project/{trpg-map, trpg-client, trpg-server}
@@ -278,7 +285,7 @@ def main():
     out_path = args.out
     if out_path is None:
         if os.path.isdir(FRONTEND_PUBLIC):
-            out_dir = os.path.join(FRONTEND_PUBLIC, "data")
+            out_dir = os.path.join(FRONTEND_PUBLIC, "data", MAP_ID)
             os.makedirs(out_dir, exist_ok=True)
             out_path = os.path.join(out_dir, OUTPUT_FILE)
         else:

@@ -49,6 +49,9 @@ def get_land_style(tags):
     if landuse in ("forest", "wood") or natural == "wood":
         return FOREST_COLOR, "dot"
 
+    if landuse in ("orchard", "vineyard"):
+        return FOREST_COLOR, "dot"
+
     if natural == "scrub":
         return SCRUB_COLOR, "dot"
 
