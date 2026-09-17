@@ -1,9 +1,14 @@
-# 古代扬州地图 —— 瓦片生成 & 数据处理
+# 南宋地图 —— 瓦片生成 & 数据处理（多城市）
 
-把 OpenStreetMap（OSM）的扬州现代数据，加工成**南宋风格**：
+把 OpenStreetMap（OSM）的现代数据，加工成**南宋风格**：
 1. **瓦片图**（z/x/y.png，宣纸水墨风）——react-leaflet 底图；
 2. **转译数据**（剔除现代要素、设施改名、归类、布点），并导出前端可点击层；
-3. **空间数据库**（`map_spatial.db`，R-tree + 完整几何）——给 LLM / 脚本做精确空间查询。
+3. **空间数据库**（`map_spatial_<map_id>.db`，R-tree + 完整几何）——给 LLM / 脚本做精确空间查询。
+
+> **2026-09-18 起支持多城市**：扬州（`yangzhou`）/ 岳阳（`yueyang`）。
+> 城市列表与画框的**单一真相源是 `trpg-map/城市.py`**；资产按 `<map_id>` 分目录。
+> 一键链路：`cd trpg-map && python 生成.py --city <城市>`。
+> 下文旧命令里没写 `TRPG_CITY` 的，默认都是扬州。
 
 ## 目录布局（monorepo）
 
@@ -21,18 +26,22 @@
 ## 一、整体数据流
 
 ```
-trpg-map/数据/扬州_OSM精简.json        抽稀后的 OSM（14683 对象）
+trpg-map/数据/源pbf/<城市>.pbf           （岳阳用 湖南.pbf 全量）
         │            ▲
-        │            └ trpg-map/数据/扬州_布点锚点.json（76 个锚点）
-        ▼ build_world.py              ①丢弃现代要素 ②算法生成坊/民居/官道/坊巷 ③打 ancient_kind
-trpg-map/数据/扬州_南宋世界.json       可玩世界（12336 对象）
+        │            └ trpg-map/数据/<城市>_布点锚点.json（定点锚点）
+        │              trpg-map/数据/<城市>_建筑群.json（宫观院落）
+        ▼ build_world.py              ①丢弃现代要素 ②算法生成坊/民居/官道/坊巷/建筑群 ③打 ancient_kind
+trpg-map/数据/<城市>_南宋世界.json      可玩世界
         │
-        ├─► export_clickable.py ──► 前端 public/data/clickable.geojson
-        │                           前端 public/mapicons/manifest.txt
-        ├─► db/create_spatial_db.py ► db/map_spatial.db（给 LLM 查）
-        └─► tilegen/generate_tiles.py ► tiles/{z}/{x}/{y}.png（~2.9 万张）
-                                        拷到 ../../trpg-client/public/tiles/
+        ├─► export_clickable.py ──► ../../trpg-client/public/data/<map_id>/clickable.geojson
+        │                         ► ../../trpg-client/public/mapicons/manifest.txt
+        ├─► db/create_spatial_db.py ► db/map_spatial_<map_id>.db（给 LLM 查）
+        ├─► export_walkable.py ──► ../../trpg-client/public/data/<map_id>/walkable.geojson（碰撞+地形）
+        └─► tilegen/generate_tiles.py ► tiles/<map_id>/{z}/{x}/{y}.png
+                                        拷到 ../../trpg-client/public/tiles/<map_id>/
 ```
+
+> `map_id`（英文目录名）在 `trpg-map/城市.py` 的 `CITIES[城市]["map_id"]`。
 
 > **数据已统一收到 `trpg-map/数据/`**（与 `draw_tiles/` 同级），
 > 命名约定与完整血缘见 [`../数据/README.md`](../数据/README.md)。
@@ -45,24 +54,28 @@ trpg-map/数据/扬州_南宋世界.json       可玩世界（12336 对象）
 
 ```
 draw_tiles/
-├── build_world.py            世界生成：抽稀 OSM + 布点 → 南宋世界.json
-├── export_clickable.py       从 南宋世界.json 导出前端 clickable.geojson + manifest
+├── 城市.py（在上一级 trpg-map/） 城市单一真相源
+├── 生成.py（在上一级 trpg-map/） 一键链路
+├── build_world.py            世界生成（多城市 CITY_CONFIGS；含建筑群）
+├── export_clickable.py       导出前端 clickable.geojson + manifest
+├── export_walkable.py        导出碰撞层 + 地形步速层
 ├── song_kinds.py             南宋 kind 词表（group/icon/zone/note）
 ├── tilegen/                  瓦片渲染簇（内部互相 import，单目录自洽）
-│   ├── config.py             常量：路径/zoom/16:9 取景/颜色
+│   ├── config.py             常量：路径/zoom/取景（城市画框）/颜色
 │   ├── projection / geometry / classifier / spatial_index / styles
-│   ├── texture.py / renderer.py
+│   ├── texture.py / renderer.py（含建築绘制 _draw_buildings）
 │   ├── preview.py            快速预览：只生成指定地点附近几张瓦片拼成一张图
-│   └── generate_tiles.py     主入口：自动取景 → 逐 zoom 逐瓦片生成
-├── db/                       数据库（唯一一套）
-│   ├── create_spatial_db.py      建 map_spatial.db（R-tree + 完整几何）
+│   └── generate_tiles.py     主入口：逐 zoom 逐瓦片生成 → tiles/<map_id>/
+├── icongen/                 地图图标（day/night PNG，make_icons.py <键>）
+├── db/                       数据库（一城市一套）
+│   ├── create_spatial_db.py      建 map_spatial_<map_id>.db（含 tags 列）
 │   ├── query_nearby_spatial.py   点/线/面精确范围查询（给 LLM/调试）
-│   └── map_spatial.db            结果库
-├── tiles/                    瓦片输出（gitignore）
+│   └── map_spatial_<map_id>.db   结果库
+├── tiles/<map_id>/           瓦片输出（gitignore）
 └── _preview/                 预览输出（latest/ 下是最新一组）
 
 数据（全部在 trpg-map/数据/，见 ../数据/README.md）：
-    扬州_OSM精简.json / 扬州_布点锚点.json / 扬州_南宋世界.json
+    <城市>_OSM精简.json / <城市>_布点锚点.json / <城市>_建筑群.json / <城市>_南宋世界.json
 ```
 
 - 渲染管线文件职责：见各文件 docstring（classifier 分图层、renderer 画 256×256 + 宣纸纹理等）。
@@ -138,22 +151,24 @@ python build_world.py            # 完整（默认）
 
 ---
 
-## 六、数据库（唯一：map_spatial.db，给 LLM / 脚本精确查询）
+## 六、数据库（一城市一套：`map_spatial_<map_id>.db`，给 LLM / 脚本精确查询）
 
 ```bash
-python db/create_spatial_db.py                 # 重建 db/map_spatial.db
+TRPG_CITY=岳阳 python db/create_spatial_db.py   # 重建 db/map_spatial_yueyang.db（默认扬州）
 python db/query_nearby_spatial.py --lon 119.4175 --lat 32.41 --r 1
 ```
 
 - 表结构：
   ```
   maps(map_id, name)                        -- 一张地图一行
-  features(fid, map_id, ..., name, ancient_kind, category, tags, coords)
+  features(fid, map_id, oid, name, name_modern, category, ancient_kind,
+           geometry_type, coords, description, hours, tags)
   features_rtree(fid, minx, maxx, miny, maxy)  -- 原生 R-tree
   ```
 - 点/线/面全部精确：R-tree 方框粗筛 → shapely 算最近距离。
-- 内容与 song json 同源（13337 行），含 3310 个 `民居`（建筑多边形）。
-- 加新地图：`--input 别的.json --map 新地图名 --map-name 新地图`，查询加 `--map 新地图名`。
+- 内容与 `<城市>_南宋世界.json` 同源；`民居` 也在库里（瓦片不画，但 LLM 查得到）。
+- 一城市一个库，**互不覆盖**；库名（`map_id`）由 `城市.py` 决定，一般不用手传 `--map`。
+- `query_nearby_spatial.py` 读 `TRPG_MAP`（默认 yangzhou）。
 
 ### 给 LLM 的查询示例
 ```sql
@@ -175,15 +190,15 @@ WHERE f.map_id='yangzhou' AND f.category='building'
 
 ```bash
 # —— 数据层（在 trpg-map/ 内）——
-python pbf_to_json.py 数据/源pbf/扬州.pbf     # PBF → 数据/扬州_OSM全量.json
-python 生成.py --city 扬州                     # 一键跑完整链路（见 ../数据/README.md）
-python draw_tiles/build_world.py              # → 数据/扬州_南宋世界.json
+python pbf_to_json.py 数据/源pbf/扬州.pbf --city 扬州   # → 数据/扬州_OSM精简.json
+python 生成.py --city 扬州                              # 一键跑完整链路（见 ../数据/README.md）
+TRPG_CITY=扬州 python draw_tiles/build_world.py        # → 数据/扬州_南宋世界.json（单步默认扬州）
 
 # —— 产物层（在 draw_tiles/ 内）——
 python export_clickable.py                    # 点击层 + manifest
 python tilegen/preview.py 16 119.4365 32.394 3   # 快速预览几张瓦片（几秒）
 python tilegen/generate_tiles.py              # 全量瓦片（~10 分钟）
-python db/create_spatial_db.py                # 重建 map_spatial.db
+TRPG_CITY=岳阳 python db/create_spatial_db.py  # 重建 map_spatial_yueyang.db
 python db/query_nearby_spatial.py --lon 119.4175 --lat 32.41 --r 1
 
 # —— 前端 ——

@@ -10,9 +10,30 @@
 > 本文件由原 `README.md` + `ARCHITECTURE.md` + `STATUS.md` + `交接-地图性能.md` 合并而成
 > （旧文件仍可在 git 历史中查到）。
 
-最后更新：2026-09-17（**本轮大改**）——文档合并（仅留 README/TODO）；废弃内容生成型骰子；
-NPC 唯一姓名；人物表情交小模型（删 `特定人物.md`）；宏观时间线扩写 + **去重（只读剧本 + 时间窗）**；
-`世界状态.json` → **`世界线程.json`**；**导演（GLM）** 落地；测试档删除（留证）。详见 §16.9–§16.15。
+最后更新：2026-09-18（**多城市**）——地图资产按城市分目录（扬州 / 岳阳）；新增**岳阳地图**（含完整洞庭湖、
+**锦香宫**建筑群）；新增**地形步速倍率**；新增前端**地图搜索**与游戏内切图；修了一批多城市连锁 bug。
+详见 §13.5 与 §16.16。
+
+---
+
+## ⚠️ 工作约定（给下一个 AI / 协作者）
+
+> **1. 不要跑 `npm run build`，除非用户明确要求。**
+>
+> 前端用 `npm run dev`（vite dev server，自带 HMR）。`npm run build` 会白跑约 1 分钟往 `dist/`
+> 写一份**根本用不上**的产物；它比 `tsc` 多抓不到什么东西（模块解析错 dev server 会立刻报）。
+>
+> **改完 TS/TSX 只跑 `npx tsc -b` 做类型检查即可。**
+>
+> **2. `tsc` 抓不到运行时错。** 典型：**Hooks 放在 early return 之后 → 白屏**
+> （`Rendered more hooks than during the previous render`）——`tsc` / `build` 都是绿的。
+> 所以改 hook 顺序后必须硬刷新（Ctrl+Shift+R）并**实际看一眼**。见 §13.4 血泪坑。
+>
+> **3. 后端改代码必须重启**（改 `主持人/*.md`、`时间影响.json`、`营业时间.json` 免重启）。
+>
+> **4. 只跑一个 `python main.py`**；别用外部工具开着 `游戏数据/*.json` 或 `chroma_db`。
+>
+> **5. 地图改了必须告诉用户去哪看**：多城市已分目录，不要再说「public/tiles」这种扁平路径。
 
 ---
 
@@ -40,6 +61,8 @@ NPC 唯一姓名；人物表情交小模型（删 `特定人物.md`）；宏观�
 - [十一、接口：路由 / 工具 / 事件信封](#十一接口路由--工具--事件信封)
 - [十二、数据与存档 / 世界推演](#十二数据与存档--世界推演)
 - [十三、前端 / 世界观文档 / 地图](#十三前端--世界观文档--地图)
+  - [13.5 多城市（扬州 / 岳阳）](#135-多城市扬州--岳阳)
+  - [13.6 地形步速倍率](#136-地形步速倍率)
 - [十四、记忆库](#十四记忆库)
 - [十五、数据链总览](#十五数据链总览)
 - [十六、实现记录（变更历史）](#十六实现记录变更历史)
@@ -54,7 +77,8 @@ NPC 唯一姓名；人物表情交小模型（删 `特定人物.md`）；宏观�
 | 项 | 内容 |
 |---|---|
 | 类型 | 单人 AI 跑团 / 叙事驱动 CRPG（TRPG 输入 × CRPG 裁决 × 活世界模拟） |
-| 时代 | 南宋嘉定年间（架空·扬州） |
+| 时代 | 南宋嘉定年间 |
+| 地图 | **多城市**：扬州（`yangzhou`）/ 岳阳（`yueyang`）；资产按城市分目录，见 §13.5 |
 | 玩家 | 梁峰（第三人称，WASD 操控） |
 | 大模型 | DeepSeek（叙事 / 蒸馏 / 前情回顾） |
 | 小模型 | 本地 Qwen3-4B（UI 事件 / 世界推演 / 战斗选曲） |
@@ -142,14 +166,18 @@ python init_GM_DB.py [--reset]
 python main.py                         # Flask :5000
 
 # 前端（trpg-client 下）
-npm run dev
+npm run dev                            # ⚠️ 开发就用这个；**不要跑 npm run build**（见顶部工作约定）
+npx tsc -b                             # 改完 TS/TSX 只跑这个做类型检查
 
-# 地图（trpg-map/draw_tiles 下）
-python build_world.py                  # 重新生成世界
-python export_clickable.py             # 导出点击层 + 图标清单
-python db/create_spatial_db.py         # 重建空间库
-python tilegen/generate_tiles.py       # 重生成瓦片（10–20 分钟）
+# ---- 地图：一键链路（trpg-map 下）----
+python 生成.py --city 岳阳              # pbf → 世界 → 点击层 → 空间库 → 碰撞层 → 瓦片 → 拷前端
+python 生成.py --city 扬州 --only tiles # 只跑某一步（pbf/world/clickable/db/walkable/tiles/sync）
+python 生成.py --list
 ```
+
+> ⚠️ **地图命令都已城市化**：源 PBF、中间产物、瓦片、空间库、前端目录全部按城市分。
+> 单步跑 `build_world.py` / `export_walkable.py` 等脚本时，必须带 `TRPG_CITY=<城市>`（否则默认扬州）。
+> 完整数据流与目录约定见 §13.3 / §13.5。
 
 **前置**：LM Studio 加载 `Qwen/Qwen3-Embedding-0.6B` + `qwen/qwen3-4b-2507`。
 `TRPG_WORLD_SIM=0` 可关闭世界推演；`TRPG_CLOCK=0` 关闭连续时钟；`TRPG_FILE_TOOLS=1` 临时启用文件工具。
@@ -899,12 +927,15 @@ Leaflet（瓦片底图 + 坐标系）        ← 保留
 WASD 自由移动必须阻止穿墙 / 穿屋 / 入河。**已实现为前端矢量碰撞**（地形数据由空间库导出）：
 
 - 新增 `trpg-client/src/in-game/walkable.ts`（前端矢量判定 + 网格索引）
-  与 `trpg-map/draw_tiles/export_walkable.py`（从空间库导出 `trpg-client/public/data/walkable.geojson`）。
+  与 `trpg-map/draw_tiles/export_walkable.py`（从空间库导出 `trpg-client/public/data/<map_id>/walkable.geojson`）。
 - 规则：除**水域 / 城墙**外可走；**城门 25m** 为出城通道；**桥 100m** 可走；**路 ∩ 水** 默认路可走。
 - `ExploreControls` 走不动时**沿障碍滑动**（先试 X、再试 Y）；被挡时棋子描边转灰；`?nowalk=1` 关闭碰撞。
-- **城门限时（新）**：`营业时间.json` 把城门定为 `卯-申`；`export_walkable.py` 导出城门 hours，前端按当前时辰判断开闭——**闭门后走不了城门**（城墙依旧阻挡）；`query_place/query_nearby` 结果带 `营业时间`+`现在`。
+- **城门限时**：`营业时间.json` 把城门定为 `卯-申`；`export_walkable.py` 导出城门 hours，前端按当前时辰判断开闭——**闭门后走不了城门**（城墙依旧阻挡）；`query_place/query_nearby` 结果带 `营业时间`+`现在`。
+- **地形步速倍率**（新，§13.6）：同一份导出里多一个 `terrain` 层，带 `mult`。
+- ⚠️ **活动范围（夹取角点）必须按地图传**（`area` prop），写死某城会导致走动瞬移（§17.3 #18）。
 
-> 现有 `map_spatial.db` 只有几何、未成图。后续可升级为真正的路网图（Dijkstra/A*）；语义可复用战斗的 `blocked()` / `reachable_cells()`。
+> 现有 `map_spatial_<map_id>.db` 只有几何、未成图。后续可升级为真正的路网图（Dijkstra/A*）；
+> 语义可复用战斗的 `blocked()` / `reachable_cells()`。
 
 ### 8.3 相机与控制
 
@@ -1144,12 +1175,14 @@ trpg-server/sessions/           （.gitignore）
 - **顶层按钮**：主持人 / 行动 / **说话**（对 NPC 的台词）/ **继续**（时间流逝、世界推进）/ 历史记录 / **数据**。
 - **「菜单」**（左侧滑出）：存档游戏 / 放弃本轮 / 地图 / 势力 / 返回主菜单。
 - **背景**：由 UI 事件 `kind:"bg"` 控制（`in-game/background.ts`），`GameScene` 只收 `background` prop。
+  **时段（白天/黄昏/黑夜）是时间的函数**，前端只记场景名、随时钟重算（不依赖小模型发事件）。
 - **音乐**：由 UI 事件 `kind:"music"` 控制（`in-game/music.ts`，曲库=`assets/音乐/*.mp3`，循环；同名不重启；`track="无"` 或离开游戏时停）。
 - **战斗**：`in-game/battle.tsx` + `BattleBoard.tsx` + `styles/Battle.css`（等轴测 2.5D + 动作菜单 + 目标点选 + 思路框 + 日志 + 小/大模型开关 + 结算浮层）。
 - **模拟战斗**：主菜单「环境设定」选友军/敌人 → 直接开战斗（不回写）。
 - **历史面板 / 续玩**：读 `GET /history`；无前端 `historyLog`。
-- **地图**：`Map.tsx`（探索 + 相机 + WASD + 碰撞）+ `ClickableLayer.tsx`（迷雾 + 命中层 + 图标层）。
-- **势力画廊**：读 `GET /factions`；**前端已无 `data/` 目录**。
+- **地图**：`Map.tsx`（探索 + 相机 + WASD + 碰撞 + 地形步速）+ `ClickableLayer.tsx`（迷雾 + 命中层 + 图标层）。
+  **多城市**：`mapId.ts`（`?map=`）/ `api.ts`（后端地址）；侧边菜单「地图」→ 顶部**搜索框**可跨城搜地点。
+- **势力画廊**：读 `GET /factions`；**字体/图标共用，不分城市**。
 - **环境设定 / 归隐山林**：「环境设定」调难度（`/settings`）；「归隐山林」直接退出。
 - **前情回顾**：点「继续旅途」→ `GET /recap` → 加载完直接进游戏，前情在 in game 内点击推进（`GameScene.onFinish`）。
 - **古钟**：`in-game/Clock.tsx` / `useGameClock.ts`。
@@ -1168,22 +1201,121 @@ trpg-server/sessions/           （.gitignore）
 
 ### 13.3 地图
 
-数据流（v3，已稳定，**勿手改中间产物**）：
+数据流（v4 · **多城市**，已稳定，**勿手改中间产物**）：
 
 ```
-trpg-map/数据/扬州_OSM精简.json (抽稀后 OSM 14683，勿改)
-trpg-map/数据/扬州_布点锚点.json (76 布点锚点，勿改)
-        └──► draw_tiles/build_world.py ──► trpg-map/数据/扬州_南宋世界.json (12336 对象)
-                                     ├─► export_clickable.py ► 前端 clickable.geojson
-                                     ├─► db/create_spatial_db.py ► map_spatial.db
-                                     ├─► export_walkable.py ► 前端 walkable.geojson（碰撞）
-                                     └─► tilegen/generate_tiles.py ► tiles/ (z11–16)
+trpg-map/数据/源pbf/<城市>.pbf            （原始 OSM；岳阳用 湖南.pbf 全量，才能拿到完整洞庭湖）
+   │  pbf_to_json.py --city <城市>         按「城市画框」裁切
+   ▼
+trpg-map/数据/<城市>_OSM精简.json         勿改
+   │  draw_tiles/build_world.py           保留自然地理 + 算法生成城区 + 建筑群
+   │     （读 <城市>_布点锚点.json / <城市>_建筑群.json / <城市>_POI.json）
+   ▼
+trpg-map/数据/<城市>_南宋世界.json        勿手改
+   ├─ export_clickable.py   ► public/data/<map_id>/clickable.geojson
+   ├─ db/create_spatial_db.py ► db/map_spatial_<map_id>.db
+   ├─ export_walkable.py    ► public/data/<map_id>/walkable.geojson（碰撞 + 地形）
+   └─ tilegen/generate_tiles.py ► draw_tiles/tiles/<map_id>/ (z11–16)
+                                  └─ 生成.py sync ► public/tiles/<map_id>/
 ```
 
-- 瓦片 `trpg-client/public/tiles/{z}/{x}/{y}.png`（**无 z17/z18**，z18 下放大 z16 4 倍）；点击层 `public/data/clickable.geojson`；碰撞层 `public/data/walkable.geojson`；图标 `public/mapicons/*.png`。
+- 瓦片 `trpg-client/public/tiles/<map_id>/{z}/{x}/{y}.png`（**无 z17/z18**，z18 下放大 z16 4 倍）
+- 点击层 `public/data/<map_id>/clickable.geojson`；碰撞/地形层 `public/data/<map_id>/walkable.geojson`
+- 图标 `public/mapicons/<键>/{day,night}.png`（**全局共用，不分城市**）
 - 民居瓦片隐藏、数据留 JSON/DB；城门=主街穿墙处。
-- 详细地图生成说明见 `trpg-map/draw_tiles/STATUS.md` 与 `trpg-map/数据/README.md`。
+- 一键：`python 生成.py --city <城市>`（见 §三）。详细生成说明见 `trpg-map/draw_tiles/STATUS.md` 与 `trpg-map/数据/README.md`。
 
+---
+
+### 13.5 多城市（扬州 / 岳阳）
+
+> **核心心智模型（很重要）**：
+> **玩家坐标决定「游戏城市」；看哪张地图只是前端 UI，零副作用。**
+
+#### 两条互不干扰的链路
+
+| | 决定什么 | 判断依据 | 切了会怎样 |
+|---|---|---|---|
+| **游戏城市**（后端） | GM 查地图用哪个空间库；城池内外、附近有什么 | **玩家经纬度落在谁家画框内**（`map_settings.get_map()`） | 只有玩家**真的动到那座城**才会变 |
+| **查看地图**（前端） | 屏幕上的瓦片 / 点击层 / 碰撞层 | URL `?map=<map_id>`（> localStorage > `yangzhou`） | 纯 UI，**不动坐标、不清足迹** |
+
+想真去另一座城 = 让坐标过去（`update_location(那城的坐标)`，如渡船）。
+**步行/探索模式禁止跨城**（硬闸，防前端光标异常把玩家弹到几百公里外）。
+
+#### 资产目录（一城市一套，互不覆盖）
+
+```
+trpg-client/public/tiles/<map_id>/         瓦片
+trpg-client/public/data/<map_id>/          clickable.geojson / walkable.geojson
+trpg-map/draw_tiles/tiles/<map_id>/        瓦片生成暂存
+trpg-map/draw_tiles/db/map_spatial_<map_id>.db   空间库
+trpg-map/数据/<城市>_*.json                 源与中间产物（中文名，无 map_id）
+```
+
+`map_id` 是英文目录名，单一真相源：`trpg-map/城市.py` 的 `CITIES[城市]["map_id"]`
+（`扬州`→`yangzhou`，`岳阳`→`yueyang`）。
+
+#### 前端入口
+
+| 文件 | 作用 |
+|---|---|
+| `src/in-game/mapId.ts` | `MAP_ID`（`?map=` > localStorage > `yangzhou`）、`tileUrlFor(mapId)`、`dataUrlFor(mapId, name)` |
+| `src/api.ts` | 后端地址常量（改成单一处） |
+| `src/main.tsx` | `bootMapSync()`：URL 无 `?map=` 时先问 `GET /maps`，拿到当前城市再带参重载 |
+| `src/in-game/GameController.tsx` | `playerCity`（坐标 + frame 现算）/ `viewCity`（总览图在看哪张）/ 地图**搜索框** |
+| `src/in-game/Map.tsx` | `mapId` / `bounds` / `center` / `hidePlayer` / `flyTo` 五个 prop |
+
+#### 后端接口
+
+| 路由 | 作用 |
+|---|---|
+| `GET /maps` | 可用地图 + 当前城市 + 每张图的 `frame`（前端 maxBounds 用） |
+| `POST /map` | 记「上次看的图」（**仅是兑底**；不再移动玩家） |
+| `GET /search?q=` | **跨所有地图**搜城市 / 地点（前端地图搜索框用） |
+| `GET /scene` | 按玩家当前地点给一个背景场景名（进游戏时的初始背景） |
+
+`TRPG_MAP` 环境变量只是**首次默认值**（没有 `游戏数据/地图设置.json` 时）。
+
+#### 游戏内怎么切
+
+```
+侧边菜单 → 【地图】→ 顶部搜索框：输入「锦香宫」→ 回车 → 切到岳阳 + 镜头飞过去
+                                输入「岳阳」   → 回车 → 切到岳阳（城市名也能搜）
+```
+
+> 看别的地图时玩家标记自动隐藏（`hidePlayer`）；关掉总览图就回到自己所在的城市。
+
+---
+
+### 13.6 地形步速倍率
+
+WASD 走路的屏幕速度 = `基础步速 × 地形倍率 × 时钟倍率`。倍率随脚下地形实时变。
+
+- **数据**：`export_walkable.py` 的 `TERRAIN_RULES` → `walkable.geojson` 里的 `terrain` 层
+  （`properties.mult`）；道路也带 `mult`（`官道 1.15` / `坊巷 1.0`）。
+- **规则（优先级：路 > 地形 > 平地）**：在路廊道内用路的倍率；否则取覆盖该点的**最重**一层。
+
+| 地形 | 倍率 | m/游戏秒 | km/游戏时 |
+|---|---|---|---|
+| 官道 | ×1.15 | 2.53 | 9.1 |
+| 坊巷 / 平地 | ×1.00 | 2.20 | 7.9 |
+| 园地 | ×0.95 | 2.09 | 7.5 |
+| 农田 / 墓地 | ×0.90 | 1.98 | 7.1 |
+| 果园 | ×0.75 | 1.65 | 5.9 |
+| 草地 / 树列 | ×0.85 | 1.87 | 6.7 |
+| 草甸 | ×0.80 | 1.76 | 6.3 |
+| 灌木 | ×0.65 | 1.43 | 5.1 |
+| **林地** | ×0.60 | 1.32 | 4.8 |
+| **滩涂（湿地）** | ×0.45 | 0.99 | 3.6 |
+| **山地 / 山岩** | ×0.35 | 0.77 | 2.8 |
+
+- 基础步速 `BASE_WALK_MPS = 2.2`（`GameController.tsx`），Shift 跑 ×2.6；时钟倍率默认 15。
+- 前端实现在 `walkable.ts` 的 `terrainAt()`；不是平地时右下角显示徽章（`.map-terrain-badge`）。
+- 改倍率只需改 `export_walkable.py:TERRAIN_RULES` 再重导 `walkable`（不必重生成瓦片）。
+
+> 因为时钟在探索模式下持续走，走得慢 = **游戏时间也花得多**，二者自洽。
+
+---
 ### 13.4 地图性能（探索模式卡顿）定案
 
 > 症状：「走过的地方流畅，新走的地方卡」；菜单地图（无 WASD）全渲染也流畅。
@@ -1235,7 +1367,7 @@ trpg-map/数据/扬州_布点锚点.json (76 布点锚点，勿改)
 
 > 总原则：**前端不存任何游戏内容**——势力 / 状态 / 历史 / 前情 / 事件流一律向后端请求；
 > 后端从 `trpg-world`（正典·玩家可见数据）、`游戏数据/`（实时状态）、`sessions/`（过程日志）、
-> chroma（长期记忆）、`map_spatial.db`（空间库）取。**硬事实由代码裁决**。
+> chroma（长期记忆）、`map_spatial_<map_id>.db`（空间库）取。**硬事实由代码裁决**。
 
 ### 15.1 势力画廊（前端零内容）
 
@@ -1527,6 +1659,58 @@ trpg-world/势力介绍.json          ← 玩家可见源（已剔除剧透）
 
 ---
 
+### 16.16 多城市 + 岳阳地图 + 锦香宫 + 地形步速（2026-09-18）
+
+> 本轮主线：**把地图从「只有扬州」变成「多城市」**，并新增岳阳与锦香宫。
+
+#### ① 岳阳地图（含完整洞庭湖）
+- 源数据改用 **`湖南.pbf` 全量**（不是被矩形裁断的 `岳阳.pbf`）。
+  `岳阳.pbf` 里洞庭湖关系 r1462005 只有 **97/231** 条成员 way（拼不成面）；
+  湖南全量里 **231/231 全在** → 拼出完整湖面 **1078 km²**（含 155 个洲岛内环）。
+- `城市.py` 新增可选 `pbf` 字段（源 PBF 名 ≠ 城市名）；`生成.py --city` 全链路打通。
+- 岳阳画框与扬州同为 100.7×56.6 km，**西洞庭/南洞庭在框外**（城内只需要东洞庭）——已知取舍。
+
+#### ② `build_world.py` 多城市化
+- 扬州硬编码常量 → **`CITY_CONFIGS`**（投影中心 / 老城 bbox / 坊名池 / 街巷改名 / 史实锚点 / 城外聚落 / 地名改名）。
+  ⚠️ **扬州条目不许改**：SEED=42 下输出必须**逐字节不变**（本轮验证过）。
+- 新增 **建筑群生成** `build_compounds()`：读 `数据/<城市>_建筑群.json` → 生成院墙/殿宇/廊庑/园圃/泊船处。
+- `load_keep_objects` 保留 `place=island`（君山岛）；`_nature_kind` 改为**词尾优先匹配**
+  （「君山茶园」不再被误判成山）。
+- 瓦片**开始画建筑**（`renderer._draw_buildings`）—— 此前 `should_draw_building()` 直接 `return False`，
+  所以宫殿在地图上根本不显示；民居仍不画（`classifier` 返回 `other`）→ 扬州瓦片画出来跟以前一样。
+- 新增 `orchard` 土地样式（果园=林地色）。
+
+#### ③ 锦香宫（洞庭君山岛）
+- 位于**君山岛南岸临水**，院落 **550×400 m（330 亩）**，中轴三进：宫门→正殿→后殿→**锦香阁**（高楼）+ 东西厢 + 竹廊。
+- 另有两处临湖果林、泊船处；**全岛为「君山茶园」**（OSM「君山银针茶园」面改名，kind=园）。
+  ⚠️ 茶园归君山，**不得叫「锦香宫茶园」**（锦香宫是宫，不是茶园——用户明确要求）。
+- 新增图标 **`palace`**（重檐庑殿顶 · icongen）+ `song_kinds` 新增 kind「宫」「山庄」。
+
+#### ④ 地形步速倍率（新功能）
+- `create_spatial_db.py` 的 `features` 加 **`tags` 列**；`export_walkable.py` 新增 `terrain` 层（带 `mult`）。
+- 前端 `walkable.ts` 新增 `terrainAt()` / `speedMultiplier()`；`Map.tsx` 移动时乘倍率 + 右下角地形徽章。
+- 倍率表见 §13.6。
+
+#### ⑤ 资产按城市分目录 + 前端搜索切图
+- 见 §13.5（瓦片/数据/空间库全部 `_<map_id>`；`GET /maps` `/search` `/scene`）。
+
+#### ⑥ 本轮修掉的多城市连锁 bug（都是真踩过的）
+
+| Bug | 症状 | 修法 |
+|---|---|---|
+| `ExploreControls` 写死扬州角点做夹取 | **走动瞬移**：人在岳阳，第一帧就被夹到扬州西南角，输入时坐标一起提交 → 玩家被搬走 | 夹取范围改成按地图传（`area` prop） |
+| `MapContainer` 不响应 `maxBounds`/`center` prop | 白屏/灰屏（地图边界和玩家不在同一座城） | `MapContainer key={mapId}` + 探索图等 `/maps` 回来再挂载 |
+| `walkable` 全局单例 `IDX` 被「看别的地图」污染 | 碰撞/地形全错 | 按 mapId 缓存 Index；**总览图不加载碰撞** |
+| `_wall_polygon_cache` 全局单缓存 | 「距城墙 **604 公里**」 | 按 mapId 缓存 |
+| `city_context` 距城墙近似公式 + 字段残值 | 切城后「最近城门」还是旧城的 | 改最近点 + 经纬分别换算；判定字段**整组更新** |
+| `_kind_of` 用 LIKE 模糊匹配 | 查「岳阳楼」先撞上「岳阳楼街道」（村）→ 背景变乡村 | 完全同名优先 |
+| `scene_candidates` 城内安全网漏了「已映射」类型 | 城内官道映射含「田野」→ 背景变田里 | 城内时把荒野类剔掉 |
+| 步行可跨城 | 前端坐标异常时玩家被弹到几百公里外 | **步行/探索禁止跨城**（渡船/骑马/叙事照旧） |
+| 背景只跟「场景变化」走 | 睡到早上背景仍是夜里 | 前端按时段重算（只记场景名）；`convertTime` 接受时段串；`useWorldTime` 订阅 `clockSync` |
+| Hooks 放在 early return 之后 | 切探索**白屏** | 挪到 early return 之前（§13.4 血泪坑又踩一次） |
+
+---
+
 ## 十七、已知问题 / 坑
 
 ### 17.1 运行与数据
@@ -1554,14 +1738,25 @@ trpg-world/势力介绍.json          ← 玩家可见源（已剔除剧透）
 15. `_rawPanBy` 是 Leaflet 私有 API，需强转；**不要改回每帧 `panBy`**。
 16. 地图无 z17/z18 瓦片，z18 是 z16 放大 4 倍；残余掉帧疑与瓦片首次加载/合成有关（§13.4）。
 17. 放弃确认仍是原生 `window.confirm`（待换自定义浮层）。
+18. **`MapContainer` / `ExploreControls` 一律不许写死某城的边界或角点**（曾经的 `SW_CORNER` 夹取导致
+    在岳阳走动被夹到扬州西南角→瞬移）；活动范围一律从 `bounds` 传进来。
+19. **`walkable.ts` 的碰撞索引是模块级单例**：只有 WASD 探索图可以 `loadWalkable(mapId)`；
+    总览图绝不能调（会把 `IDX` 换成另一座城）。
+20. **看地图 = 零副作用**（不动坐标、不清足迹）；只有 `update_location` 才改位置，且**步行不可跨城**。
+21. `tsc` / `vite build` 都**抓不到 runtime 错**（尤其 hook 数量变化），改完必须实际看一眼。
 
 ### 17.4 内容 / 世界观
 
-18. **地图缺史实城门**：现只有 7 座城门（「水门」在城东北），**无「西水关」**等史实水门；GM 曾借水门当西水关。需改地图源并重建。
-19. **地域特色未做**：`build_world.py` 同一套算法，所有城市必然长得一样（见 `TODO.md`）。
-20. **素材版权**：若日后封装发行，BGM / 背景图 / 地图数据（OSDbL）须先确认授权。
-21. **内容生成型骰子已停用**：`daily_event_dice` / `travel_event_dice`（规则移入 `trpg-world/废弃/`、工具进 `_DISABLED`）；
+22. **扬州地图缺史实城门**：现只有 7 座城门（「水门」在城东北），**无「西水关」**等史实水门；GM 曾借水门当西水关。需改地图源并重建。
+23. **地域特色仍未做**：`build_world.py` 的城区算法（坊/城墙/官道/POI）**仍是扬州那一套**，
+    只是参数不同 —— 所以在岳阳也会生成「岳州古城」形态，但江南水乡 / 北方中原 / 山地关隘的
+    **风格差异还没做**（见 `TODO.md` §8.2）。
+24. **岳阳画框只含东洞庭**（西洞庭/南洞庭在框外）—— 用户明确取舍；若要看全湖需改画框并重生成（瓦片量约 ×3.8）。
+25. **地图资产体积**：瓦片 `public/tiles/` 已被 gitignore；`public/data/<map_id>/*.geojson` 在库。
+26. **素材版权**：若日后封装发行，BGM / 背景图 / 地图数据（OSDbL）须先确认授权。
+27. **内容生成型骰子已停用**：`daily_event_dice` / `travel_event_dice`（规则移入 `trpg-world/废弃/`、工具进 `_DISABLED`）；
     `游戏数据/混乱度.json` 因此成**孤儿**（原来只被这两者读取），需重定位或一并废弃。
+28. **部分场景缺 `黄昏.png`**：`坊 / 小巷 / 庭院 / 客栈一楼大厅` 只有白天/黑夜 → 酉时会回退显示白天图（美术资源缺口，非 bug）。
 
 ---
 
@@ -1593,14 +1788,20 @@ trpg-world/势力介绍.json          ← 玩家可见源（已剔除剧透）
 | `trpg-server/tools/factions.py` | 玩家可见势力 |
 | `trpg-server/tools/difficulty_settings.py` | 游戏设置（难度） |
 | `trpg-server/tools/recap.py` | 前情回顾 |
-| `trpg-server/tools/map_query.py` | 空间库查询 + 见闻 + 建筑结构 + 城内城外 |
+| `trpg-server/tools/map_query.py` | 空间库查询 + 见闻 + 建筑结构 + 城内城外 + **跨地图搜索** |
+| `trpg-server/tools/map_settings.py` | **多城市**：可用地图 / 当前城市（**由玩家坐标推导**）/ 切换 |
+| `trpg-server/tools/location.py` | `update_location`：位置 + 城池判定 + 跨城闸门 |
 | `trpg-server/tools/place_recall.py` | 地点「回忆」（只查 RAG） |
 | `trpg-server/tools/battle*.py` | 战斗数值 / 战术 / 阶段机 / AI / 单例 / 设置 |
 | `trpg-client/src/in-game/BattleBoard.tsx` | 等轴测棋盘 + 实体系统（SVG 2.5D） |
 | `trpg-client/src/in-game/battle.tsx` | 战斗界面 |
 | `trpg-client/src/in-game/Clock.tsx` / `useGameClock.ts` / `styles/Clock.css` | **古钟 HUD** |
 | `trpg-client/src/in-game/GameController.tsx` | 游戏主界面：三模式 + 按钮/浮层/事件分流 + 坐标上传 |
-| `trpg-client/src/in-game/Map.tsx` / `ClickableLayer.tsx` / `walkable.ts` / `mapStats.ts` | 地图 + 探索迷雾 + 碰撞 + HUD |
+| `trpg-client/src/in-game/Map.tsx` / `ClickableLayer.tsx` / `walkable.ts` / `mapStats.ts` | 地图 + 探索迷雾 + 碰撞（含**地形步速**）+ HUD |
+| `trpg-client/src/in-game/mapId.ts` / `api.ts` | **多城市**：`MAP_ID` / `tileUrlFor` / `dataUrlFor` / 后端地址 |
+| `trpg-client/src/in-game/background.ts` | 地点 + **时段** → 背景图（时段是时间的函数，前端自己重算） |
+| `trpg-map/城市.py` | **城市单一真相源**：中心 / 画框 / `map_id` / 源 pbf / 落脚点 |
+| `trpg-map/生成.py` | 地图一键链路（pbf→world→clickable→db→walkable→tiles→sync） |
 | `trpg-map/draw_tiles/STATUS.md` | 地图生成细节 |
 | `README.md` / `TODO.md` | 总纲（含架构/状态） / 待办 |
 
@@ -1627,8 +1828,12 @@ trpg-world/势力介绍.json          ← 玩家可见源（已剔除剧透）
 ✅ 探索坐标 → 叙事：【移动】系统提醒
 ✅ 窗口失焦自动暂停
 ✅ WASD 碰撞（水域/城墙；城门限时）
+✅ **地形步速倍率**（官道 1.15 … 山地 0.35；右下角徽章）
+✅ **多城市**（扬州 / 岳阳）：资产分目录 + 前端搜索切图 + 游戏城市由坐标推导
+✅ **岳阳地图**（完整洞庭湖 1078 km² + 君山岛 + 锦香宫建筑群 330 亩）
 ❌ 未做：战斗时间折算接入、/move 边走边同步、手柄、语音、
-        NPC 地图标记、昼夜光照、在场追踪、农历/节气、转场动画
+        NPC 地图标记、昼夜光照、在场追踪、农历/节气、转场动画、
+        世界地图（跳城旅行靠叙事/渡船）
 ```
 
 > **与最初计划的偏离**：

@@ -276,6 +276,12 @@ chcp 65001
 **想要完整的洞庭湖**，只能换数据源：用 Geofabrik 的 `china` 或 `hunan`
 完整 extract（或含整个洞庭湖范围的 `osmium extract` 区域），再重跑本工具。
 
+> ✅ **2026-09-18 已按此解决**：岳阳改用 **`数据/源pbf/湖南.pbf` 全量**（48 MB，8.2 M 节点），
+> 关系 r1462005 **231/231 条成员 way 全在** → 拼出完整湖面 **1078 km²**（含 155 个洲岛内环）。
+> 配置方式：`trpg-map/城市.py` 的 `CITIES["岳阳"]["pbf"] = "湖南"`，
+> 然后 `python pbf_to_json.py 数据/源pbf/湖南.pbf --city 岳阳`。
+> 旧的 `岳阳.pbf` **不要再用于生成**（只有 97/231）。
+
 ---
 
 ## 10. 绘制总览地图（draw_map.py）
@@ -343,11 +349,16 @@ python draw_map.py 数据/岳阳_OSM全量.json -o crop.png --bbox 112.7,29.1,11
 
 ```
 trpg-map/
-├── 数据/源pbf/扬州.pbf                 # 原始 OSM 输入
-├── pbf_to_json.py           # 本工具
-├── 数据/扬州_OSM全量.json        # 输出示例（本工具生成）
-├── 生成.py                  # 一键链路：PBF → 数据 → 数据库 + 瓦片
-├── stat.py                  # 下游：统计
-└── draw_tiles/              # 下游：南宋转译、瓦片、空间库
-    └── 数据/扬州_OSM精简.json   # 结构参考基准
+├── 城市.py                      ★ 城市单一真相源（中心 / 画框 / map_id / 源 pbf / 落脚点）
+├── 生成.py                      ★ 一键链路：pbf → 数据 → 数据库 + 瓦片 → 前端
+├── 数据/源pbf/<城市>.pbf        原始 OSM 输入（岳阳用 湖南.pbf）
+├── pbf_to_json.py             本工具
+├── 数据/<城市>_OSM精简.json     输出（按城市画框裁过）
+├── draw_tiles/                 下游：南宋转译、瓦片、空间库、图标
+│   ├── build_world.py          世界生成（多城市 CITY_CONFIGS + 建筑群）
+│   ├── export_clickable.py / export_walkable.py
+│   ├── db/map_spatial_<map_id>.db
+│   ├── tilegen/                瓦片（输出 tiles/<map_id>/）
+│   └── icongen/                地图图标
+└── draw_map.py                 总览 PNG 绘制（调试用）
 ```
