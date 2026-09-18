@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-# 人物 -> 表情资源 哈希表（由 generate_character_expressions.py 自动生成）
+# 人物 -> 表情资源 哈希表（= 前端 assets/人物/ 有立绘的角色，单一真相源）
+# 供 tools/expression_sim.py（小模型选表情）当白名单用。
 CHARACTER_EXPRESSIONS = {
     "万里鹏程": ["正常"],
     "上官萤": ["不悦", "受伤", "喜极而泣", "害怕", "害羞", "开心", "愤怒", "欣慰", "正常", "紧张", "难过", "非常开心"],
@@ -57,9 +58,4 @@ CHARACTER_EXPRESSIONS = {
     "龙渊": ["正常"],
     "龙湘": ["受伤", "吃鸡腿", "大笑", "害羞", "尴尬", "开心", "悲伤", "愤怒", "慌张", "极端害羞", "极端愤怒", "正常", "生气", "疑惑", "紧张", "闭眼", "难过"],
 }
-
-def check_expression(name: str):
-    if name not in CHARACTER_EXPRESSIONS:
-        return f"没有找到{name}的表情资源"
-    return CHARACTER_EXPRESSIONS[name]
     

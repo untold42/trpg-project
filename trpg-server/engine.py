@@ -35,6 +35,7 @@ from tools.state_manager import state
 from tools.game_clock import clock
 from tools import derived
 from tools import hunger
+from tools import weather_system
 from tools.ui_events import UI_EVENTS_KEY, music_event, bg_event
 from tools import world_threads
 from tools import macro_timeline
@@ -44,7 +45,7 @@ from tools import ui_sim
 from tools import map_query
 from tools import expression_sim
 from tools import audit
-from tools.registry import SAVE_TOOLS
+from tools.registry import SAVE_TOOLS, ALL_TOOL_NAMES, SAVE_TOOL_NAMES
 
 # ------------------------------------------------------------
 # 路径
@@ -76,7 +77,7 @@ def _rules_text(folder: str) -> str:
 # 上下文素材
 # ------------------------------------------------------------
 def state_dict() -> dict:
-    """现拼的机械状态 dict（排除 足迹 / 时钟；世界线程已按上下文裁剪）。
+    """现拼的机械状态 dict（排除 足迹 / 时钟 / **属性**；世界线程已按上下文裁剪）。
 
     世界线程（NPC 推演）来自 `游戏数据/世界线程.json`，按「纳入上下文」裁后注入；
     宏观时间线**不落档**——从只读剧本按当前日期现切窗口（`macro_timeline.view`）。
@@ -84,10 +85,11 @@ def state_dict() -> dict:
     clock.sync_state()  # 连续时钟 → 基本信息.时间（仅刻变化时落盘）
     derived.sync()      # 上限对齐属性（体力→生命上限、內力→精力上限）
     hunger.sync()       # 饥饿归一化为 0~100 并回写挡位
+    weather_system.ensure_today()   # 天气惰性同步：日期变了就重查（场景：叙事跨日后）
     snapshot = state.snapshot()
     if "世界线程" in snapshot:
         snapshot["世界线程"] = world_threads.threads_view()
-    for _skip in ("足迹", "时钟"):
+    for _skip in ("足迹", "时钟", "属性"):
         snapshot.pop(_skip, None)
     # 导演简报：只在生成成功且有内容时注入（生成中/失败不占上下文）
     _b = snapshot.get("导演简报")
@@ -116,8 +118,9 @@ def snapshot_state() -> str:
       - **世界线程**：按「纳入上下文」裁剪人物线程（只裁**注入**，不裁存储）；
       - **宏观时间线**：从只读剧本按当前日期现切窗口（不落档）；
       - **连续时钟**：先把派生时刻写回 `基本信息.时间`（保证 LLM 看到的是最新时间）；
-      - **不进 LLM 上下文的文件**（`足迹` / `时钟`）：从前端 `/state` 仍可读到，
-        但**不发给大模型**（足迹白占上下文；时钟只有一个裸秒数，徒增困惑）。
+      - **不进 LLM 上下文的文件**（`足迹` / `时钟` / **`属性`**）：从前端 `/state` 仍可读到，
+        但**不发给大模型**（足迹白占上下文；时钟只有一个裸秒数，徒增困惑；
+        **`属性`体量大且几乎不变——需要时由大模型自行调 `get_ability`**）。
     """
     return render_state(state_dict())
 
@@ -164,7 +167,11 @@ _TIME_ADVANCE_RE = re.compile(
     r"过了一夜|一夜过去|一夜无话|一宿|"
     r"数日|数天|几日|几天|半月|数月|"
     r"(?:[一二两三四五六七八九十百千半\d]+)\s*(?:天|日|个月|月)\s*(?:之?后|过去|已过)|"
-    r"赶了[^。，；\n]{0,6}[天日]|走了[^。，；\n]{0,6}[天日]"
+    r"赶了[^。，；\n]{0,6}[天日]|走了[^。，；\n]{0,6}[天日]|"
+    # 时辰级：只抓**明确表示已流逝**的说法（「过了两个时辰」「两个时辰后」），
+    # 避免「约两个时辰的路程」这类纯描述误报。
+    r"过了[^。，；\n]{0,4}时辰|"
+    r"(?:[一二两三四五六七八九十半几\d]+)\s*个?\s*时辰\s*(?:之?后|过去|已过)"
 )
 
 
@@ -508,6 +515,10 @@ class TurnRunner:
         self.session = session
         self.send_messages = send_messages
         self.tools_map = tools_map
+        #: 本轮允许调用的工具名（None = 不校验）。**按轮设置**：
+        #:   游戏回合 = ALL_TOOL_NAMES；存档回合 = SAVE_TOOL_NAMES。
+        #:   存档专用工具既不会下发给游戏中的模型，也无法被幻觉调用。
+        self._allowed: set[str] | None = None
         self._lock = threading.RLock()  # 串行化回合（**可重入**：run_save 会嵌套调 _run_save）
 
     def run(self, user_input: str, mode: str = "action", from_explore: bool = False) -> list[dict]:
@@ -522,9 +533,11 @@ class TurnRunner:
         with self._lock:
             # LLM 请求窗口：暂停连续时钟（生成/工具耗时不计入游戏时间），返回后恢复
             clock.pause("turn")
+            prev, self._allowed = self._allowed, ALL_TOOL_NAMES
             try:
                 return self._run(user_input, mode, from_explore)
             finally:
+                self._allowed = prev
                 clock.resume("turn")
 
     # ---- 内部 ----
@@ -619,9 +632,11 @@ class TurnRunner:
         with self._lock:
             # 存档蒸馏也是 LLM 请求：期间冻结时钟
             clock.pause("save")
+            prev, self._allowed = self._allowed, SAVE_TOOL_NAMES
             try:
                 return self._run_save(transcript, rules, hints)
             finally:
+                self._allowed = prev
                 clock.resume("save")
 
     def _run_save(self, transcript: str, rules: str, hints: str = "") -> dict:
@@ -708,6 +723,10 @@ class TurnRunner:
             raise
 
     def _call_tool(self, name: str, arguments: dict):
+        # 按轮校验：本轮未下发的工具（如游戏回合里的存档专用工具）一律拒绝
+        if self._allowed is not None and name not in self._allowed:
+            return {"success": False,
+                    "error": f"本轮未下发该工具，已拒绝调用: {name}"}
         tool = self.tools_map.get(name)
         if tool is None:
             return {"success": False, "error": f"未知工具: {name}"}

@@ -39,7 +39,7 @@ SAVE_FLOW_DOC = SERVER_DIR.parent / "trpg-world" / "存档流程.md"
 # 会改变玩家状态的工具（其效果誊写进存档；查询类不誊写）
 _MUTATING = {
     "modify_money", "modify_item", "add_item", "remove_item",
-    "modify_hunger", "modify_health", "modify_injury", "modify_hp", "modify_tp",
+    "modify_hunger", "modify_health", "modify_hp", "modify_tp",
     "update_location", "update_time", "update_weather",
 }
 

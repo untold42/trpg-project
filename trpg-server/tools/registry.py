@@ -11,11 +11,10 @@ registry.py
 新增工具只需在 _ENTRIES 里加一行，不必再同时改 llm.py 与 main.py。
 （本文件由 _gen_registry.py 从旧 llm.py / main.py 生成，之后请手工维护。）
 
-注意：`_DISABLED` 里的工具**不下发给 LLM**、也不可被调用，代码仍保留：
+注意：`_DISABLED` 里的工具不下发给 LLM、也不可被调用，代码仍保留：
   - 调试用文件工具（`tools/file_tools.py`）：设 `TRPG_FILE_TOOLS=1` 可临时启用；
   - 内容生成型骰子（`daily_event_dice` / `travel_event_dice`，`tools/event_dice.py`）：
-    已停用，由「地点定时事件 + 世界系统」取代（见 `TODO.md`）；设 `TRPG_EVENT_DICE=1` 可临时启用；
-  - `check_expression`：立绘表情改由 `tools/expression_sim.py`（小模型）填充，大模型不再需要它。
+    已停用，由「地点定时事件 + 世界系统」取代（见 `TODO.md`）；设 `TRPG_EVENT_DICE=1` 可临时启用。
 """
 
 import os
@@ -24,7 +23,6 @@ from tools.money import modify_money, get_money
 from tools.bag import modify_item, add_item, remove_item, get_inventory
 from tools.state import (
     modify_hunger,
-    modify_injury,
     modify_health,
     modify_hp,
     modify_tp,
@@ -32,7 +30,6 @@ from tools.state import (
 )
 from tools.ability import get_ability
 from tools.file_tools import list_directory, read_file, write_file, edit_file
-from tools.find_specific_expression import check_expression
 from tools.get_character import get_character
 from tools.character_archive import update_character_archive
 from tools.dice import roll_dice
@@ -47,7 +44,6 @@ from tools.location import update_location
 from tools.time_weather import update_time, update_weather
 from tools.time_flow import rest as sleep_time
 from tools.modes import resume_exploration
-from tools.weather_system import get_weather
 from tools.event_dice import daily_event_dice, travel_event_dice
 from tools.battle_session import start_battle
 
@@ -58,9 +54,8 @@ _ENTRIES = [
             "type": "function",
             "function": {
                 "name": "modify_money",
-                "description": "增减玩家的钱（**直接落账**）：增加=收入，减少=支出。"
-                "支出 / 收入都要调它，并在**同一轮叙述里说明金额与事由**；余额不足会整笔拒绝。"
-                "**禁止按时间流逝 / 在场 / \"该记账了\"自动扣费。**",
+                "description": "增减玩家的钱（直接落账）：增加=收入，减少=支出。"
+                "支出 / 收入都要调它，并在同一轮叙述里说明金额与事由；余额不足会整笔拒绝。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -72,10 +67,6 @@ _ENTRIES = [
                         "amount": {
                             "type": "integer",
                             "description": "变化量，必须为正整数",
-                        },
-                        "reason": {
-                            "type": "string",
-                            "description": "这笔钱的事由，如「一壶酒」「卖马所得」，供玩家查账",
                         },
                     },
                     "required": ["operation", "amount"],
@@ -180,7 +171,7 @@ _ENTRIES = [
             "type": "function",
             "function": {
                 "name": "modify_hunger",
-                "description": "修改玩家的饥饿度（0~100 数值）。参数是**增减量**（不是绝对值）：正数=进食/增加，负数=减少。参考：饱餐一餐 +40，小食/干粮 +15，宴席 +60。时间流逝的消耗由系统自动扣减，无需手动。",
+                "description": "修改玩家的饥饿度（0~100 数值）。参数是增减量（不是绝对值）：正数=进食/增加，负数=减少。参考：饱餐一餐 +40，小食/干粮 +15，宴席 +60。时间流逝的消耗由系统自动扣减，无需手动。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -194,27 +185,6 @@ _ENTRIES = [
             },
         },
         modify_hunger,
-    ),
-    (
-        "modify_injury",
-        {
-            "type": "function",
-            "function": {
-                "name": "modify_injury",
-                "description": "用于修改玩家的伤势(无,轻伤,中等伤,重伤,致命伤)",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "injury": {
-                            "type": "string",
-                            "enum": ["无", "轻伤", "中等伤", "重伤", "致命伤"],
-                        }
-                    },
-                    "required": ["injury"],
-                },
-            },
-        },
-        modify_injury,
     ),
     (
         "modify_health",
@@ -287,7 +257,7 @@ _ENTRIES = [
             "type": "function",
             "function": {
                 "name": "get_ability",
-                "description": "用于获取玩家的属性能力，不需要传参。",
+                "description": "查看玩家属性（基础属性 / 五行剑 / 学识）。属性不在每轮状态里——需判断梁峰的武功路数、熟练度时调它。",
                 "parameters": {"type": "object", "properties": {}, "required": []},
             },
         },
@@ -385,24 +355,6 @@ _ENTRIES = [
         edit_file,
     ),
     (
-        "check_expression",
-        {
-            "type": "function",
-            "function": {
-                "name": "check_expression",
-                "description": "查看特定人物的表情资源。",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string", "description": "人物名称"}
-                    },
-                    "required": ["name"],
-                },
-            },
-        },
-        check_expression,
-    ),
-    (
         "get_character",
         {
             "type": "function",
@@ -432,8 +384,8 @@ _ENTRIES = [
             "function": {
                 "name": "update_character_archive",
                 "description": (
-                    "【仅存档蒸馏时使用】更新某 NPC 的**动态档案**（近记忆·热）：追加里程碑 / 情感记忆，"
-                    "覆写当前情绪状态与信息边界。**先查静态档案**：已有→只更新动态（静态不覆盖）；"
+                    "【仅存档蒸馏时使用】更新某 NPC 的动态档案（近记忆·热）：追加里程碑 / 情感记忆，"
+                    "覆写当前情绪状态与信息边界。先查静态档案：已有→只更新动态（静态不覆盖）；"
                     "没有→用 `static` 字段建静态并建动态。本局有实质互动的 NPC 都要为其调用一次。"
                 ),
                 "parameters": {
@@ -599,8 +551,7 @@ _ENTRIES = [
             "type": "function",
             "function": {
                 "name": "query_nearby",
-                "description": "查询南宋扬州地图上某坐标附近的地点（精确空间查询）。用于回答“这附近有什么”“附近有没有客栈/茶坊/医馆”等地图问题。坐标为 "
-                "WGS84 经纬度，经度约 118.9~119.96，纬度约 32.17~32.68。",
+                "description": "查询当前地图上某坐标附近的地点（精确空间查询）。传玩家当前的 WGS84 经度 / 纬度（见状态里的 位置）；用于回答“这附近有什么”“附近有没有客栈/茶坊/医馆”。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -637,7 +588,7 @@ _ENTRIES = [
             "type": "function",
             "function": {
                 "name": "query_place",
-                "description": "按名称（模糊）或类别查找南宋扬州地图上的地点，返回其坐标与属性。用于“文昌阁在哪”“有哪些青楼”“太平坊在何处”这类问题。",
+                "description": "按名称（模糊）或类别查找当前地图上的地点，返回其坐标与属性。用于“文昌阁在哪”“有哪些青楼”“太平坊在何处”这类问题。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -664,7 +615,7 @@ _ENTRIES = [
             "type": "function",
             "function": {
                 "name": "list_map_kinds",
-                "description": "列出南宋扬州地图上所有地点类别（kind）及数量，用于了解地图上存在哪些类型的场所。",
+                "description": "列出当前地图上所有地点类别（kind）及数量。",
                 "parameters": {"type": "object", "properties": {}, "required": []},
             },
         },
@@ -677,7 +628,7 @@ _ENTRIES = [
             "function": {
                 "name": "update_place_note",
                 "description": (
-                    "【仅存档蒸馏时使用】把本局在某地点发生的事记一条进该地点的**见闻**"
+                    "【仅存档蒸馏时使用】把本局在某地点发生的事记一条进该地点的见闻"
                     "（如某人被强暴、某处起过冲突、某桥塌了）。以后任何查询命中该地名都会显示出来。"
                     "一条一句，写清楚时间/人物/事由；只记值得记住的大事，小事不记。"
                 ),
@@ -701,10 +652,10 @@ _ENTRIES = [
             "function": {
                 "name": "update_place_structure",
                 "description": (
-                    "【仅存档蒸馏时使用】确定某**建筑**（玩家本局进去过的）的**内部结构**，"
-                    "写入空间库后**以后一直有效**（每次 query 该地都会返回 `结构`，不必再现编）。"
+                    "【仅存档蒸馏时使用】确定某建筑（玩家本局进去过的）的内部结构，"
+                    "写入空间库后以后一直有效（每次 query 该地都会返回 `结构`，不必再现编）。"
                     "内容：几层、前堂/后院、哪间是谁的（如「二楼丙字房为姑娘住处」）、有几个门通向哪里。"
-                    "只写**已确定且不会每局变**的空间事实；**已有结构的地点不要重复写**（除非本局确实发现了新情况）。"
+                    "只写已确定且不会每局变的空间事实；已有结构的地点不要重复写（除非本局确实发现了新情况）。"
                 ),
                 "parameters": {
                     "type": "object",
@@ -728,7 +679,7 @@ _ENTRIES = [
                 "description": "移动玩家的位置。当玩家说要去某地、前往某处、离开当前地点等移动行为时必须调用本工具，不要用文件工具直接改 "
                 "基本信息.json "
                 "的位置字段。可用地名（如“东关街”“文昌阁”“太平坊”），也可直接给经纬度。移动成功后会自动把该处标记为已探索。"
-                "**只移动玩家明确要去的地方**；返回会给出“移动距离（米）”与“耗时提示”，据此决定叙事与是否 `update_time`（短距离不要推进时辰）。",
+                "只移动玩家明确要去的地方；返回会给出“移动距离（米）”与“耗时提示”，据此决定叙事与是否 `update_time`（短距离不要推进时辰）。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -765,12 +716,7 @@ _ENTRIES = [
             "type": "function",
             "function": {
                 "name": "update_time",
-                "description": "修改或推进游戏时间。玩家睡觉、赶路、等待、劳作、活动结束等导致时间流逝时必须调用，不要用文件工具直接改 "
-                "基本信息.json 的时间字段。**以十二时辰计，每时辰 8 刻（1 刻 ≈ 15 分钟），不使用 24 小时制。**"
-                "日期格式 YYYY-MM-DD，时辰为十二时辰之一：子时、丑时、寅时、卯时、辰时、巳时、午时、未时、申时、酉时、戌时、亥时。"
-                "两种用法：1) 直接设置 date / shichen / ke；2) 用 advance_shichen（时辰）或 advance_ke（刻）推进"
-                "（8 刻 = 1 时辰，12 时辰 = 1 天，跨过子时算新一天）。短时间流逝用 advance_ke（如过了一刻钟传 advance_ke=1）。"
-                "注意：时间流逝会消耗精力（夜时辰子/丑/寅算熬夜，扣得更多）；若玩家是**睡觉**，请改用 `sleep` 工具（会恢复精力）。",
+                "description": "推进或设置游戏时间（玩法见通用规则 8）。传 advance_ke / advance_shichen 推进，或传 date / shichen / ke 直接设定。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -784,15 +730,15 @@ _ENTRIES = [
                         },
                         "ke": {
                             "type": "integer",
-                            "description": "新刻，0-7（每时辰 8 刻，1 刻 ≈ 15 分钟）",
+                            "description": "新刻，0-7",
                         },
                         "advance_shichen": {
                             "type": "integer",
-                            "description": "推进的时辰数（正整数）。12 个时辰 = 1 天；如 6 表示过了 6 个时辰（半天）。",
+                            "description": "推进的时辰数（正整数）",
                         },
                         "advance_ke": {
                             "type": "integer",
-                            "description": "推进的刻数（正整数）。8 刻 = 1 时辰；如 1 表示过了一刻钟（约 15 分钟）。",
+                            "description": "推进的刻数（正整数）",
                         },
                     },
                     "required": [],
@@ -807,9 +753,8 @@ _ENTRIES = [
             "type": "function",
             "function": {
                 "name": "sleep",
-                "description": "玩家睡觉 / 打盹 / 过夜：推进时间并按睡眠**恢复精力**"
-                "（与熬夜相反——熬夜是时间自然流逝、按夜时辰扣精力）。玩家明说睡下、歇息、过夜时调用。"
-                "默认睡 4 个时辰（8 小时）。睡醒后时间已推进，跨日会触发天气与世界推演，**无需再调 update_time**。",
+                "description": "玩家睡觉 / 打盹 / 过夜：推进时间并恢复精力。默认睡 4 个时辰。"
+                "玩家明说睡下、歇息、过夜时调用；睡醒后时间已推进，不用再调 update_time。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -843,8 +788,7 @@ _ENTRIES = [
             "type": "function",
             "function": {
                 "name": "update_weather",
-                "description": "手动覆盖游戏天气（仅特殊剧情需要，如法术改天、极端事件）。常规天气变化请用 "
-                "get_weather 查表。只传需要修改的字段，不传的保持原样。",
+                "description": "手动覆盖游戏天气（**仅特殊剧情需要**，如法术改天、极端事件）。常规天气由系统自动给、随状态注入。只传需要修改的字段，不传的保持原样。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -870,33 +814,6 @@ _ENTRIES = [
             },
         },
         update_weather,
-    ),
-    (
-        "get_weather",
-        {
-            "type": "function",
-            "function": {
-                "name": "get_weather",
-                "description": "查询天气：根据日期与区域查天气数据表，把结果写入基本信息.json的天气字段。时间推进到第二天或未来某一天时必须调用。可传 "
-                "date/region 查询指定日期或区域的天气。",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "date": {
-                            "type": "string",
-                            "description": "可选，日期 " "YYYY-MM-DD，默认玩家当前日期",
-                        },
-                        "region": {
-                            "type": "string",
-                            "description": "可选，区域名，如 "
-                            "扬州/临安/成都/开封，默认玩家当前区域",
-                        },
-                    },
-                    "required": [],
-                },
-            },
-        },
-        get_weather,
     ),
     (
         "daily_event_dice",
@@ -953,7 +870,7 @@ _ENTRIES = [
             "function": {
                 "name": "start_battle",
                 "description": "判定进入战斗：指定敌人（可选友方），开启 n vs n 回合制战斗。"
-                "**只在梁峰确实与人动手、且冲突升级为械斗/生死相搏时调用**；"
+                "只在梁峰确实与人动手、且冲突升级为械斗/生死相搏时调用；"
                 "口角、推挤、一两个回合就能了结的短暂冲突不必开战斗。"
                 "调用后只叙述「杀机骤起 / 剑已出鞘」一两句即止，"
                 "具体回合由玩家在战斗界面里操作。",
@@ -1004,31 +921,48 @@ _ENTRIES = [
 
 TOOLS = {name: (schema, fn) for name, schema, fn in _ENTRIES}
 #: 仅存档蒸馏回合可见的工具（不发给游戏中的主持人，防误用）
-_SAVE_ONLY = {"update_character_archive", "update_place_note", "update_place_structure"}
+#:   - 三个“写入型”存档工具：写动态档案 / 地点见闻 / 建筑结构；
+#:   - `DB_add_and_update_tool`：写长期记忆——局内只读、不写（README §5.2）；
+#:   - `DB_query_tool_in_saving`：存档查重专用，局内无用。
+#: 注意：它们不进 ALL_TOOLS（不给游戏），但仍留在 TOOLS_MAP（否则存档回合执行不到）。
+_SAVE_ONLY = {
+    "update_character_archive", "update_place_note", "update_place_structure",
+    "DB_add_and_update_tool", "DB_query_tool_in_saving",
+}
 
-#: **已禁用**：代码保留，但不下发给 LLM、也不可被调用。
+#: 已禁用：代码保留，但不下发给 LLM、也不可被调用。
 #:   - 调试用文件工具——正式规则禁止 LLM 直接读写文件（游戏数据只走专用接口）；
 #:     设 `TRPG_FILE_TOOLS=1` 可临时启用（仅供开发调试）。
 #:   - 内容生成型骰子——已由「地点定时事件 + 世界系统」取代，见 `TODO.md`；
 #:     设 `TRPG_EVENT_DICE=1` 可临时启用（回滚/对照用）。
-#:   - `check_expression`——立绘表情改由 `tools/expression_sim.py`（小模型）填充，大模型不再需要它。
 _DISABLED: set[str] = set()
 if os.environ.get("TRPG_FILE_TOOLS") != "1":
     _DISABLED |= {"list_directory", "read_file", "write_file", "edit_file"}
 if os.environ.get("TRPG_EVENT_DICE") != "1":
     _DISABLED |= {"daily_event_dice", "travel_event_dice"}
-_DISABLED.add("check_expression")
 
 #: 游戏中（正常回合）用
 ALL_TOOLS = [schema for name, schema, _fn in _ENTRIES
              if name not in _SAVE_ONLY and name not in _DISABLED]
-#: 存档蒸馏回合**只发这些**工具（其余与蒸馏无关；全发会把 prompt 撑大、拖慢甚至超时）
+
+#: 存档蒸馏回合只发这些工具（其余与蒸馏无关；全发会把 prompt 撑大、拖慢甚至超时）
 _SAVE_NAMES = {
     "DB_add_and_update_tool", "DB_query_tool", "DB_query_tool_in_saving",
     "update_character_archive", "update_place_note", "update_place_structure",
     "get_character", "query_place", "query_nearby",
 }
+
 SAVE_TOOLS = [schema for name, schema, _fn in _ENTRIES
               if name in _SAVE_NAMES and name not in _DISABLED]
-#: 名称 -> 实现（已禁用的不入表：即使 LLM 幻觉调用也无法执行）
+
+#: 本轮“实际下发给模型”的工具名集合——供 TurnRunner 做按轮校验。
+#: 只挡“不发给模型”还不够；还要挡“模型幻觉调用未下发的工具”。
+ALL_TOOL_NAMES = {name for name, _s, _f in _ENTRIES
+                  if name not in _SAVE_ONLY and name not in _DISABLED}
+SAVE_TOOL_NAMES = {name for name, _s, _f in _ENTRIES
+                   if name in _SAVE_NAMES and name not in _DISABLED}
+
+#: 名称 -> 实现（只排除已禁用）。
+#: ⚠️ 必须保留 _SAVE_ONLY：存档回合要靠它执行存档工具。
+#:    游戏回合的越权拦截由 `TurnRunner._allowed` 按轮完成，不靠这张表。
 TOOLS_MAP = {name: fn for name, _schema, fn in _ENTRIES if name not in _DISABLED}

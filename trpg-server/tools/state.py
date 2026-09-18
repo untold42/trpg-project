@@ -29,13 +29,6 @@ def modify_health(health: str):
     return f"成功将健康度修改为{health}"
 
 
-def modify_injury(injury: str):
-    data = _load_state()
-    data["伤势"] = injury
-    state.save("状态", data)
-    return f"成功将伤势修改为{injury}"
-
-
 def modify_hp(hp: int):
     data = _load_state()
     cur = data.get("生命值", 0)

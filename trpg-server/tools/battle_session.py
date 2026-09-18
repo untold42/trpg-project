@@ -5,7 +5,7 @@ battle_session.py
 服务端「当前战斗」的单例管理：工具 `start_battle` 开局、`/battle/*` 路由推进与收尾。
 
 - 同一时刻只允许一场战斗（`_RUNNER`）。
-- 战斗结束 → 写回 `状态.json`（生命 / 精力 / 伤势）→ 清空 → 返回**结果摘要**
+- 战斗结束 → 写回 `状态.json`（生命 / 精力）→ 清空 → 返回结果摘要
   （由 `main.py` 注入给主持人叙事后效）。
 - 战斗设置（思路判定模型）在 `tools/battle_settings.py`，本模块不管。
 
@@ -212,10 +212,6 @@ def _finalize() -> dict:
         st = game_state.load("状态", {}) or {}
         st["生命值"] = int(p["生命"])
         st["精力值"] = int(p["内力"])
-        ratio = p["生命"] / max(1, p["生命上限"])
-        st["伤势"] = ("濒死" if p["生命"] <= 0 else
-                      "重伤" if ratio <= 0.3 else
-                      "轻伤" if ratio < 1.0 else "无")
         game_state.save("状态", st)
     summary = {
         "胜方": b.winner,

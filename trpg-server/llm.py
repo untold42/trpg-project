@@ -10,6 +10,7 @@ llm.py
 """
 
 import os
+import copy
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -17,6 +18,45 @@ from openai import OpenAI
 from tools.registry import ALL_TOOLS
 
 load_dotenv()
+
+
+# ------------------------------------------------------------
+# 工具 schema 描述去 markdown（模型不需要加粗/反引号，纯占 token）
+# ------------------------------------------------------------
+def _plain(s: str) -> str:
+    """去掉纯装饰性的 markdown 字符（**加粗** / `反引号` / *斜体*）。"""
+    return s.replace("**", "").replace("*", "").replace("`", "")
+
+
+def _plain_tools(tools):
+    """深拷贝并清洗工具 schema 描述里的 markdown（**不改动 registry 里的源**）。
+
+    只清洗 `description` 字段；属性名 / enum 值不动。
+    """
+    out = []
+    for t in tools or []:
+        t = copy.deepcopy(t)
+        fn = t.get("function") or {}
+
+        def walk(o):
+            if isinstance(o, dict):
+                for k, v in list(o.items()):
+                    if k == "description" and isinstance(v, str):
+                        o[k] = _plain(v)
+                    else:
+                        walk(v)
+            elif isinstance(o, list):
+                for x in o:
+                    walk(x)
+
+        if isinstance(fn.get("description"), str):
+            fn["description"] = _plain(fn["description"])
+        walk(fn.get("parameters") or {})
+        out.append(t)
+    return out
+
+
+_ALL_TOOLS_PLAIN = _plain_tools(ALL_TOOLS)
 
 # 超时/重试（秒）：不设的话，API 卡住会阻塞很久（默认 600s × 重试）。
 # 可用环境变量 LLM_TIMEOUT 调（存档蒸馏大请求可设大些，如 300）。
@@ -33,7 +73,9 @@ client = OpenAI(
 
 def send_messages(history, tools=None):
     response = client.chat.completions.create(
-        model="deepseek-v4-flash", messages=history, tools=tools or ALL_TOOLS
+        model="deepseek-v4-flash",
+        messages=history,
+        tools=_plain_tools(tools) if tools else _ALL_TOOLS_PLAIN,
     )
     return response.choices[0].message
 

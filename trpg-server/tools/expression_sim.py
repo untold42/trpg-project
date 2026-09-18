@@ -32,7 +32,7 @@ from __future__ import annotations
 import os
 
 from tools import small_model
-from tools.find_specific_expression import CHARACTER_EXPRESSIONS
+from tools.character_expressions import CHARACTER_EXPRESSIONS
 
 ENABLED = os.environ.get("TRPG_EXPRESSION_SIM", "1") != "0"
 

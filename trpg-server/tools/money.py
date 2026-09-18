@@ -19,7 +19,7 @@ def _load_money() -> int:
     return state.load("金钱", {"金钱": 0}).get("金钱", 0)
 
 
-def modify_money(operation: str, amount: int, reason: str = "") -> dict:
+def modify_money(operation: str, amount: int) -> dict:
     """**直接改钱**：增加 / 减少 amount 文。余额不足则整笔拒绝。"""
     if not isinstance(amount, int) or amount <= 0:
         return {"success": False, "error": "数额必须为正整数"}
@@ -36,7 +36,7 @@ def modify_money(operation: str, amount: int, reason: str = "") -> dict:
     verb = "收入" if operation == "增加" else "支出"
     return {
         "success": True,
-        "message": f"已{verb}{amount}文（{reason or '未注明事由'}），当前余额 {current} 文。",
+        "message": f"已{verb}{amount}文，当前余额 {current} 文。",
         "balance": current,
     }
 
