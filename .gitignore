@@ -16,6 +16,9 @@ trpg-map/_*.txt
 trpg-map/_tmp_*
 trpg-server/sessions/
 
+# 诊断脚本的一次性输出（可重跑生成，不入库）
+trpg-server/director_probe_out.md
+
 # 地图数据：中间产物不入库（源 pbf 与成品 *_OSM全量/*_OSM精简/*_南宋世界 仍在库）
 trpg-map/数据/中间产物/
 
