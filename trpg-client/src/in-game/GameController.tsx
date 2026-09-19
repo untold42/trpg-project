@@ -12,9 +12,10 @@ import { playMusic, stopMusic } from "./music";
 import BattleScene, { type BattleState } from "./battle";
 import Clock from "./Clock";
 import { fetchClock, requestClockSync, useWorldTime } from "./useGameClock";
-import { setShichen } from "./walkable";
 import { MAP_ID } from "./mapId";
 import { API } from "../api";
+import FacilityPanel, { type FacilityDetail } from "./FacilityPanel";
+import SkillTree from "./SkillTree";
 
 // 地图条目（GET /maps）：frame = [min_lon, min_lat, max_lon, max_lat]
 type MapEntry = { id: string; name: string; frame: number[] | null };
@@ -46,6 +47,18 @@ const BASE_WALK_MPS = 2.2;
 
 // 按住 Shift 的速度倍数（跑）：2.6 × 2.2 ≈ 5.7 米/游戏秒，接近冲刺
 const RUN_MULT = 2.6;
+
+// ---- 「详细」设施背景：先把图加载好再开面板，避免先黑一下 / 先显旧背景 ----
+/** 预加载单张图（带超时兜底）；加载失败/超时返回 false。 */
+function preloadOne(url: string, timeoutMs = 4000): Promise<boolean> {
+    return new Promise((resolve) => {
+        const im = new Image();
+        im.onload = () => resolve(true);
+        im.onerror = () => resolve(false);
+        setTimeout(() => resolve(false), timeoutMs);
+        im.src = url;
+    });
+}
 
 // 承接App.tsx
 type GamingProps = {
@@ -193,6 +206,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     const [showMap, setShowMap] = useState(false);//展示地图
     const [showGallery, setShowGallery] = useState(false);//展示势力画廊
     const [showData, setShowData] = useState(false); // 数据面板（金钱/背包/属性/状态）
+    const [showSkillTree, setShowSkillTree] = useState(false); // 技能树（银河 + 五星圆弧，零大模型）
     const [readingIndex, setReadingIndex] = useState<number | null>(null);
     const [playerState, setPlayerState] = useState<PlayerState | null>(null); // 玩家真实状态
     const [background, setBackground] = useState<string>(
@@ -227,6 +241,9 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     const [showContinue, setShowContinue] = useState(false); // 「继续」的刻数选项
     const [battleState, setBattleState] = useState<BattleState | null>(null); // 战斗界面（可阻塞）
     const [recallInfo, setRecallInfo] = useState<RecallInfo | null>(null);   // 地点回忆面板
+    const [facilityInfo, setFacilityInfo] = useState<{ place: string; detail: FacilityDetail } | null>(null);  // 基础设施「详细」界面
+    const [facilityBusy, setFacilityBusy] = useState(false);       // 「详细」页已选活动、等主持人回应中
+    const [facilityLeaving, setFacilityLeaving] = useState(false); // 回应到 → 淡出「详细」页、露出叙事
     // 探索模式的叙事浮层（#3）：从叙事切回探索时，本轮 GM 的话在地图上看不见
     const [exploreLines, setExploreLines] = useState<NarrativeLine[]>([]);
     const [exploreIdx, setExploreIdx] = useState(0);
@@ -294,11 +311,31 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         return mode;
     }
 
-    // 点击 POI 弹窗的动作：进入（切叙事）/ 观察（留探索，浮层看）/ 回忆（RAG Top2）
-    async function handlePlaceAction(place: string, act: string) {
+    // 点击 POI 弹窗的动作：详细（设施界面）/ 观察（留探索）/ 回忆（RAG Top2）
+    async function handlePlaceAction(place: string, act: string, kind?: string) {
         if (!place) return;
-        if (act === "enter") {
-            sendAction(`进入「${place}」`, "action");
+        if (act === "detail") {
+            // 「详细」：**一次 fetch** 拿到选项 + 背景（后端确定性映射，不调模型）。
+            const qs = `kind=${encodeURIComponent(kind || "")}&name=${encodeURIComponent(place)}`;
+            let detail: FacilityDetail;
+            try {
+                const d = (await (await fetch(`${API}/facility?${qs}`)).json()) as FacilityDetail;
+                detail = (d?.success && (d.选项?.length || 0) > 0) ? d : {
+                    success: true, 名称: place,
+                    选项: [{ 标签: "进入", 类型: "自由", 介绍: "进入此处看看。", 图标: "free", 意图: "" }],
+                };
+            } catch {
+                detail = {
+                    success: true, 名称: place,
+                    选项: [{ 标签: "进入", 类型: "自由", 介绍: "进入此处看看。", 图标: "free", 意图: "" }],
+                };
+            }
+            // 背景图先加载好再开面板（避免先黑 / 先显旧背景）；后端已给 `背景`，无需再问小模型。
+            const bgUrl = detail.背景
+                ? getBackgroundImage(detail.背景, periodOfShichen(shichen))
+                : background;
+            if (bgUrl) await preloadOne(bgUrl);
+            setFacilityInfo({ place, detail });
         } else if (act === "observe") {
             sendAction(place, "observe", undefined, true);
         } else if (act === "recall") {
@@ -448,8 +485,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         fetchClock().then((a) => { if (a?.倍率) setClockRate(a.倍率); }).catch(() => { });
     }, []);
 
-    // 当前时辰同步给碰撞模块（城门开闭：卯-申 之外走不了城门）
-    useEffect(() => { setShichen(shichen); }, [shichen]);
+    // （城门已改为「点开→出城/入城」由大模型移动；行走不再穿门，故不再需要同步时辰）
 
     // 进入探索模式：光标对齐后端已存的玩家位置
     useEffect(() => {
@@ -680,7 +716,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
             : null;
         // 时钟暂停条件：打字（输入框）/ 看历史·地图·数据·势力·详情 / 等 LLM 回复
         const clockPaused =
-            sending || showHistory || showMap || showData || showGallery ||
+            sending || showHistory || showMap || showData || showGallery || showSkillTree ||
             readingIndex !== null || showInputGM || showInputAct || showInputSay;
         const 状态 = playerState?.状态 ?? {};        const 基础 = playerState?.属性?.基础属性 ?? {};
         const 物品 = playerState?.背包?.物品 ?? {};
@@ -892,6 +928,8 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                 )
                 }
 
+                {showSkillTree && <SkillTree onClose={() => setShowSkillTree(false)} />}
+
                 {
                 readingIndex !== null && (
                     <div className="gallery-reader">
@@ -955,6 +993,36 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                     </div>
                 )}
 
+                {facilityInfo && (
+                    <FacilityPanel
+                        place={facilityInfo.place}
+                        detail={facilityInfo.detail}
+                        busy={facilityBusy}
+                        leaving={facilityLeaving}
+                        bgImage={facilityInfo.detail.背景
+                            ? getBackgroundImage(facilityInfo.detail.背景, periodOfShichen(shichen))
+                            : background}
+                        onChoose={async (text) => {
+                            // 保持「详细」页，等主持人回应再淡出 —— 不先跳回探索地图。
+                            setFacilityBusy(true);
+                            // 先把叙事背景沿用本页所选场景：淡出时下面已是同一张图，过渡无缝。
+                            if (facilityInfo.detail.背景) {
+                                setBgPosition(facilityInfo.detail.背景);
+                                setBackground(getBackgroundImage(
+                                    facilityInfo.detail.背景, periodOfShichen(shichen)));
+                            }
+                            await sendAction(text, "action");
+                            setFacilityLeaving(true);          // 触发淡出（500ms，与 CSS 一致）
+                            window.setTimeout(() => {
+                                setFacilityInfo(null);
+                                setFacilityLeaving(false);
+                                setFacilityBusy(false);
+                            }, 500);
+                        }}
+                        onClose={() => setFacilityInfo(null)}
+                    />
+                )}
+
                 {saving && (
                     <div className="save-overlay">
                         <div className="save-box">
@@ -968,6 +1036,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                     <button className="sm-menu-item" onClick={triggerSave}>存档游戏</button>
                     <button className="sm-menu-item" onClick={handleAbandon}>放弃本轮</button>
                     <button className="sm-menu-item" onClick={() => setShowGallery(true)}>势力</button>
+                    <button className="sm-menu-item" onClick={() => setShowSkillTree(true)}>技能树</button>
                     <button className="sm-menu-item" onClick={onBackMenu}>返回主菜单</button>
                 </StaggeredMenu>
 

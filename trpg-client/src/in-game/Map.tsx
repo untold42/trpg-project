@@ -347,7 +347,7 @@ function ExploreControls({
           el.classList.toggle("is-blocked", blockedNow);
         }
 
-        // 相机：把玩家保持在视口**内圈（30% 边距）**以内。
+        // 相机：玩家**始终居中**（镜头随人走，不给拖动）。
         //
         // 性能关键：**不能每帧调 panBy**。
         // panBy 会 fire('move') + fire('moveend')，而 Canvas 矢量层（命中层）
@@ -357,16 +357,16 @@ function ExploreControls({
         // moveend 只在**松手时**发一次。这里照抄这个节奏。
         //
         // panBy(offset) 的语义：中心点 + offset，
-        // 故某固定 latlng 的屏幕位置 = oldX - offset.x；拉回边界 mx 即 offset.x = cpt.x - mx。
+        // 故某固定 latlng 的屏幕位置 = oldX - offset.x；拉回正中即 offset = cpt - 视口中心。
         const size = map.getSize();
         const cpt = map.latLngToContainerPoint(L.latLng(cur.lat, cur.lon));
-        const mx = size.x * 0.30;
-        const my = size.y * 0.30;
-        let panX = 0, panY = 0;
-        if (cpt.x < mx) panX = cpt.x - mx;
-        else if (cpt.x > size.x - mx) panX = cpt.x - (size.x - mx);
-        if (cpt.y < my) panY = cpt.y - my;
-        else if (cpt.y > size.y - my) panY = cpt.y - (size.y - my);
+        let panX = cpt.x - size.x / 2;
+        let panY = cpt.y - size.y / 2;
+        // 死区：已贴中心（<1px）就不 pan。
+        // 否则 _rawPanBy 的整数取整会留下 ±0.5px 残差，静止时也会反复微调 →
+        // 每 100ms fire("move") → Canvas 命中层白重绘。
+        if (Math.abs(panX) < 1) panX = 0;
+        if (Math.abs(panY) < 1) panY = 0;
 
         // 已顶到地图边界就别再硬推（否则会和 maxBounds 的钳制每帧打架）
         const mb = map.getBounds();
@@ -594,6 +594,7 @@ function GameMap({
       touchZoom={!lockZoom}
       boxZoom={!lockZoom}
       keyboard={!lockZoom}
+      dragging={!lockZoom}
       style={{ width: "100%", height: "100%" }}
     >
       <TileLayer

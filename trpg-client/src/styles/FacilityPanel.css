@@ -1,0 +1,205 @@
+/* 基础设施「详细」界面 —— 只有选择按钮（无多余背景板）。
+   版式对齐 assets/ui/基础设施活动未选中按钮.png：
+   左=菱形宣纸槽（事件图）· 右上浅带=活动名 · 右下深带=介绍。 */
+
+.facility-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background-color: #0a0806;          /* 16:9 画布之外的底 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    animation: facilityFadeIn 320ms ease both;   /* 背景 + 按钮 一起淡入 */
+}
+
+@keyframes facilityFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+/* 已选活动、等主持人回应 → 淡出本页，露出下面已就位的叙事（背景已沿用本页所选场景）。
+   时长须与 GameController 里的 unmount 定时器一致（500ms）。 */
+.facility-overlay.leaving {
+    animation: facilityFadeOut 500ms ease both;
+    pointer-events: none;
+}
+
+@keyframes facilityFadeOut {
+    from { opacity: 1; }
+    to   { opacity: 0; }
+}
+
+/* 背景 = 16:9 画布（与叙事 Background.css 的 .background 同款）：居中、图 cover、虚化 */
+.facility-bg {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: min(100%, calc(100vh * 16 / 9));
+    aspect-ratio: 16 / 9;
+    overflow: hidden;                    /* 把虚化裁在 16:9 内 */
+}
+
+.facility-bg img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;                   /* 同叙事背景 */
+    filter: blur(2px);                  /* 虚化强度，自己调 */
+    transform: scale(1.06);              /* 防模糊后边缘露一圈 */
+}
+
+.facility-panel {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-height: 92vh;
+    font-family: "Source Han Serif TC", "Songti SC", "思源宋体", serif;
+}
+
+/* 四种样式：组件在 list 上加了 n1/n2/n3/n4（对应 1/2/3/4 条选择）。
+   默认同一尺寸、居中竖排；要差异就在 .facility-list.nX 里调。 */
+.facility-list {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: min(92vw, 470px);
+    max-height: 92vh;
+    overflow-y: auto;
+}
+
+/* 等待主持人回应：锁住按钮，半透明提示不可再点 */
+.facility-list.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+    transition: opacity 200ms ease;
+}
+
+/* 等待中的省略号 */
+.facility-hint {
+    margin-top: 14px;
+    font-size: 20px;
+    letter-spacing: 8px;
+    color: #f3ead6;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+}
+
+/* 单条活动 = 一张按钮图（无边框；文字按 760x338 实测比例定位） */
+.facility-row {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 760 / 338;
+    flex: 0 0 auto;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    background: url("../assets/ui/基础设施活动未选中按钮.png") center / 100% 100% no-repeat;
+    container-type: size;
+}
+
+.facility-row:hover {
+    background-image: url("../assets/ui/基础设施活动选中按钮.png");
+}
+
+.facility-row:active { transform: scale(0.995); }
+
+/* 左：事件图（无外框，填进菱形宣纸槽） */
+.facility-icon {
+    position: absolute;
+    left: 2%;
+    top: 0;
+    width: 39.5%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.facility-icon img {
+    width: 74%;
+    height: auto;
+    max-height: 78%;
+    object-fit: contain;
+    pointer-events: none;
+}
+
+.facility-text { position: absolute; inset: 0; pointer-events: none; }
+
+/* 类型：深色小印 + 白字 */
+.facility-type {
+    position: absolute;
+    left: 47%;
+    top: 38%;
+    font-size: 16px;
+    font-family: "Source Han Serif TC", "思源宋体", serif;
+    line-height: 1.6;
+    color: #ffffff;
+    letter-spacing: 1px;
+}
+
+/* 活动名：浅带上用黄色大字 */
+.facility-opt {
+    position: absolute;
+    left: 70%;
+    top: 37%;
+    font-size: 24px;
+    font-family: "Source Han Serif TC", "思源宋体", serif;
+    color: #e7ca9c;
+    letter-spacing: 2px;
+}
+
+/* 介绍：深带上用白字；起点避开左侧菱形宣纸 */
+.facility-desc {
+    position: absolute;
+    left: 41%;
+    top: 60.5%;
+    width: 50%;
+    max-height: 29%;
+    overflow: hidden;
+    font-size: 14px;
+    font-family: "Source Han Serif TC", "思源宋体", serif;
+    line-height: 1.3;
+    color: #ffffff;
+    text-align: left;
+}
+
+.facility-empty {
+    padding: 20px;
+    text-align: center;
+    color: #f3ead6;
+    font-size: 15px;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.facility-other {
+    display: flex;
+    gap: 8px;
+    padding: 8px 6px 0;
+}
+
+.facility-other input {
+    flex: 1;
+    padding: 8px 10px;
+    font-size: 15px;
+    font-family: inherit;
+    border: 1px solid #342e2a;
+    border-radius: 4px;
+    background: #fffdf5;
+    color: #2b2622;
+}
+
+.facility-other button {
+    padding: 8px 18px;
+    font-size: 15px;
+    font-family: inherit;
+    border: 1px solid #342e2a;
+    border-radius: 4px;
+    background: #e4d8b8;
+    color: #2b2622;
+    cursor: pointer;
+}
+
+.facility-other button:hover { background: #d9c9a0; }

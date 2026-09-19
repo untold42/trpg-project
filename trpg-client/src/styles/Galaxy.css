@@ -1,0 +1,12 @@
+/* Galaxy.tsx（ogl WebGL 星空）容器。全屏铺满；具体定位/层级由使用处决定。 */
+.galaxy-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.galaxy-container canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

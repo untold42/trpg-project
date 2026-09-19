@@ -1,0 +1,228 @@
+/* 技能树：银河背景 + 五神圆弧 + 白链条技能树（前端，零大模型） */
+
+.skilltree {
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    overflow: hidden;
+    background: #04060c;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Source Han Serif TC", "Songti SC", "思源宋体", serif;
+    color: #eef1f6;
+    user-select: none;
+}
+
+/* 16:9 画布（对齐游戏 1920×1080）：居中等比缩放，画布外是深色底 */
+.st-frame {
+    position: relative;
+    width: min(100%, calc(100vh * 16 / 9));
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+}
+
+.skilltree .galaxy-container {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+/* 进某一行时给星空染上该神的颜色（滤镜，浅） */
+.st-tint {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.10;
+    mix-blend-mode: screen;
+    transition: background 600ms ease;
+}
+
+/* ---------------- 顶栏 ---------------- */
+.st-top {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 18px 26px;
+    pointer-events: none;
+}
+.st-top > * { pointer-events: auto; }
+.st-back {
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    background: rgba(12, 16, 26, 0.55);
+    color: #eef1f6;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 15px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 160ms, border-color 160ms;
+}
+.st-back:hover {
+    background: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.6);
+}
+.st-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+    letter-spacing: 8px;
+    color: #9fb0cc;
+}
+
+/* ---------------- 第一幕：五神圆弧（左下 → 右下穹顶弧） ---------------- */
+.st-arc { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.st-panel-hit { cursor: pointer; }
+.st-panel {
+    fill: rgba(255, 255, 255, 0.02);
+    stroke: none;
+    transition: fill 260ms ease;
+}
+.st-panel-hit:hover .st-panel {
+    fill: color-mix(in srgb, var(--god) 16%, transparent);
+}
+/* 神像发光：颜色随该行的 --god（双层 drop-shadow = 软光晕） */
+.st-panel-hit image {
+    filter: drop-shadow(0 0 6px var(--god)) drop-shadow(0 0 20px var(--god));
+}
+.st-imgbox rect {
+    fill: rgba(255, 255, 255, 0.02);
+    stroke: currentColor;
+    stroke-width: 1.4;
+    stroke-dasharray: 6 8;
+    opacity: 0.5;
+}
+.st-imgbox text {
+    fill: currentColor;
+    font-size: 26px;
+    letter-spacing: 4px;
+    opacity: 0.5;
+}
+/* 神名（与神像同倾斜） */
+.st-god {
+    font-size: 40px;
+    letter-spacing: 10px;
+    font-weight: 600;
+    pointer-events: none;
+}
+
+/* ---------------- 第二幕：技能树 ---------------- */
+.st-tree {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 88%;
+    height: 84%;
+    overflow: visible;
+    animation: stFadeIn 460ms ease both;
+}
+@keyframes stFadeIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; } }
+
+/* 白链条：发光底 + 珠链 */
+.st-chain-glow { fill: none; stroke: rgba(210, 228, 255, 0.12); stroke-width: 10; stroke-linecap: round; }
+.st-chain {
+    fill: none;
+    stroke: rgba(240, 246, 255, 0.9);
+    stroke-width: 3.6;
+    stroke-linecap: round;
+    stroke-dasharray: 0.1 11;
+    filter: drop-shadow(0 0 5px rgba(200, 226, 255, 0.7));
+}
+
+.st-node { cursor: pointer; }
+.st-box {
+    fill: rgba(8, 12, 22, 0.78);
+    stroke: rgba(255, 255, 255, 0.2);
+    stroke-width: 1.6;
+    transition: stroke 180ms, fill 180ms, filter 180ms;
+}
+.st-name { fill: #eef1f6; font-size: 23px; letter-spacing: 2px; }
+.st-cost { fill: rgba(220, 230, 250, 0.55); font-size: 14px; letter-spacing: 1px; }
+
+.st-node.learned .st-box {
+    fill: color-mix(in srgb, var(--god) 24%, rgba(8, 12, 22, 0.8));
+    stroke: var(--god);
+}
+.st-node.learned .st-name { fill: #fff; }
+.st-node.available .st-box {
+    stroke: var(--god);
+    stroke-width: 2.4;
+}
+.st-node.available .st-cost { fill: color-mix(in srgb, var(--god) 80%, #fff); }
+.st-node.locked .st-box { fill: rgba(8, 12, 22, 0.55); stroke: rgba(255, 255, 255, 0.12); }
+.st-node.locked .st-name { fill: rgba(210, 218, 235, 0.45); }
+.st-node:hover .st-box { stroke: #fff; }
+.st-node.sel .st-box { stroke: #fff; stroke-width: 3; }
+
+/* ---------------- 详情卡 ---------------- */
+.st-card {
+    position: absolute;
+    left: 50%;
+    bottom: 26px;
+    transform: translateX(-50%);
+    z-index: 4;
+    width: min(680px, 92vw);
+    padding: 16px 20px 18px;
+    border-radius: 14px;
+    background: rgba(10, 14, 24, 0.9);
+    border: 1px solid rgba(160, 190, 255, 0.35);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 30px rgba(90, 140, 255, 0.15);
+    backdrop-filter: blur(6px);
+    animation: stFadeIn 220ms ease both;
+}
+.st-card-h { display: flex; align-items: center; gap: 12px; }
+.st-card-name { font-size: 24px; letter-spacing: 3px; }
+.st-tag { font-size: 13px; padding: 2px 8px; border-radius: 6px; border: 1px solid currentColor; }
+.st-tag.ok  { color: #7fe0a0; }
+.st-tag.can { color: #ffd66b; }
+.st-tag.no  { color: #9aa6bd; }
+.st-card-x {
+    margin-left: auto; border: none; background: none; color: #cfd8ea;
+    font-size: 16px; cursor: pointer;
+}
+.st-card-body { margin-top: 8px; }
+.st-desc { margin: 4px 0 10px; color: #d7dfee; font-size: 15px; line-height: 1.6; }
+.st-stats { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; color: #b9c4da; }
+.st-req { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 8px; font-size: 14px; }
+.st-req-t { color: #8fa0bd; margin-right: 2px; }
+.st-req .met { color: #7fe0a0; }
+.st-req .unmet { color: #e08a7a; }
+.st-why { margin: 8px 0 0; color: #e08a7a; font-size: 14px; }
+.st-learn {
+    margin-top: 14px;
+    width: 100%;
+    padding: 10px;
+    font-family: inherit;
+    font-size: 17px;
+    letter-spacing: 3px;
+    color: #0a0e18;
+    background: linear-gradient(180deg, #ffe9a8, #e8c96a);
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: filter 160ms;
+}
+.st-learn:hover { filter: brightness(1.08); }
+.st-learn:disabled { filter: grayscale(0.7) brightness(0.8); cursor: default; }
+
+.st-msg {
+    position: absolute;
+    top: 74px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 4;
+    padding: 8px 18px;
+    border-radius: 10px;
+    background: rgba(10, 14, 24, 0.9);
+    border: 1px solid rgba(160, 190, 255, 0.4);
+    color: #eef1f6;
+    font-size: 15px;
+    letter-spacing: 1px;
+}
