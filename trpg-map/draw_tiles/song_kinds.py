@@ -104,6 +104,12 @@ KINDS = {
     "祠":     dict(group="信仰", icon="shrine", zone="general", note="民间祠庙/名宦祠"),
     "土地庙": dict(group="信仰", icon="shrine", zone="general", note="社庙"),
     "城隍庙": dict(group="信仰", icon="shrine", zone="general", note="城隍"),
+    # 五行神庙（五座神各主一行；普世信仰，一城最多 10 所）
+    "祝融庙": dict(group="信仰", icon="temple", zone="general", note="五行神庙·火（祝融）"),
+    "玄冥庙": dict(group="信仰", icon="temple", zone="general", note="五行神庙·水（玄冥）"),
+    "句芒庙": dict(group="信仰", icon="temple", zone="general", note="五行神庙·木（句芒）"),
+    "蓐收庙": dict(group="信仰", icon="temple", zone="general", note="五行神庙·金（蓐收）"),
+    "后土庙": dict(group="信仰", icon="temple", zone="general", note="五行神庙·土（后土）"),
     "义冢":   dict(group="信仰", icon="grave",  zone="edge", note="乱葬/义葬地"),
     "坟地":   dict(group="信仰", icon="grave",  zone="edge", note="墓园"),
 
@@ -113,6 +119,7 @@ KINDS = {
 
     # ---------- 山水 / 地标 ----------
     "湖":     dict(group="山水", icon="water",   zone="water", note="湖泊"),
+    "水域":   dict(group="山水", icon="water",   zone="water", note="水域（环岛水/渠）"),
     "洲":     dict(group="山水", icon="islet",   zone="water", note="河洲"),
     "山":     dict(group="山水", icon="mountain",zone="edge", note="山丘"),
     "林":     dict(group="山水", icon="forest",  zone="edge", note="林地"),

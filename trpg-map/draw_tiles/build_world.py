@@ -29,9 +29,9 @@ import os
 import random
 
 from shapely.geometry import (
-    Point, LineString, Polygon, MultiPolygon, box as shp_box,
+    Point, LineString, Polygon, MultiPolygon, box as shp_box, shape,
 )
-from shapely.ops import nearest_points, unary_union
+from shapely.ops import nearest_points, unary_union, transform as shp_transform
 
 from song_kinds import KINDS as SONG_KINDS
 from water_width import width_m as waterway_width_m
@@ -73,6 +73,15 @@ PALACE_CORRIDORS = [
 ]
 
 SEED = 42
+
+#: 五行神庙：五座神各主一行；一城（城内+城外）合计上限
+FIVE_TEMPLE_ROWS = (
+    ("祝融庙", "火"), ("玄冥庙", "水"), ("句芒庙", "木"),
+    ("蓐收庙", "金"), ("后土庙", "土"),
+)
+FIVE_TEMPLE_MAX = 10
+#: 岛屿环水（护城河）宽度（米）——把岛与岸隔开
+ISLAND_MOAT_M = 400.0
 
 # 覆盖检查：若某条水道的中线有这么多比例已经落在「已有水面」里，
 # 就不再 buffer（已有水面就是真相），避免小河被错误撑宽。
@@ -1137,6 +1146,41 @@ class WorldBuilder:
             json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
         print("POI 冻结表已写出：", path)
 
+    def _append_frozen_pois(self, objs):
+        """把新生成的 POI（如五行神庙）追加进冻结表 → 下次重跑被当作「已有」、不重复。
+
+        不存在的冻结表（首次随机生成场景）不管；只在已有表上追加。
+        """
+        if not objs or not os.path.exists(POI_FILE):
+            return
+        try:
+            with open(POI_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return
+        rows = data.setdefault("objects", [])
+        seen = {(p.get("name"), round(float(p.get("lon", 0)), 5),
+                 round(float(p.get("lat", 0)), 5)) for p in rows}
+        added = 0
+        for o in objs:
+            g = o.get("geometry") or {}
+            c = g.get("coordinates") if g.get("type") == "Point" else None
+            if not c:
+                continue
+            key = (o.get("name"), round(c[0], 5), round(c[1], 5))
+            if key in seen:
+                continue
+            rows.append({"id": o.get("id"), "name": o.get("name"),
+                         "kind": o.get("ancient_kind"),
+                         "lon": round(c[0], 7), "lat": round(c[1], 7),
+                         "jitter": False, "note": "五行神庙（生成器加入）"})
+            added += 1
+        if added:
+            data["count"] = len(rows)
+            with open(POI_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
+            print("POI 冻结表追加:", added)
+
     def _sample_zone(self, zone, core_region, general_region):
         rng = self.rng
         if zone == "core":
@@ -1315,6 +1359,15 @@ class WorldBuilder:
                           math.radians(float(g.get("angle_deg", 0.0)))),
                 cat="landuse", tags={"landuse": gl})
 
+        # ---- 院内具名建筑（如锦香宫内的玄冥庙）----
+        # 规格：u/v 为相对院中心的归一化坐标（同 PALACE_PARTS）；w_frac/h_frac 为占院宽/高的比例
+        for b in c.get("buildings", []):
+            add(b.get("name") or (name + "建筑"), b.get("kind", "殿"),
+                rect_poly(cx + float(b.get("u", 0.0)) * w,
+                          cy + float(b.get("v", 0.0)) * h,
+                          w * float(b.get("w_frac", 0.14)),
+                          h * float(b.get("h_frac", 0.20)), ang))
+
         # ---- 泊船处 / 码头 ----
         for d in c.get("docks", []):
             add(d.get("name") or (name + "泊船处"), "码头",
@@ -1322,6 +1375,108 @@ class WorldBuilder:
                 cat="custom", tags={})
 
         return objs
+
+    # ---------------- 7b. 岛屿环水 / 五行神庙 ----------------
+    def _obj_point(self, o):
+        """取对象的一个代表性经纬度（Point 直取；面取重心）。"""
+        g = o.get("geometry") or {}
+        if g.get("type") == "Point":
+            return g.get("coordinates")
+        try:
+            c = shape(g).centroid
+            return (c.x, c.y)
+        except Exception:
+            return None
+
+    def build_island_moats(self, k_m=ISLAND_MOAT_M):
+        """给每个「洲」(岛屿) 加一圈水域（护城河）——岛被水包住，不再与岸相连。
+
+        背景：OSM 湖面的外环在部分岛屿处是凹的，岛落在湖面之外、贴着陆地
+        （实测君山岛外 120m 环带只有 7% 是水 → 看起来跟岸边连着）。
+        做法：岛 buffer(k_m) − 岛 → 并入水面。与湖面接上后岛就被水完全包围。
+        """
+        out = []
+        for o in list(self.objects):
+            if o.get("ancient_kind") != "洲":
+                continue
+            g = o.get("geometry") or {}
+            try:
+                ll = shape(g)
+            except Exception:
+                continue
+            if ll.is_empty:
+                continue
+            try:
+                xy = shp_transform(lambda x, y: lonlat_to_xy(x, y), ll)
+                moat = xy.buffer(k_m).difference(xy)
+            except Exception:
+                continue
+            if moat.is_empty:
+                continue
+            out.append({
+                "id": self.new_id(),
+                "name": (o.get("name") or "洲") + "环水",
+                "category": "water",
+                "geometry": xy_geom_to_geojson(moat),
+                "tags": {"natural": "water"},
+                "ancient_kind": "水域",
+            })
+            self.water_geom = unary_union([self.water_geom, moat]) \
+                if self.water_geom is not None else moat
+        if out:
+            print("岛屿环水:", len(out), "个（宽 %.0fm）" % k_m)
+        return out
+
+    def build_five_temples(self, max_total=FIVE_TEMPLE_MAX):
+        """五行神庙：每座神 2 所（城内官修 1 + 城外野庙 1），合计 ≤ max_total。
+
+        - 先数已有（锚点 / 建筑群，如锦香宫内置的玄冥庙）；已存在的格子不再重复放；
+        - 城内用 core 采样，城外用 edge 采样（2.5–20km）；避开水面。
+        """
+        rows = {k: r for k, r in FIVE_TEMPLE_ROWS}
+        have = {k: {"城": 0, "外": 0} for k in rows}
+        total = 0
+        for o in self.objects:
+            k = o.get("ancient_kind")
+            if k not in rows:
+                continue
+            total += 1
+            p = self._obj_point(o)
+            if not p:
+                continue
+            x, y = lonlat_to_xy(p[0], p[1])
+            inside = self.core_poly is not None and self.core_poly.covers(Point(x, y))
+            have[k]["城" if inside else "外"] += 1
+
+        core_region = self.core_poly.difference(self.water_geom) \
+            if self.water_geom is not None else self.core_poly
+        general_region = self.core_poly.buffer(1500).difference(self.water_geom) \
+            if self.water_geom is not None else self.core_poly.buffer(1500)
+        out = []
+        for kind, _row in FIVE_TEMPLE_ROWS:
+            for where in ("城", "外"):
+                if total >= max_total:
+                    break
+                if have[kind][where]:
+                    continue
+                pt = self._sample_zone("core" if where == "城" else "edge",
+                                       core_region, general_region)
+                if pt is None:
+                    continue
+                if any(dist_m(pt, Point(o["_x"], o["_y"])) < 60 for o in out):
+                    continue
+                out.append({
+                    "id": self.new_id(), "name": kind, "category": "custom",
+                    "geometry": xy_geom_to_geojson(pt), "tags": {},
+                    "ancient_kind": kind, "_x": pt.x, "_y": pt.y,
+                })
+                have[kind][where] += 1
+                total += 1
+        for o in out:
+            o.pop("_x", None)
+            o.pop("_y", None)
+        print("五行神庙（生成）:", len(out), "| 含已有共:", total)
+        return out
 
     def _nearest_gate(self, lon, lat):
         x, y = lonlat_to_xy(lon, lat)
@@ -1337,6 +1492,7 @@ class WorldBuilder:
         # （Python 会先取旧列表再求值右边，buffer 里换掉的新列表会被丢弃）
         buffered_water = self.buffer_waterways()
         self.objects += buffered_water
+        self.objects += self.build_island_moats()   # 岛屿环水（隔断「岛连岸」）
         self.objects += self.build_wall()
         self.objects += self.build_roads()
         self.objects += self.build_gates()
@@ -1351,6 +1507,9 @@ class WorldBuilder:
             self.objects += self.build_pois()
             self.objects += self.build_country()
             self.objects += self.build_compounds()
+            temples = self.build_five_temples()   # 五行神庙（≤10 / 城）
+            self.objects += temples
+            self._append_frozen_pois(temples)     # 写回冻结表 → 下次重跑不重复
 
         data = {
             "name": f"{CITY}地图",

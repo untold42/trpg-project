@@ -25,7 +25,7 @@ const MIN_ICON_ZOOM = 15;
    每张地图一个库（`<map_id>-map-cache`），互不污染。 */
 const CACHE_STORE = "kv";
 const GEO_CACHE_KEY = "clickable-geojson";
-const GEO_VERSION = "v2"; // 重新导出 clickable.geojson 后，若想强制前端刷新，bump 此值（v2: 岳阳水域 POI 修复）
+const GEO_VERSION = "v3"; // 重新导出 clickable.geojson 后，若想强制前端刷新，bump 此值（v3: 五行神庙 + 君山环水；v2: 岳阳水域 POI 修复）
 
 interface Footprint {
   lon: number;
@@ -52,8 +52,8 @@ interface ClickableLayerProps {
   hideIcons?: boolean;
   /** 诊断开关（?nohit=1）：不渲染命中层 */
   hideHit?: boolean;
-  /** 点击 POI 弹窗里的动作（进入 / 观察 / 回忆） */
-  onPlaceAction?: (place: string, act: string) => void;
+  /** 点击 POI 弹窗里的动作（详细 / 观察 / 回忆） */
+  onPlaceAction?: (place: string, act: string, kind?: string) => void;
   /** 弹窗是否显示动作按钮（**只在探索地图**为 true） */
   showActions?: boolean;
 }
@@ -271,11 +271,12 @@ function buildPopupHtml(props: ClickableProps, showActions = false): string {
   }
   if (showActions) {
     const esc = escapeHtml(name);
-    const canEnter = !NO_ENTER_KINDS.has(props.kind || "");
+    const kesc = escapeHtml(props.kind || "");
+    const canDetail = !NO_DETAIL_KINDS.has(props.kind || "");
     const btns = [
-      canEnter ? `<button class="ink-act" data-place="${esc}" data-act="enter">进入</button>` : "",
-      `<button class="ink-act" data-place="${esc}" data-act="observe">观察</button>`,
-      `<button class="ink-act" data-place="${esc}" data-act="recall">回忆</button>`,
+      canDetail ? `<button class="ink-act" data-place="${esc}" data-kind="${kesc}" data-act="detail">详细</button>` : "",
+      `<button class="ink-act" data-place="${esc}" data-kind="${kesc}" data-act="observe">观察</button>`,
+      `<button class="ink-act" data-place="${esc}" data-kind="${kesc}" data-act="recall">回忆</button>`,
     ].filter(Boolean).join("");
     parts.push(`<div class="ink-actions">${btns}</div>`);
   }
@@ -283,9 +284,9 @@ function buildPopupHtml(props: ClickableProps, showActions = false): string {
   return `<div class="ink-popup-body">${parts.join("")}</div>`;
 }
 
-/** 不适合「进入」的地点类型（山水 / 路网 / 城墙等） */
-const NO_ENTER_KINDS = new Set([
-  "山", "湖", "林", "洲", "坊", "坊巷", "大街", "官道", "城墙", "城门",
+/** 不适合「详细」的地点类型（山水 / 路网 / 城墙等）；城门例外（要点「出城/入城」） */
+const NO_DETAIL_KINDS = new Set([
+  "山", "湖", "林", "洲", "坊", "坊巷", "大街", "官道", "城墙",
   "桥", "浮桥", "钟鼓楼", "高台", "坟地", "义冢", "村", "镇",
 ]);
 
@@ -733,8 +734,9 @@ export default function ClickableLayer({
       if (!el) return;
       const place = el.getAttribute("data-place") || "";
       const act = el.getAttribute("data-act") || "";
+      const kind = el.getAttribute("data-kind") || "";
       map.closePopup();
-      actRef.current?.(place, act);
+      actRef.current?.(place, act, kind);
     };
     document.addEventListener("click", h);
     return () => document.removeEventListener("click", h);

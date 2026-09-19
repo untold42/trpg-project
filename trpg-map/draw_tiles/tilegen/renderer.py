@@ -187,12 +187,18 @@ def _draw_land(img, draw, layer, zoom, tile_x, tile_y, origin_x, origin_y):
 # 水（面）
 # ============================================================
 
-def _draw_water(draw, layer, zoom, origin_x, origin_y):
+def _draw_water(img, draw, layer, zoom, origin_x, origin_y):
 
     from config import WATER_EDGE_M
     from projection import meters_to_px
 
     edge_w = meters_to_px(WATER_EDGE_M, zoom, minimum=1, maximum=6)
+
+    # 用掩膜绘制：外环填 255、孔洞（岛屿）填 0 → 孔洞透出下层（陆地）颜色，
+    # 避免把湖泊/环岛水里的岛屿淹没成水（PIL polygon 不支持带孔多边形）。
+    mask = Image.new("L", (TILE_SIZE, TILE_SIZE), 0)
+    mdraw = ImageDraw.Draw(mask)
+    rings = []
 
     for prepared in layer:
 
@@ -201,19 +207,29 @@ def _draw_water(draw, layer, zoom, origin_x, origin_y):
             if not polygon:
                 continue
 
-            ring = _local_points(polygon[0], origin_x, origin_y)
+            ext = _local_points(polygon[0], origin_x, origin_y)
 
-            if len(ring) < 3:
+            if len(ext) < 3:
                 continue
 
-            draw.polygon(ring, fill=WATER_COLOR)
+            mdraw.polygon(ext, fill=255)
+            rings.append(ext)
 
-            draw.line(
-                ring + [ring[0]],
-                fill=WATER_OUTLINE,
-                width=edge_w,
-                joint="curve"
-            )
+            for hole_ring in polygon[1:]:
+                hole = _local_points(hole_ring, origin_x, origin_y)
+                if len(hole) >= 3:
+                    mdraw.polygon(hole, fill=0)
+                    rings.append(hole)
+
+    img.paste(WATER_COLOR, mask=mask)
+
+    for ring in rings:
+        draw.line(
+            ring + [ring[0]],
+            fill=WATER_OUTLINE,
+            width=edge_w,
+            joint="curve"
+        )
 
 
 # ============================================================
@@ -414,7 +430,7 @@ def generate_tile(layers, zoom, tile_x, tile_y, save=True):
     )
 
     _draw_water(
-        draw,
+        img, draw,
         layers.get("water", []),
         zoom,
         origin_x,

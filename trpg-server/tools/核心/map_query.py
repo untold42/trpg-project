@@ -627,6 +627,72 @@ def city_context(lon, lat) -> dict:
     return out
 
 
+def _shichen_index(s: str) -> int:
+    SH = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"]
+    s = (s or "").strip().replace("时", "")
+    return SH.index(s) if s in SH else -1
+
+
+def _hours_open(hours: str, now: str) -> bool:
+    """营业时间（如「卯-申」「全天」）在 now 时辰是否开放。"""
+    h = (hours or "").strip().replace("时", "")
+    if not h or h == "全天" or "-" not in h:
+        return True
+    a, b = h.split("-", 1)
+    ia, ib, ino = _shichen_index(a), _shichen_index(b), _shichen_index(now)
+    if ia < 0 or ib < 0 or ino < 0:
+        return True
+    return ia <= ino <= ib if ia <= ib else (ino >= ia or ino <= ib)
+
+
+def gate_crossing(lon, lat) -> dict:
+    """玩家要过城门：找最近城门，算**城墙另一侧**的落脚点（沿「玩家→城门」方向再外推）。
+
+    返回：{城门, 原在城内, 方向(出城|入城), 落脚点:{lon,lat}, 落脚在城内, 可通行}；失败 {}。
+    设计：城门是硬事实（由城墙算），移动仍由大模型调 update_location 落库。
+    """
+    try:
+        lon, lat = float(lon), float(lat)
+    except (TypeError, ValueError):
+        return {}
+    try:
+        gates = query_nearby(lon, lat, radius_km=8.0, kind="城门", limit=1).get("results", [])
+    except Exception:
+        gates = []
+    if not gates:
+        return {}
+    g = gates[0]
+    glon, glat = g.get("lon"), g.get("lat")
+    if glon is None or glat is None:
+        return {}
+    ctx = city_context(lon, lat)
+    inside = ctx.get("在城内")
+    # 方向：玩家 → 城门 → 再往外推（过墙）
+    mlon = M_PER_DEG_LON0 * math.cos(math.radians(lat))
+    dx, dy = (glon - lon) * mlon, (glat - lat) * M_PER_DEG_LAT
+    n = math.hypot(dx, dy) or 1.0
+    ux, uy = dx / n, dy / n
+    landing, land_inside = None, None
+    for step in (45.0, 65.0, 85.0, 30.0):
+        clon = glon + (ux * step) / (M_PER_DEG_LON0 * math.cos(math.radians(glat)))
+        clat = glat + (uy * step) / M_PER_DEG_LAT
+        c2 = city_context(clon, clat)
+        land_inside = c2.get("在城内")
+        if inside is None or land_inside != inside:
+            landing = {"lon": round(clon, 6), "lat": round(clat, 6)}
+            break
+    if landing is None:
+        return {}
+    return {
+        "城门": g.get("name") or "城门",
+        "原在城内": inside,
+        "方向": "出城" if inside else "入城",
+        "落脚点": landing,
+        "落脚在城内": land_inside,
+        "可通行": _hours_open(g.get("营业时间", ""), g.get("现在", "")),
+    }
+
+
 # ------------------------------------------------------------
 # 跨地图搜索（前端地图里的「搜索」框：搜城市 / 搜地点，命中即跳）
 # ------------------------------------------------------------

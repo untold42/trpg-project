@@ -24,7 +24,6 @@ import { dataUrlFor, MAP_ID } from "./mapId";
 export type Pt = [number, number];
 
 // ---- 规则参数（米）----
-const GATE_R = 25;      // 城门通道半径
 const BRIDGE_R = 100;   // 桥可走半径
 const WALL_HALF = 12;   // 城墙阻挡半宽（城墙中心线 ±）
 const ROAD_HALF = 6;    // 路廊道半宽（路∩水域时可走）
@@ -51,26 +50,6 @@ type Index = {
   gates: Gate[];
   bridges: Pt[];
 };
-
-// ---- 当前游戏时辰（由 GameController 通过 setShichen 同步）----
-let CUR_SHICHEN = -1;
-const SHICHEN_NAMES = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"];
-
-/** 同步当前时辰（城门开闭判断用） */
-export function setShichen(i: number): void {
-  CUR_SHICHEN = i;
-}
-
-/** 时段字符串（如「卯-申」「全天」）在 shichen 是否开放 */
-function isOpenHours(hours: string, shichen: number): boolean {
-  if (!hours || hours === "全天" || shichen < 0) return true;
-  const parts = hours.split("-");
-  if (parts.length !== 2) return true;
-  const s = SHICHEN_NAMES.indexOf(parts[0].trim());
-  const e = SHICHEN_NAMES.indexOf(parts[1].trim());
-  if (s < 0 || e < 0) return true;
-  return s <= e ? (shichen >= s && shichen <= e) : (shichen >= s || shichen <= e);
-}
 
 let IDX: Index | null = null;
 const CACHE = new Map<string, Index>();          // mapId -> 已构好的索引
@@ -397,16 +376,11 @@ export function isWalkable(lon: number, lat: number): boolean {
   }
 
   const nearGate = (): boolean => {
-    // 城门通道：25m 内 **且城门开着** 才算能过（城中城门默认 卯-申，闭门后走不了）
-    for (const g of idx.gates) {
-      if (distM(lon, lat, g.lon, g.lat) <= GATE_R && isOpenHours(g.hours, CUR_SHICHEN)) {
-        return true;
-      }
-    }
+    // 城门已改为「点开 → 出城/入城」由大模型移动玩家；**行走不再穿门**（城墙一律实心）。
     return false;
   };
 
-  // 1) 城墙（城门通道）
+  // 1) 城墙：一律不可通行（含城门处）
   if (idx.wallBB && inBB(lon, lat, idx.wallBB, WALL_HALF)) {
     if (nearPolyline(lon, lat, idx.wall, WALL_HALF)) {
       const ok = nearGate();
