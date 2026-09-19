@@ -15,7 +15,7 @@ import copy
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from tools.registry import ALL_TOOLS
+from tools.大模型.registry import ALL_TOOLS
 
 load_dotenv()
 

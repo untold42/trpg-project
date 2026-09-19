@@ -24,11 +24,11 @@ import time
 from pathlib import Path
 
 from engine import parse_instructions, read_turns
-from tools import world_threads
-from tools import character_archive
-from tools.get_character import CHARACTER_DIR
-from tools.map_query import query_place, structure_for
-from tools import audit
+from tools.核心 import world_threads
+from tools.大模型 import character_archive
+from tools.大模型.get_character import CHARACTER_DIR
+from tools.核心.map_query import query_place, structure_for
+from tools.核心 import audit
 
 SERVER_DIR = Path(__file__).resolve().parent
 GAME_DATA_DIR = SERVER_DIR / "游戏数据"
@@ -40,7 +40,7 @@ SAVE_FLOW_DOC = SERVER_DIR.parent / "trpg-world" / "存档流程.md"
 _MUTATING = {
     "modify_money", "modify_item", "add_item", "remove_item",
     "modify_hunger", "modify_health", "modify_hp", "modify_tp",
-    "update_location", "update_time", "update_weather",
+    "update_location", "advance_time", "update_time", "update_weather",
 }
 
 # 前端/后端加在玩家输入前的角色/主持人前缀

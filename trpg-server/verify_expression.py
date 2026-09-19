@@ -42,7 +42,7 @@ try:
 except Exception:
     pass
 
-from tools.character_expressions import CHARACTER_EXPRESSIONS  # noqa: E402
+from tools.小模型.character_expressions import CHARACTER_EXPRESSIONS  # noqa: E402
 from tools import small_model  # noqa: E402
 
 # ------------------------------------------------------------

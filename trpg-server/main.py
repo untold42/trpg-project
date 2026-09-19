@@ -3,25 +3,26 @@ from flask_cors import CORS
 from llm import send_messages
 
 # 需要单独用到的非工具函数
-from tools.explore import read_player_position, record_position
-from tools.location import update_location
-from tools.accident import accident
-from tools.state_manager import state
-from tools.game_clock import clock
-from tools import time_flow
-from tools.factions import list_factions
-from tools.recap import build_recap
-from tools.place_recall import recall_place
-from tools.difficulty_settings import get_settings, set_difficulty
-from tools.map_settings import get_settings as get_map_settings, set_map
+from tools.核心.explore import read_player_position, record_position
+from tools.大模型.location import update_location
+from tools.大模型.accident import accident
+from tools.核心.state_manager import state
+from tools.核心.game_clock import clock
+from tools.核心 import time_flow
+from tools.大模型.factions import list_factions
+from tools.大模型.recap import build_recap
+from tools.大模型.place_recall import recall_place
+from tools.大模型.difficulty_settings import get_settings, set_difficulty
+from tools.核心.map_settings import get_settings as get_map_settings, set_map
+from tools.核心 import movement
 
 # 工具注册表（schema + 实现的单一真相源）
-from tools.registry import TOOLS_MAP
-from tools import battle_session
-from tools.battle_settings import THOUGHT_MODEL_OPTIONS, get_thought_model, set_thought_model
+from tools.大模型.registry import TOOLS_MAP
+from tools.大模型 import battle_session
+from tools.大模型.battle_settings import THOUGHT_MODEL_OPTIONS, get_thought_model, set_thought_model
 
 # 引擎（回合运行 + 会话 + 过程日志）
-from engine import GameSession, TurnRunner, continue_cue, observe_cue, OBSERVE_NOTE
+from engine import GameSession, TurnRunner, continue_cue, observe_cue, OBSERVE_NOTE, OOC_NOTE
 
 # 存档收尾管线
 from save_pipeline import run_save
@@ -78,7 +79,26 @@ def get_explored():
 def get_player_state():
     """玩家真实状态（金钱 / 状态 / 背包 / 属性 / 基本信息）。前端菜单读这个，不再写死。"""
     _best_effort(clock.maybe_persist, time_flow.pump)   # 时间流逝 → 精力 / 跨日联动（失败不 500）
-    return jsonify(state.snapshot())
+    data = state.snapshot()
+    data["移动"] = movement.config()   # 移动参数（轻功→步速 / 奔跑倍率）——非 游戏数据文件
+    return jsonify(data)
+
+
+@app.route("/run", methods=["POST"])
+def settle_run():
+    """探索奔跑结算：按「超出步行的距离」扣精力。前端在奔跑累积到一定距离 / 松手时调用。
+
+    入参 `{奔跑米: number}`；返回最新的完整状态（含 移动 参数），前端直接 applyState。
+    """
+    data = request.json or {}
+    try:
+        meters = float(data.get("奔跑米", 0) or 0)
+    except (TypeError, ValueError):
+        meters = 0.0
+    _best_effort(lambda: movement.drain_run(meters))
+    snapshot = state.snapshot()
+    snapshot["移动"] = movement.config()
+    return jsonify(snapshot)
 
 
 @app.route("/clock", methods=["GET"])
@@ -142,7 +162,7 @@ def set_map_route():
 @app.route("/search", methods=["GET"])
 def search_route():
     """跳地图用：跨所有地图按名字搜城市/地点。`?q=锦香`"""
-    from tools.map_query import search_all_maps
+    from tools.核心.map_query import search_all_maps
     return jsonify({"results": search_all_maps(request.args.get("q", ""), limit=20)})
 
 
@@ -152,7 +172,7 @@ def get_scene_route():
 
     返回 {地点, 类型, 时辰, 场景, 候选}；场景名与前端 assets/背景/ 目录同名。
     """
-    from tools.ui_sim import _kind_of, scene_candidates
+    from tools.小模型.ui_sim import _kind_of, scene_candidates
 
     basic = state.load("基本信息", {}) or {}
     pos = basic.get("位置", {}) or {}
@@ -350,6 +370,7 @@ def action():
         raw += "(意外：梁峰行动失败)"
 
     # 组装 LLM 看到的文本
+    is_explore_req = mode == "gm" and "进入探索" in raw
     if mode == "continue":
         try:
             ke = max(0, int(data.get("ke", 2)))
@@ -366,7 +387,10 @@ def action():
         text = "梁峰：" + raw
     else:
         text = "玩家的对主持人说的话：" + raw
-    events = runner.run(text, mode, from_explore)
+        # 场外话（OOC）：用现代白话直答，不得入戏（探索请求除外——那要叙述离场）
+        if not is_explore_req:
+            runner.session.pending_notes.append(OOC_NOTE)
+    events = runner.run(text, mode, from_explore, force_explore=is_explore_req)
     time_flow.pump()   # 回合结束后结算时间流逝（精力 / 跨日）
     return jsonify(events)
 

@@ -30,22 +30,22 @@ import time
 from collections import deque
 from pathlib import Path
 
-from tools.folder_to_prompt import folder_to_prompt  # noqa: F401  (供 main 使用)
-from tools.state_manager import state
-from tools.game_clock import clock
-from tools import derived
-from tools import hunger
-from tools import weather_system
-from tools.ui_events import UI_EVENTS_KEY, music_event, bg_event
-from tools import world_threads
-from tools import macro_timeline
-from tools import director
-from tools import world_worker
-from tools import ui_sim
-from tools import map_query
-from tools import expression_sim
-from tools import audit
-from tools.registry import SAVE_TOOLS, ALL_TOOL_NAMES, SAVE_TOOL_NAMES
+from tools.大模型.folder_to_prompt import folder_to_prompt  # noqa: F401  (供 main 使用)
+from tools.核心.state_manager import state
+from tools.核心.game_clock import clock
+from tools.核心 import derived
+from tools.核心 import hunger
+from tools.核心 import weather_system
+from tools.核心.ui_events import UI_EVENTS_KEY, music_event, bg_event, mode_event
+from tools.核心 import world_threads
+from tools.核心 import macro_timeline
+from tools.导演 import director
+from tools.小模型 import world_worker
+from tools.小模型 import ui_sim
+from tools.核心 import map_query
+from tools.小模型 import expression_sim
+from tools.核心 import audit
+from tools.大模型.registry import SAVE_TOOLS, ALL_TOOL_NAMES, SAVE_TOOL_NAMES
 
 # ------------------------------------------------------------
 # 路径
@@ -161,7 +161,7 @@ def current_game_time() -> str:
     return clock.render()
 
 
-# 「时间权威」检测：叙述里出现明确的时间推进标记（用于提醒 LLM 补 update_time）
+# 「时间权威」检测：叙述里出现明确的时间推进标记（用于提醒 LLM 补 advance_time）
 _TIME_ADVANCE_RE = re.compile(
     r"翌日|次日|第二天|隔日|隔天|隔夜|转天|翌晨|次晨|"
     r"过了一夜|一夜过去|一夜无话|一宿|"
@@ -186,6 +186,16 @@ def _time_advanced(events) -> str:
     return m.group(0) if m else ""
 
 
+def _to_explore(ui_events) -> bool:
+    """本轮是否切到探索模式（`mode:"explore"` UI 事件：探索按钮 / 旧工具）。"""
+    for e in ui_events or []:
+        if not isinstance(e, dict) or e.get("type") != "ui" or e.get("kind") != "mode":
+            continue
+        if (e.get("data") or {}).get("mode") == "explore":
+            return True
+    return False
+
+
 # ------------------------------------------------------------
 # 过程日志的读取与渲染（单一真相源：current.jsonl）
 # ------------------------------------------------------------
@@ -206,7 +216,7 @@ def continue_cue(ke: int = 2) -> str:
         f"（静观其变：玩家不做特别动作，让时间流逝约 {ke} 刻（约 {ke * 15} 分钟）。"
         "请推进眼前的场景与 NPC 的行动、让已有线索自然发酵，"
         "到玩家可能想介入的地方即止；不要替玩家做决定。"
-        f"时间确有流逝时请调用 update_time（advance_ke={ke}）推进时间。）"
+        f"时间确有流逝时请调用 advance_time（ke={ke}）推进时间。）"
     )
 
 
@@ -223,6 +233,15 @@ def observe_cue(place: str) -> str:
 OBSERVE_NOTE = (
     "本轮是「观察」：只给 1~3 句**简短**的可观察细节（外观、声响、气味、进出的人）；"
     "**不进入、不与 NPC 长谈、不推进时间、不替梁峰决定下一步**。"
+)
+
+
+#: 【场外话（主持人 OOC）】的系统提醒：元对话要用现代白话直答，不得入戏
+OOC_NOTE = (
+    "本轮是**场外话（玩家 ⇄ 主持人，OOC / 元对话）**，**不是游戏世界里发生的事**。"
+    "请**用现代白话、直接**回答玩家的问题（规则 / 写法 / 系统 / 剧情疑问等），简短。"
+    "**禁止**：文言 / 话本体 /「某」「在下」这类书中口吻；「你正立在…」这类入戏句；"
+    "代替玩家叙述或行动；用书中旁白口吻把回答包成剧情。"
 )
 
 
@@ -245,12 +264,8 @@ def read_turns(log_path) -> list[dict]:
 
 
 def parse_instructions(raw) -> list:
-    """解析 assistant_raw 里的指令数组。"""
-    try:
-        data = json.loads(raw or "[]")
-    except (json.JSONDecodeError, TypeError):
-        return []
-    return data if isinstance(data, list) else []
+    """解析 assistant_raw 里的指令数组（容错 JSON，见 parse_instruction_array）。"""
+    return parse_instruction_array(raw) or []
 
 
 def history_lines(turns: list[dict]) -> list[str]:
@@ -298,7 +313,7 @@ class GameSession:
         self.log_path = Path(log_path)
         self.history: list[dict] = []
         self.previous_story = load_previous_story()
-        self.pending_time_note = ""  # 「时间权威」提醒：下一轮注入，补上 update_time 后清除
+        self.pending_time_note = ""  # 「时间权威」提醒：下一轮注入，补上 advance_time 后清除
         self.pending_notes: list[str] = []  # 其他系统提醒（下一轮注入一次）
         #: 状态栈（**长度上限 2**）：每轮末 append 本轮结束时的状态。
         #: 下一轮把栈顶（=上一轮的状态）与现场现拼的「当前状态」一起发给 LLM ——
@@ -369,7 +384,7 @@ class GameSession:
                 self.history.append({"role": "user", "content": turn["user"]})
             if turn.get("assistant_raw"):
                 self.history.append(
-                    {"role": "assistant", "content": turn["assistant_raw"]}
+                    {"role": "assistant", "content": normalized_assistant(turn["assistant_raw"])}
                 )
 
     def append_turn(self, turn: dict):
@@ -482,6 +497,106 @@ class GameSession:
         return msgs
 
 # ------------------------------------------------------------
+# JSON 容错解析（大模型偶发输出非法 JSON，尤其是 content 里未转义的英文双引号）
+# ------------------------------------------------------------
+def _strip_code_fence(s: str) -> str:
+    """去掉 ```json ... ``` 围栏。"""
+    s = (s or "").strip()
+    if s.startswith("```"):
+        s = s.split("\n", 1)[1] if "\n" in s else ""
+        if s.rstrip().endswith("```"):
+            s = s.rstrip()[:-3]
+    return s.strip()
+
+
+def _escape_inner_quotes(s: str) -> str:
+    """把 JSON 字符串值里**未转义的内层双引号**转义。
+
+    模型写对白时常直接写 `"..."`（英文引号），把 JSON 字符串提前截断。
+    规则：字符串里的 `"`，只有当它后面（跳空白）是 `, : } ]` 或行尾时，才算字符串结束；
+    否则视为内层引号 → 转义为 `\"`。已转义的 `\"` 原样保留。
+    """
+    out, in_str, i, n = [], False, 0, len(s)
+    while i < n:
+        ch = s[i]
+        if not in_str:
+            out.append(ch)
+            if ch == '"':
+                in_str = True
+            i += 1
+            continue
+        if ch == "\\":                     # 已转义：原样带走
+            out.append(ch)
+            if i + 1 < n:
+                out.append(s[i + 1]); i += 2
+            else:
+                i += 1
+            continue
+        if ch == '"':
+            j = i + 1
+            while j < n and s[j] in " \t\r\n":
+                j += 1
+            if j >= n or s[j] in ",:}]":   # 后面是分隔符/结尾 → 字符串结束
+                out.append(ch); in_str = False
+            else:                            # 内层引号 → 转义
+                out.append('\\"')
+            i += 1
+            continue
+        out.append(ch); i += 1
+    return "".join(out)
+
+
+def _try_json_array(s: str):
+    try:
+        data = json.loads(s)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return data if isinstance(data, list) else None
+
+
+def parse_instruction_array(raw: str):
+    """容错解析指令数组，失败返回 None。
+
+    容忍大模型常见的 JSON 毛病：``` 围栏、前后废话、字符串里未转义的英文双引号。
+    注意：本函数定义在 `parse_instructions` 之后，但调用时模块已加载完成，可正常引用。
+    """
+    if not raw:
+        return None
+    s = _strip_code_fence(raw)
+    data = _try_json_array(s)
+    if data is not None:
+        return data
+    # 修复：转义字符串值里未转义的内层双引号
+    data = _try_json_array(_escape_inner_quotes(s))
+    if data is not None:
+        return data
+    # 再退一步：截取最外层 [...]（去掉前后废话）再试一次
+    a, b = s.find("["), s.rfind("]")
+    if a != -1 and b > a:
+        seg = s[a:b + 1]
+        for cand in (seg, _escape_inner_quotes(seg)):
+            data = _try_json_array(cand)
+            if data is not None:
+                return data
+    return None
+
+
+def normalized_assistant(raw: str) -> str:
+    """喂回模型的 assistant 文本：能解析就回写**规范 JSON**。
+
+    避免把模型自己的非法输出（未转义引号等）原样再喂回去，恶性循环。
+    日志仍保留原始 `assistant_raw` 便于排查。
+    """
+    ev = parse_instruction_array(raw)
+    if isinstance(ev, list):
+        try:
+            return json.dumps(ev, ensure_ascii=False)
+        except (TypeError, ValueError):
+            return raw
+    return raw
+
+
+# ------------------------------------------------------------
 # 回合运行
 # ------------------------------------------------------------
 class TurnRunner:
@@ -491,14 +606,16 @@ class TurnRunner:
     FORMAT_CORRECTION = (
         "后端发现你的最终回复格式有误，请严格按照系统规定输出合法JSON数组，"
         "不要输出任何额外内容。"
+        "⚠️ 最常见的原因：`content` 里直接写了英文双引号 `\"`（把 JSON 字符串提前截断了）。"
+        "对白/引语一律用中文引号「」，`content` 里**不得出现英文双引号**（除非写成 `\\\"`）。"
     )
 
-    #: 时间权威提醒（叙述推进了时间却未调用 update_time）
+    #: 时间权威提醒（叙述推进了时间却未调用 advance_time / update_time）
     _TIME_NOTE = (
-        "上一轮叙述里出现了时间流逝（「{hit}」），但你**没有调用 `update_time`**。"
+        "上一轮叙述里出现了时间流逝（「{hit}」），但你**没有调用 `advance_time`**。"
         "世界日期未推进 —— 世界推演不会触发，天气 / 饥饿 / 精力也不会更新。"
-        "请在本轮先用 `update_time` 把时间补到正确值"
-        "（短时间用 `advance_ke` 推进几刻，较久用 `advance_shichen` 推进时辰；12 时辰＝1 天），再继续叙述。"
+        "请在本轮先用 `advance_time` 把时间补到正确值"
+        "（短时间用 `ke` 推进几刻，较久用 `shichen` 推进时辰；12 时辰＝1 天），再继续叙述。"
     )
 
     #: 「台词 / 场外」回合允许的最大时间推进（刻）。说话不该让时间跳时辰、过夜。
@@ -507,8 +624,23 @@ class TurnRunner:
     #: 台词回合试图推进时间时的驳回语（回给 LLM）——规则 12 的机械兼底
     _SAY_TIME_BLOCK = (
         "本轮是玩家的**台词 / 场外话**，不是行动，**不得据此替玩家推进时间**。"
-        "已驳回本次 `update_time`。请只让 NPC 回应；若确需时间流逝，等玩家另行发出行动。"
-        "（确有小额流逝才可用 `advance_ke`，不超过 {max_ke} 刻。）"
+        "已驳回本次 `advance_time`。请只让 NPC 回应；若确需时间流逝，等玩家另行发出行动。"
+        "（确有小额流逝才可用 `ke`，不超过 {max_ke} 刻。）"
+    )
+
+    #: 台词 / 场外 / 观察回合**禁止改动玩家状态的工具**（规则 9：台词≠行动）。
+    #: `start_battle` 不在此列；`update_time`/`sleep` 单独处理。
+    _SAY_MUTATE_TOOLS = {
+        "modify_money", "modify_item", "add_item", "remove_item",
+        "modify_hunger", "modify_hp", "modify_tp", "modify_health",
+        "update_location", "update_weather",
+    }
+
+    #: 台词 / 场外回合试图改动玩家状态时的驳回语（回给 LLM）
+    _SAY_ACTION_BLOCK = (
+        "本轮是玩家的**台词 / 场外话**，不是行动，**不得据此改动任何玩家数值 / 状态**"
+        "（金钱 / 物品 / 生命 / 精力 / 饥饿 / 位置）。已驳回本次 `{tool}`。"
+        "请只让 NPC 回应；玩家若确实要做这件事，等他另行发出**行动**。"
     )
 
     def __init__(self, session: GameSession, send_messages, tools_map: dict):
@@ -521,12 +653,15 @@ class TurnRunner:
         self._allowed: set[str] | None = None
         self._lock = threading.RLock()  # 串行化回合（**可重入**：run_save 会嵌套调 _run_save）
 
-    def run(self, user_input: str, mode: str = "action", from_explore: bool = False) -> list[dict]:
+    def run(self, user_input: str, mode: str = "action", from_explore: bool = False,
+            force_explore: bool = False) -> list[dict]:
         """跑完一个回合，返回统一事件流。
 
         mode: "action"（角色行动）| "gm"（玩家对主持人的场外话）。
         from_explore: 本轮是**玩家从探索模式发起的输入**（带坐标）——
                       进入叙事时必须重新选一次背景/音乐（见 #5）。
+        force_explore: 玩家点了「探索」按钮（确定性元操作）——无论 GM 调没调
+                       `resume_exploration`，都保证发一份 `mode:explore`。
         形状：[...工具 UI 事件, ...LLM 叙事指令]
         每条为 {"type": "ui"|"chat"|"narration", ...}
         """
@@ -535,13 +670,14 @@ class TurnRunner:
             clock.pause("turn")
             prev, self._allowed = self._allowed, ALL_TOOL_NAMES
             try:
-                return self._run(user_input, mode, from_explore)
+                return self._run(user_input, mode, from_explore, force_explore)
             finally:
                 self._allowed = prev
                 clock.resume("turn")
 
     # ---- 内部 ----
-    def _run(self, user_input: str, mode: str = "action", from_explore: bool = False) -> list[dict]:
+    def _run(self, user_input: str, mode: str = "action", from_explore: bool = False,
+             force_explore: bool = False) -> list[dict]:
         session = self.session
         session.history.append({"role": "user", "content": user_input})
 
@@ -600,8 +736,21 @@ class TurnRunner:
         # 5c) UI 事件（小模型）：背景 / 音乐
         #     探索→叙事（from_explore）时 **强制重选**（绕过去重），保证一切入叙事就有 bg+音乐
         scene_ui = self._scene_ui_events(events, force=from_explore)
+        # 「探索」按钮是**确定性元操作**：GM 忘了调 resume_exploration 也照样切回地图
+        if force_explore and not _to_explore(ui_events):
+            ui_events = [*ui_events, mode_event("explore")]
+        # 叙事 → 探索（resume_exploration）：换一首**通用**背景乐，
+        # 别把青楼/酒楼等场所专属曲带到大地图上（小模型从「通用曲」里挑）
+        if ui_sim.ENABLED and _to_explore(ui_events):
+            try:
+                track = ui_sim.explore_track(self.session.last_music)
+            except Exception:
+                track = ui_sim.DEFAULT_TRACK
+            if track and track != self.session.last_music:
+                self.session.last_music = track
+                scene_ui = [*scene_ui, music_event(track)]
 
-        session.history.append({"role": "assistant", "content": raw})
+        session.history.append({"role": "assistant", "content": normalized_assistant(raw)})
         session.append_turn({
             "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
             "time": current_game_time(),
@@ -683,10 +832,15 @@ class TurnRunner:
             return {"content": result.content or "", "tool_calls": tool_records}
 
     def _say_time_guard(self, mode: str, name: str, arguments: dict):
-        """台词 / 场外回合的时间护栏（机械执行规则 12）。
+        """台词 / 场外 / 观察回合的**行动兼底**（机械执行规则 9 / 12）。
 
-        `mode` 为 `say` / `gm` 时：`sleep` 一律驳回；`update_time` 只允许 ≤ `SAY_MAX_KE` 刻的
-        `advance_ke`，任何「设置日期 / 时辰 / 刻」或更大的推进都驳回。
+        `mode` 为 `say` / `gm` / `observe` 时：
+          - `sleep` 一律驳回；
+          - 改玩家状态的工具（金钱/物品/生命/精力/饥饿/位置/天气）一律驳回；
+          - `advance_time` 只允许 ≤ `SAY_MAX_KE` 刻（且必须为正），超过/非法驳回；
+          - `update_time`（直接设置日期/时辰/刻）一律驳回。
+
+        放开：`start_battle`、各种只读工具。
         正常（无需拦截）返回 `None`。
         """
         if mode not in ("say", "gm", "observe"):
@@ -694,16 +848,17 @@ class TurnRunner:
         if name == "sleep":
             print(f"[say] 驳回{mode}回合的 sleep：{arguments}")
             return {"success": False, "error": self._SAY_TIME_BLOCK.format(max_ke=self.SAY_MAX_KE)}
-        if name != "update_time":
+        if name in self._SAY_MUTATE_TOOLS:
+            print(f"[say] 驳回{mode}回合的状态改动：{name} {arguments}")
+            return {"success": False, "error": self._SAY_ACTION_BLOCK.format(tool=name)}
+        if name == "update_time":
+            print(f"[say] 驳回{mode}回合的时间设置：{arguments}")
+            return {"success": False, "error": self._SAY_TIME_BLOCK.format(max_ke=self.SAY_MAX_KE)}
+        if name != "advance_time":
             return None
-        adv_sh = arguments.get("advance_shichen") or 0
-        adv_ke = arguments.get("advance_ke") or 0
-        jump = (
-            arguments.get("date") is not None
-            or arguments.get("shichen") is not None
-            or arguments.get("ke") is not None
-            or adv_sh * 8 + adv_ke > self.SAY_MAX_KE
-        )
+        adv_sh = arguments.get("shichen") or 0
+        adv_ke = arguments.get("ke") or 0
+        jump = adv_sh * 8 + adv_ke > self.SAY_MAX_KE or adv_sh * 8 + adv_ke <= 0
         if not jump:
             return None
         print(f"[say] 驳回{mode}回合的时间推进：{arguments}")
@@ -736,14 +891,14 @@ class TurnRunner:
             return {"success": False, "error": str(e)}
 
     def _check_time_authority(self, events, tool_records):
-        """时间权威：叙述推进了时间，却未调用 update_time → 记提醒，下一轮注入。"""
-        called = any(tc.get("name") == "update_time" for tc in tool_records)
+        """时间权威：叙述推进了时间，却未调用 advance_time / update_time → 记提醒，下一轮注入。"""
+        called = any(tc.get("name") in ("advance_time", "update_time") for tc in tool_records)
         hit = _time_advanced(events)
         if called:
             self.session.pending_time_note = ""
         elif hit:
             if not self.session.pending_time_note:
-                print(f"[time] 叙述含时间流逝「{hit}」但未调用 update_time")
+                print(f"[time] 叙述含时间流逝「{hit}」但未调用 advance_time")
             self.session.pending_time_note = self._TIME_NOTE.format(hit=hit)
 
     def _scene_ui_events(self, events, force: bool = False) -> list[dict]:
@@ -883,9 +1038,5 @@ class TurnRunner:
 
     @staticmethod
     def _parse(raw: str):
-        """尝试解析指令数组，失败返回 None。"""
-        try:
-            data = json.loads(raw)
-        except (json.JSONDecodeError, TypeError):
-            return None
-        return data if isinstance(data, list) else None
+        """尝试解析指令数组，失败返回 None（容错见 parse_instruction_array）。"""
+        return parse_instruction_array(raw)
