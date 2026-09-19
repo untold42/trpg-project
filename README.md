@@ -1,5 +1,8 @@
 # 梁峰传（暂名）· 项目 README
 
+**明确用户需求，避免代码臃肿，不要添加不必要的复杂度。**
+**先确认好用户的需求，再动手。**
+
 > 一个**以地图为主界面、由连续时钟驱动**的武侠叙事游戏：
 > 大模型当主持人（GM），小模型管 UI 与世界推演，**硬事实由代码裁决**。
 >
@@ -10,10 +13,10 @@
 > 本文件由原 `README.md` + `ARCHITECTURE.md` + `STATUS.md` + `交接-地图性能.md` 合并而成
 > （旧文件仍可在 git 历史中查到）。
 
-最后更新：2026-09-19（**工具重组 + 一批机制修复**）——`tools/` 拆成 **大模型/小模型/导演/核心** 四个包；
-新增 `advance_time`、金钱账本、台词/场外机械护栏；「探索」按钮确定性 + 探索通用 BGM；
-前端总览图迷雾 / 按钮悬停 / 背景转场预加载；大模型输出 JSON 容错 + OOC 规范；
-岳阳「陆地上的船」数据修复。详见 §16.17 与 **`交接.md`**。
+最后更新：2026-09-20（**技能树（养成重构）+ 相机 + /facility 收尾**）——
+技能树（`技能树.json` 正典 / `招式表.json` 运行表 / `skill_tree.py` / 技能点 / 前端银河+五神弧）；
+相机玩家居中且禁拖；`/facility` 背景改后端确定性映射（删 `/facility/ui`）；存档「传闻≠事实」。
+上一轮（2026-09-19）：养成 v1 + 五行神庙 + 城门 + 详细页（§16.18）。详见 §16.19 与 **`交接.md`**。
 
 > 更早两轮：2026-09-18 **世界观**（五行 / 伪神 / 五支）与 **多城市 + 岳阳地图**（见 §16.16）。
 
@@ -37,6 +40,11 @@
 > **4. 只跑一个 `python main.py`**；别用外部工具开着 `游戏数据/*.json` 或 `chroma_db`。
 >
 > **5. 地图改了必须告诉用户去哪看**：多城市已分目录，不要再说「public/tiles」这种扁平路径。
+>
+> **6. 禁止从项目根做全盘扫描（`find .`、`grep -r .`、`du -sh .`、`sort` 全量）**：仓库里有
+> `node_modules/`、两万多张瓦片、存档与备份，遍历会卡几分钟。查改动一律用 `git status` /
+> `git diff --stat`；查文件用**已知路径**的 `ls -l`；确需递归就先限定目录并排除
+> `node_modules/`、`tiles/`、`归档存档/`、`__pycache__/`。任何可能耗时的命令先告知用户再跑。
 
 ---
 
@@ -386,7 +394,7 @@ main.py                : bootstrap + 路由
 3. **状态块位置**：messages **末尾**。
 4. **回合轮数上限**：普通回合与蒸馏回合的工具循环均限 12 轮，防模型无限调工具。
 5. **蒸馏看门狗**：蒸馏总超时（`SAVE_DISTILL_TIMEOUT`，默认 240s）→ 跳过蒸馏，继续机械存档；`sessions/audit.log` 记录每轮 LLM 耗时 / prompt 大小 / 工具调用。
-6. **指令 JSON 容错解析**：`engine.parse_instruction_array` —— 容忍 ``` 围栏、前后废话、**`content` 里未转义的英文双引号**；解析失败才走格式修正重试，两次失败才用占位旁白。喂回模型的 `history` 用**规范化 JSON**（日志仍留原始 `assistant_raw`）。
+6. **指令 JSON 容错解析**：`engine.parse_instruction_array` —— 容忍 ``` 围栏、前后废话、**单个对象**（非数组）、**`content` 里未转义的英文双引号**；解析失败才走格式修正重试，再失败把散文当旁白兜底，**两次都空/坏 JSON 才用占位旁白**。喂回模型的 `history` 用**规范化 JSON**（日志仍留原始 `assistant_raw`）。完整四层漏斗、实测矩阵与「循环重试」搁置方案见 **§17.5**。
 
 #### 单一工具注册表（已实现）
 
@@ -498,6 +506,8 @@ IC → `梁峰：…` / `梁峰说：「…」`；OOC → `梁峰（场外）：
 
 - `bg` / `music` 均由 UI 事件控制：`{"type":"ui","kind":"bg","data":{position,time}}`、`{"type":"ui","kind":"music","data":{track}}`。
 - 前端：收 `kind:"bg"` → `in-game/background.ts`（地点+时辰→图）；收 `kind:"music"` → `in-game/music.ts`（曲库 = `assets/音乐/*.mp3`，循环播放）。
+- **背景图规格：严格 1920×1080（16:9）**（`assets/背景/<场景>/<白天|黄昏|黑夜>.png`）。展示一律按 **16:9**：`Background.css` 用 `aspect-ratio:16/9` + `object-fit:cover`。**新增背景图必须是 1920×1080（16:9）**。
+  - 2026-09-19 已统一：此前 15 张黑夜图为 2848×1600 / 1920×1079 / 1920×1081 等，已全部归一为 1920×1080。
 - **已迁移**：背景/音乐改由**小模型**产出（`tools/小模型/ui_sim.py`）：
   - 场景枚举 = 前端 `assets/背景/` 子目录（说明见 `trpg-world/场景清单.md`）；音乐候选 = `音乐清单.md`（叙事）与 `战斗音乐清单.md`（战斗），条目格式 `曲名｜绑定：说明`。小模型只从候选里选（+「无」），无幻觉面。**叙事默认底色曲 = `山中好岁月`**。
   - **背景按地点类型约束**（`ui_sim.scene_candidates`）：查玩家所在地点的 `ancient_kind`，**每类只给 2~4 个候选**（映射见 `场景映射.md`，84 个类型全覆盖）；未映射时用「室内 / 室外」**小兜底组**，防"在城里被切到乡村"。
@@ -901,7 +911,7 @@ rest(时辰)   ← 工具 sleep
   - 战斗 = `BattleScene`。
 - **切换**：
   - 探索 → 叙事：`sendAction` 时带 `坐标`（光标）+ `上一坐标`；发出后 `setGameMode("narrative")`；
-  - 叙事 → 探索：**「探索」按钮是确定性元操作**——`main.py` 识别到固定请求「进入探索」就传 `force_explore=True`，直接发 `ui_event("mode", mode="explore")`（不再依赖 GM 调工具；`resume_exploration` 已退役）；前端 `kind:"mode"` 处理；
+  - 叙事 → 探索：**「探索」按钮是纯前后端逻辑**——`main.py` 短路到 `engine.enter_explore()`，直接发 `ui_event("mode", mode="explore")` + 通用 BGM（**不经 GM、不调大模型**；`resume_exploration` 已退役）；前端 `kind:"mode"` 处理；另有 `POST /explore` 入口；
   - 战斗：`start_battle` → `kind:"battle"`。
 - **坐标 → 硬事实**：`main._apply_move()` 调 `update_location`（更新位置 / 足迹 / 城内城外 / 方位），并把 **【移动】梁峰自「A」来到「B」，相距约 N 米。（耗时提示）** 注入本轮 `pending_notes`——承总纲第 5 条。
 - **协议**：`ui_events.KINDS` 加 `mode`；`总览.md` 通用规则 14 说明三模式。
@@ -955,7 +965,9 @@ WASD 自由移动必须阻止穿墙 / 穿屋 / 入河。**已实现为前端矢�
 
 ### 8.3 相机与控制
 
-- 相机跟随角色；WASD 产生 `MoveVector(x,y)`。
+- 相机跟随角色，**玩家图标始终居中**；探索模式下**禁止拖动镜头**（`dragging={!lockZoom}`），玩家只能 WASD 移动。
+- 相机逐帧 `_rawPanBy` 整数像素拉回正中（<1px 死区防抖），`move` 节流 —— 不每帧 `panBy`（见 §十三.4）。
+- WASD 产生 `MoveVector(x,y)`。
 - **走路只更新坐标 / 时钟 / 足迹，不写 `history`**（否则 `current.jsonl` 被脚步刷爆）。
 - 输入抽象层（键盘 / 手柄 / 语音）为后续留口。
 
@@ -1099,6 +1111,10 @@ begin_round（定先手 + DoT + 内力回复）
 | GET | `/clock` | **连续时钟锚点**（前端本地插值；顺带 `time_flow.pump()`） |
 | POST | `/clock/pause` · `/clock/resume` | 前端暂停 / 恢复时钟（菜单、历史面板、窗口失焦） |
 | POST | `/action` | 游戏主循环 `{input, mode, ke?, 坐标?, 上一坐标?}` → 事件流 |
+| POST | `/explore` | 玩家自主切回探索（**纯前后端，不经 GM**）→ `mode:explore` + 通用 BGM |
+| GET | `/facility` | 设施「详细」选项 + **背景** `?kind=&name=`（**不调模型、秒回**；背景查映射表） |
+| GET | `/skilltree` | 技能树全貌 + 状态（技能点 / 每节点已学·可学·锁定；**不调模型、秒回**） |
+| POST | `/skilltree/learn` | 点亮技能 `{name}`（花技能点 → 写 `属性.json` + `招式表.json`） |
 | POST | `/run` | 探索奔跑结算 `{奔跑米}` → 按超出步行的距离扣精力（返回最新状态） |
 | GET/POST | `/recall` | 地点「回忆」（点 POI；**只查 `gm_memory` RAG**） |
 | POST | `/save` | 存档收尾管线（蒸馏→誊写→归档→重置；亦支持 GET 便于诊断） |
@@ -1114,6 +1130,7 @@ begin_round（定先手 + DoT + 内力回复）
 
 - **金钱/背包**：`modify_money` `get_money` `modify_item` `add_item` `remove_item` `get_inventory`
 - **状态/属性**：`modify_hunger` `modify_health` `modify_hp` `modify_tp` `get_state` `get_ability`
+- **养成 / 设施**：`use_facility`（设施活动结算：点数 / buff）；管道 `tools/核心/growth.py`，数值 `成长.json`
 - **移动/时间/天气**：`update_location` `advance_time`（推进 N 刻/时辰） `update_time`（直接设置） `sleep` `update_weather`（天气由系统自动给，无查询工具）
 - **模式**：**已退役** `resume_exploration`——叙事→探索改为「探索」按钮确定性切换（`_DISABLED`，`TRPG_RESUME_TOOL=1` 可回滚）。
 - **骰子**：`roll_dice`（可能性骰；**日常/旅途骰子已停用**，见 §17 与 `TODO.md`）
@@ -1288,7 +1305,7 @@ trpg-map/数据/<城市>_*.json                 源与中间产物（中文名�
 | 路由 | 作用 |
 |---|---|
 | `GET /maps` | 可用地图 + 当前城市 + 每张图的 `frame`（前端 maxBounds 用） |
-| `POST /map` | 记「上次看的图」（**仅是兑底**；不再移动玩家） |
+| `POST /map` | 记「上次看的图」（**仅是兜底**；不再移动玩家） |
 | `GET /search?q=` | **跨所有地图**搜城市 / 地点（前端地图搜索框用） |
 | `GET /scene` | 按玩家当前地点给一个背景场景名（进游戏时的初始背景） |
 
@@ -1747,7 +1764,7 @@ trpg-world/势力介绍.json          ← 玩家可见源（已剔除剧透）
 - `engine._say_time_guard` 扩为**台词/场外/观察回合禁用一切改状态工具**（金钱/物品/生命/精力/饥饿/位置/天气）。
 
 #### ③ 模式切换
-- **「探索」按钮确定性**（`force_explore`）；`resume_exploration` 工具**退役**（`TRPG_RESUME_TOOL=1` 回滚）。
+- **「探索」按钮 = 玩家自主切换**（`engine.enter_explore()`，纯前后端逻辑，不经 GM）；`resume_exploration` 工具**退役**（`TRPG_RESUME_TOOL=1` 回滚）。
 - 叙事→探索改放**通用曲**（`ui_sim.explore_track`）。
 
 #### ④ 前端三件
@@ -1765,7 +1782,71 @@ trpg-world/势力介绍.json          ← 玩家可见源（已剔除剧透）
 #### ⑦ 对齐 / 修复
 - 属性全 0、T6 起步；`battle` 五行字段兼容 + `_tier_coef` 健壮解析；导演接《故事大纲》+ 首局兜底 + 剧透兼底。
 
----
+### 16.18 养成系统 v1 + 五行神庙 + 城门改造 + 前端「详细」页（2026-09-19）
+
+#### ① 养成管道（`tools/核心/growth.py`）
+- **A 类点数** `gain(目标,点数,来源)`：`点数 × buff倍率 × 曲线系数` → **直接写 `属性.json`**（即时、永久、无跨日结算）；**支持小数**（0.25/0.5，存两位）。
+- **B 类 buff** `add_buff(来源,目标,倍率,天数)`：只写 **`游戏数据/加成.json`**（**不碰属性**，跨日取消）；不叠加（留扩展位）。
+- 目标固定 **13 个**（基础 6 + 五行 5·熟练度 + 学识 2）；五行满 100（战斗作**伤害系数**：每点 +1%）；**招式不再由熟练度解锁，改由技能树点亮**（见 §16.19）。
+- **成长曲线**（`成长.json`，热改）：数值越高单次收益越小 → 目标 **5–6 游戏年**填满。
+- **战斗成长**：`battle_session._finalize` → `_grant_battle_growth()`（用过的**五行招式** → 该行；另给兵器 / 轻功）。
+
+#### ② 基础设施功能表（`facilities.json`，**按地图真实 kind（中文）做键 + 别名**）
+- 每项：`名称 / 别名 / 耗时刻 / 触发词 / 选项[]`；选项：`标签(活动名)/意图/类型(养成|自由)/介绍(固定文案)/图标(key)/效果`。
+- **类型判定 = 有没有成长收益**（有 `效果` = 养成；否则自由，只叙事）。
+- 工具 **`use_facility(facility, option, target)`**；`GET /facility`（**不调模型、秒回**）：选项查 `facilities.json`，**背景**查 `场景映射.md`（按地名稳定散列）；设施不在表里也给通用选项 + 背景（避免黑底）。
+- 已填：相扑棚 / 武馆 / 棋馆 / 书院 / 藏书楼 / 园 + 5 座五行神庙 + `城门` + 一批自由设施；**普通神庙（城隍/土地/寺/观/祠）不参与养成**。可读镜像见 `trpg-server/基础设施活动表.md`。
+
+#### ③ 五行神庙（与普通神庙分开）
+- 5 座神各主一行：**祝融（火）/ 玄冥（水）/ 句芒（木）/ 蓐收（金）/ 后土（土）**；奉祀 = 当日该行熟练度 ×2，静修 = 该行点数。
+- **一城（城内+城外）≤ 10 所**：`build_world.build_five_temples()`（每行城内 1 + 城外 1）保证；写回冻结表防重复。
+- **锦香宫内必有一所玄冥庙**（建筑群 `buildings`）；岳阳实际：城内 5 + 城外 4 + 锦香宫 1 = 10。
+
+#### ④ 君山岛「连岸」修复 + 瓦片渲染修复 + 重生成
+- 病根：`洞庭湖` 外环在君山处是凹的，**岛落在湖面之外、贴陆**（岛外 120m 环带仅 7% 是水）。
+- 修：`build_world.build_island_moats()` 给每个 `洲` 加 400m **环岛水域**（并入湖面）→ 岛外环带水占比 **100%**。
+- **另修瓦片渲染**：`renderer._draw_water` 原只画外环、**把多边形孔洞（岛屿）淹没成水**；改为掩膜绘制（孔洞透出下层）。
+- 重生成岳阳全链（world/clickable/db/walkable/**tiles**）；`ClickableLayer.GEO_VERSION` v2→v3。
+
+#### ⑤ 城门改为「点开→出城/入城」
+- **城门不再靠行走穿越**：`walkable.ts` 城墙一律实心（删城门 25m 通道与时辰判断）。
+- 玩家在城门上选「出城 / 入城」→ `main._gate_note()` 用 `map_query.gate_crossing()` 算出 **城墙另一侧落脚点**（沿「玩家→城门」外推，城内/外由 `city_context` 校验）→ 系统提醒注入 → **由大模型调 `update_location` 落库**（硬事实由代码给，移动仍归 GM）。
+- `facilities.json` 加 `城门`（出城/入城/其他）；`总览.md` 加规则（闭门 卯-申 之外不放行）。玩家**直接打字「出城」**也能走。
+
+#### ⑥ 前端「详细」设施界面 + 事件图
+- POI 弹窗 `进入` → **`详细`**；`in-game/FacilityPanel.tsx` + `styles/FacilityPanel.css`：**无标题栏 / 无底板，只有居中竖排按钮**（`基础设施活动未选中按钮.png`；`:hover` 用 `选中按钮.png`）。
+- 按钮内：**左菱形宣纸槽放事件图**、右上浅带放**活动名**（墨色）、右下深带放**介绍**（白字）、活动名左侧**养成/自由**（深色小印 + 白字）；`.facility-list` 带 `n1..n4`（按选项条数，样式钩子）。
+- 背景 = **16:9 画布**（同叙事 `Background.css` 的 `.background`）+ `object-fit:cover` + `blur`；点「详细」→ 一次 `GET /facility`（选项 + 背景）→ 预加载背景图 → **背景 + 按钮一起淡入**。
+- **事件图 34 张**：`icongen/gen_event_icons.py` → `public/eventicons/<key>.png`（128×128、透明底、纯黑、手绘、无外框）。
+
+#### ⑦ 背景资产统一 16:9
+- `assets/背景/` 共 101 张**已全部 `1920×1080`**（此前 15 张黑夜图非 16:9）。**未被 git 跟踪**（改动前已整目录备份；新图必须 1920×1080）。
+
+### 16.19 技能树（养成重构）+ 相机 + /facility 收尾（2026-09-20）
+
+#### ① 技能树（零大模型）
+- **招式表搬到 server 并清空**：`trpg-server/招式表.json`（**运行表**，初始只有「普通攻击」）；`trpg-world/招式表.json` 已删。
+- **技能树（预制正典）**：`trpg-server/技能树.json`（22 节点草稿：水 6 + 火/金/木/土 各 4）+ 前置/要求/花费/数值。
+- **技能点**：`属性.json.技能点`；**修行/练习（设施 A 类点数）1%**、**真实战斗 2%**（模拟战不算），概率在 `成长.json.技能点概率`（热改）。
+- **点亮**（`tools/核心/skill_tree.py`）：前置 + 熟练度/基础数值 + 技能点 全达标 → 扣点，**同步写** `属性.json.五行.<行>.招式[]` 与 `招式表.json`。
+- **熟练度改伤害系数**：`battle._compute_damage` 里 `威力 × (1 + 五行熟练度 × 0.01)`；`growth._unlock_moves`（自动解锁）已删。
+- **接口**：`GET /skilltree`、`POST /skilltree/learn {name}`。
+
+#### ② 技能树前端（`in-game/SkillTree.tsx` + `styles/SkillTree.css`）
+- 菜单「技能树」→ **16:9 画布**（`STAGE = 1920×1080`，对齐游戏分辨率，居中留黑边）。
+- **第一幕**：`Galaxy.tsx`（ogl 星空，**不监听鼠标**）→ **穹顶弧**（左下→右下，五等分，顶边+弧围成 5 片）→ 五神像 + 神名（**随神倾斜**、名字远离中心）。
+- **第二幕**：点神 → 淡入该行技能树：**白珠链** + 节点三态（已学/可学/锁定）→ 点节点出详情卡 → 点亮；进某行时星空染上该神颜色（`st-tint`，浅）。
+- **神像**：`src/assets/神明/<行>.png`（`import.meta.glob` 读；**assets 不入 git**）。做图流程见 `五行/ai/README.md`（人画轮廓 / 机器「分区取边界 + 填洞取外轮廓」再平滑）。
+- 参数：`TILT_STEP`（倾角）、`NAME_OUT`（名字外移）、`GODS[].上移`、`GALAXY`（星空）、尺寸系数 `0.93`。
+
+#### ③ 相机（`Map.tsx`）
+- 探索时**玩家始终居中**；**禁止拖动**（`dragging={!lockZoom}`）；逐帧 `_rawPanBy` 拉回正中（<1px 死区防抖）。
+
+#### ④ `/facility` 收尾（`facility.py` / `main.py`）
+- **背景交后端确定性映射**：`GET /facility` 直接返回 `背景`（查 `场景映射.md` 的 kind→场景 + 按地名稳定散列）；**删 `GET /facility/ui` 与 `facility_ui`**（不再调小模型）。设施不在表里也返回通用选项 + 背景；前端一次 fetch → 预加载背景图 → 开面板。
+
+#### ⑤ 存档规则
+- `存档流程.md` 加「**传闻 ≠ 事实**」：NPC 口述可能真可能假；未证实用 `kind:"rumor"`，不当客观事实。
 
 ## 十七、已知问题 / 坑
 
@@ -1817,6 +1898,48 @@ trpg-world/势力介绍.json          ← 玩家可见源（已剔除剧透）
     其唯一读者 `游戏数据/混乱度.json` 已随之**废弃删除**（2026-09-18）。
 28. **部分场景缺 `黄昏.png`**：`坊 / 小巷 / 庭院 / 客栈一楼大厅` 只有白天/黑夜 → 酉时会回退显示白天图（美术资源缺口，非 bug）。
 
+### 17.5 大模型输出格式：当前处理与「循环重试」搁置方案
+
+> 背景：模型偶发不按 `chat/narration` JSON 数组输出（实测：一次工具调用之后直接写成散文）。当前已做成不会中断玩法；但「**重试到正确**」的更强方案**评估后搁置**（结论见下）。
+
+#### 当前处理：四层漏斗（`engine._finalize`）
+
+1. **第 0 层 · 容错解析**（`parse_instruction_array`，能救就不重试）：
+   去 ``` 围栏 → `json.loads`（数组，或**单个 `{type:chat|narration}` 对象**）→ 转义字符串值里未转义的英文双引号后再解 → 截最外层 `[...]`（无数组则 `{...}`）再解。
+2. **第 1 层 · 自动重试一次**：追加「模型坏输出（assistant）+ `FORMAT_CORRECTION`（user）」再请求一次；**用同一轮 `tools=self._tools`**，修正消息**不写 history**。
+3. **第 2 层 · 散文兜底**（`salvage_narration`）：重试仍失败 → 取重试文本（空则退回首版），若**非空且不像 JSON**（不以 `[`/`{` 开头、不含 `"type"`）→ 整段当一条 `narration`；打印 `[engine] 最终回复非 JSON，按旁白兜底：'…'`。
+4. **第 3 层 · 占位**：只有**两次都空**或**两次都是坏 JSON**（兜底拒绝）→ `（系统：主持人回复格式异常，请再行动一次。）`。
+
+**落库 / 回喂差异**：`current.jsonl.assistant_raw` = 模型**原始文本**（排查）；`session.history` = `normalized_assistant(raw)`（能解析回写规范 JSON，否则把散文包成规范 narration 再喂，引导回归）；`GET /history` 面板 = `parse_instructions`（同样带兜底）；返回前端的事件流 = 解析/兜底结果。
+
+**实测矩阵**：
+
+| 情况 | 重试次数 | 结果 |
+|---|---|---|
+| 合法数组 / 单对象 / 围栏 | 0 | 正常解析 |
+| 内层英文引号 | 0 | 转义救回 |
+| 散文 → 重试仍散文 | 1 | **当旁白显示** |
+| 散文 → 重试成功 | 1 | 用重试结果 |
+| 坏 JSON → 重试仍坏 | 1 | 占位提示 |
+| 空 → 重试空 | 1 | 占位提示 |
+| 散文 → 重试空 | 1 | 用首版当旁白 |
+| 坏 JSON → 重试散文 | 1 | 用重试的散文当旁白 |
+
+#### 搁置方案：循环重试直到解析成功
+
+**想法**：把「重试一次」推广为「循环 N 次直到解析成功，失败的尝试全部丢弃，只保留正确回答」。
+
+**评判（为什么先不做）**：
+
+- ✅ **可行**，且「只保留正确回答」**现已成立**：失败尝试不进 `history` / `current.jsonl`（日志只存最终 `assistant_raw`）。
+- ⚠️ **必须设上限**：LLM 随机，**无法保证第 N 次合法**；不限次 = 死循环 → 回合不返回 → `TurnRunner._lock` 长占 → 整局卡死。建议 **2–3 次**。
+- 🚨 **只能重试「最终成文」，绝不重跑工具**：若循环包住整个回合，模型可能**重复调用** `modify_money` / `advance_time` / `update_location` → 重复扣钱/计时/移动。现有 `_finalize` 天然安全（工具循环只跑一次，重试复用已执行的 `tool_msgs`、且**不执行重试里的 tool_calls**）——落地时必须保持这个边界。
+- 💰 **成本线性**：每次重试 = 一次带完整 rules+状态+history 的 LLM 调用；3 次 ≈ 4× 延迟与 token。
+- 🎯 **有效性取决于纠正语**：裸重试对「散文漂移」不一定有效；`FORMAT_CORRECTION` 目前只治**未转义引号**。应按**病因分流**：纯散文 → 「把同一段内容改写为 JSON 数组，不增删」；坏 JSON → 指出转义问题。
+- 🧩 **更根本的做法**：主请求上 `response_format={"type":"json_object"}`（`llm.complete_json` 已在用）把协议改成顶层对象 `{"instructions":[...]}` —— 从根上保证可解析；代价是**与 function calling 通常互斥**，需改协议并验证与工具循环共存。
+
+**结论**：值得做，但只是「1 次 → 2–3 次 + 按病因纠正语」的边际增强，**不是银弹**；真正保证合法 JSON 要靠结构化输出。**当前先维持四层漏斗**（已够用），需要时按上述边界在 `engine._finalize` 落地。
+
 ---
 
 ## 十八、关键文件速查
@@ -1824,6 +1947,17 @@ trpg-world/势力介绍.json          ← 玩家可见源（已剔除剧透）
 | 文件 | 用途 |
 |------|------|
 | `trpg-server/engine.py` | 引擎：会话 + 回合循环 + 状态现拼 + 过程日志 |
+| `trpg-server/tools/核心/growth.py` | **养成管道**（点数 ×buff ×曲线 → `属性.json`；buff 在 `加成.json`） |
+| `trpg-server/tools/大模型/facility.py` | 设施工具/接口（`use_facility` / `facility_detail`；养成 1% 掷技能点） |
+| `trpg-server/tools/核心/skill_tree.py` | **技能树**（`view`/`learn`/`roll_point`；正典 `技能树.json` → 写 `属性.json`+`招式表.json`） |
+| `trpg-server/技能树.json` | 技能树正典（22 节点：前置/要求/花费/数值） |
+| `trpg-server/招式表.json` | 玩家可用招式**运行表**（初始只有「普通攻击」） |
+| `trpg-server/facilities.json` | **基础设施功能表**（中文 kind + 别名 + 类型/介绍/图标/效果） |
+| `trpg-server/成长.json` | 成长曲线 + 战斗成长（热改） |
+| `trpg-client/src/in-game/FacilityPanel.tsx` + `styles/FacilityPanel.css` | 基础设施「详细」界面 |
+| `trpg-client/src/in-game/SkillTree.tsx` + `styles/SkillTree.css` | **技能树界面**（银河 + 五神穹顶弧 + 白珠链树；零大模型） |
+| `trpg-client/src/in-game/Galaxy.tsx` | ogl WebGL 星空（技能树背景） |
+| `trpg-map/draw_tiles/icongen/gen_event_icons.py` | 事件图（菱形纯黑 128×128）生成器 |
 | `trpg-server/save_pipeline.py` | 存档收尾管线（蒸馏 + 附加任务 + 看门狗） |
 | `trpg-server/main.py` | 路由 + bootstrap |
 | `trpg-server/llm.py` | 大模型客户端 |
