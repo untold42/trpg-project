@@ -130,6 +130,8 @@ type PlayerState = {
     背包?: { 物品?: Record<string, { 类型?: string; 数量?: number }> };
     属性?: { 基础属性?: Record<string, unknown> };
     基本信息?: Record<string, unknown>;
+    // 移动参数（后端 移动.json 下发）：轻功→步速 / 奔跑倍率
+    移动?: { 基础步速?: number; 轻功每点步速?: number; 奔跑倍率?: number };
 };
 
 type UiEvent = Extract<instruction, { type: "ui" }>;
@@ -245,6 +247,19 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     function applyState(s: PlayerState | null) {
         if (!s) return;
         setPlayerState(s);
+    }
+
+    // 探索奔跑结算：把「超出步行的距离（米）」交给后端扣精力（返回新状态）
+    async function handleRun(meters: number) {
+        if (!(meters > 0)) return;
+        try {
+            const res = await fetch("http://localhost:5000/run", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 奔跑米: meters }),
+            });
+            if (res.ok) applyState((await res.json()) as PlayerState);
+        } catch { /* 后端没起：忽略 */ }
     }
 
     // UI 事件旁路：kind:"bg" 切背景；kind:"music" 切音乐；kind:"mode" 返回给调用方定模式
@@ -670,6 +685,11 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         const 状态 = playerState?.状态 ?? {};        const 基础 = playerState?.属性?.基础属性 ?? {};
         const 物品 = playerState?.背包?.物品 ?? {};
         const 金钱 = playerState?.金钱?.金钱;
+        // 移动：轻功→步速、奔跑倍率（参数由后端 移动.json 下发）
+        const 轻功 = Number(基础.轻功 ?? 0) || 0;
+        const 移动 = playerState?.移动 ?? {};
+        const 步速 = (移动.基础步速 ?? BASE_WALK_MPS) * (1 + 轻功 * (移动.轻功每点步速 ?? 0.005));
+        const 奔跑倍率 = 移动.奔跑倍率 ?? RUN_MULT;
 
         const 金钱文本 = 金钱 == null ? "—" : `${金钱} 文`;
         const 背包文本 = Object.keys(物品).length
@@ -705,8 +725,9 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                             focus={cursor}
                             wasd
                             posRef={cursorRef}
-                            speedMps={BASE_WALK_MPS * clockRate}
-                            runMult={RUN_MULT}
+                            speedMps={步速 * clockRate}
+                            runMult={奔跑倍率}
+                            onRun={handleRun}
                             onPlaceAction={handlePlaceAction}
                             onPositionChange={handleExploreStop}
                         />
@@ -805,9 +826,9 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                 {
                 showMap && (
                     <div className="game-map">
-                        {/* 菜单地图 = 总览图：不启用探索迷雾，全部 POI 都画出来；**不带进入/观察/回忆按钮**。
-                            它只是「看」，可以自由搜/切城市——不会动玩家坐标（游戏城市由坐标决定）。 */}
-                        <GameMap isNight={isNight} shichen={shichen} showAllIcons
+                        {/* 菜单地图 = 总览图：**按已探索足迹启用迷雾**（只显示去过的区域，未探索的 POI 不可见/不可点）；
+                            **不带进入/观察/回忆按钮**。它只是「看」，可以自由搜/切城市——不会动玩家坐标（游戏城市由坐标决定）。 */}
+                        <GameMap isNight={isNight} shichen={shichen}
                             mapId={viewCity}
                             bounds={frameBounds(mapOf(viewCity)?.frame)}
                             center={frameCenter(mapOf(viewCity)?.frame)}

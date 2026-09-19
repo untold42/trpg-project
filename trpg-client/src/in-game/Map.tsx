@@ -139,12 +139,14 @@ function ClickToMove({ onMove }: { onMove?: (p: { lon: number; lat: number }) =>
  * - 松开按键时回调 `onStop(pos)`，把位置同步给父组件（迷雾轨迹 / 行动坐标）。
  */
 function ExploreControls({
-  posRef, speedMps, runMult, onStop, radiusKm, noPan = false, walkable, area,
+  posRef, speedMps, runMult, onStop, onRun, radiusKm, noPan = false, walkable, area,
 }: {
   posRef: MutableRefObject<{ lon: number; lat: number } | null>;
   speedMps: number;
   runMult: number;
   onStop: (p: { lon: number; lat: number }) => void;
+  /** 奔跑额外距离（米）上报（用于后端扣精力） */
+  onRun?: (extraMeters: number) => void;
   radiusKm: number;
   /** 只移动玩家、不移动镜头（?nopan=1） */
   noPan?: boolean;
@@ -158,6 +160,10 @@ function ExploreControls({
   const keysRef = useRef<Record<string, boolean>>({});
   const stopRef = useRef(onStop);
   stopRef.current = onStop;
+  const onRunRef = useRef(onRun);
+  onRunRef.current = onRun;
+  const runAccumRef = useRef(0);      // 累计「奔跑超出步行」的米数
+  const wasRunningRef = useRef(false);
 
   // 相机同步节流用
   const lastSyncRef = useRef(0);
@@ -281,6 +287,20 @@ function ExploreControls({
           blockedNow = !moved && !!walkable;
         }
         const cur = posRef.current!;
+
+        // 奔跑额外出力：只累计「超出步行的那部分距离」（碰撞未动则不计），
+        // 累积到 200 米 或 停止奔跑 时上报后端扣精力（时间流逝已在扣，避免双重计费）
+        const movedM = Math.hypot(
+          (cur.lat - p.lat) * M_PER_DEG_LAT,
+          (cur.lon - p.lon) * M_PER_DEG_LAT * Math.cos((cur.lat * Math.PI) / 180),
+        );
+        if (running) runAccumRef.current += movedM * (1 - 1 / runMult);
+        if ((wasRunningRef.current && !running) || runAccumRef.current >= 200) {
+          const m = runAccumRef.current;
+          runAccumRef.current = 0;
+          if (m > 1) onRunRef.current?.(m);
+        }
+        wasRunningRef.current = running;
 
         // 地形步速提示（常显；变化时才写 DOM）
         const tm = terrainAt(cur.lon, cur.lat);
@@ -452,14 +472,14 @@ export type GameMapProps = {
   speedMps?: number;
   /** 按住 Shift 时的速度倍数 */
   runMult?: number;
+  /** 奔跑「超出步行」的距离（米）——累积到一定量或松手时上报，用于扣精力 */
+  onRun?: (extraMeters: number) => void;
   /** WASD 移动停下时的回调（同步给父组件） */
   onPositionChange?: (p: { lon: number; lat: number }) => void;
   /** 是否夜晚（由游戏时钟裁决）：决定图标取 <键>/night.png 还是 <键>/day.png */
   isNight?: boolean;
   /** 当前时辰索引（0=子…11=亥）：决定打烊的地点夜里不亮灯 */
   shichen?: number;
-  /** 总览模式：**不启用探索迷雾**，全部 POI 都画（菜单里的地图用） */
-  showAllIcons?: boolean;
   /** 点击 POI 弹窗里的动作（进入 / 观察 / 回忆） */
   onPlaceAction?: (place: string, act: string) => void;
   /** 看哪张地图（默认 `?map=`）。探索地图应传**玩家所在城市** */
@@ -477,8 +497,8 @@ export type GameMapProps = {
 function GameMap({
   zoom = 16, playerOverride, onMove, extraFootprints, footprintVersion, focus,
   lockZoom = false,
-  wasd, posRef, speedMps = 20, runMult = 2.5, onPositionChange,
-  isNight = false, showAllIcons = false, shichen = -1, onPlaceAction,
+  wasd, posRef, speedMps = 20, runMult = 2.5, onPositionChange, onRun,
+  isNight = false, shichen = -1, onPlaceAction,
   mapId = MAP_ID, bounds, center, hidePlayer = false, flyTo = null,
 }: GameMapProps = {}) {
   const [player, setPlayer] = useState<PlayerPos | null>(null);
@@ -593,7 +613,7 @@ function GameMap({
         radiusKm={radiusKm}
         isNight={isNight}
         shichen={shichen}
-        noFog={showAllIcons || NO_FOG}
+        noFog={NO_FOG}
         hideIcons={NO_ICONS}
         hideHit={NO_HIT}
         onPlaceAction={onPlaceAction}
@@ -610,6 +630,7 @@ function GameMap({
           area={area}
           walkable={NO_WALK ? undefined : isWalkable}
           onStop={onPositionChange ?? (() => { })}
+          onRun={onRun}
         />
       ) : (
         shownPlayer && <PlayerMarker player={shownPlayer} />

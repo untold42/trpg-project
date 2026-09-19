@@ -25,7 +25,7 @@ const MIN_ICON_ZOOM = 15;
    每张地图一个库（`<map_id>-map-cache`），互不污染。 */
 const CACHE_STORE = "kv";
 const GEO_CACHE_KEY = "clickable-geojson";
-const GEO_VERSION = "v1"; // 重新导出 clickable.geojson 后，若想强制前端刷新，bump 此值
+const GEO_VERSION = "v2"; // 重新导出 clickable.geojson 后，若想强制前端刷新，bump 此值（v2: 岳阳水域 POI 修复）
 
 interface Footprint {
   lon: number;
@@ -44,7 +44,7 @@ interface ClickableLayerProps {
   isNight?: boolean;
   /** 当前时辰索引（0=子…11=亥）：打烊的地点夜里不亮灯 */
   shichen?: number;
-  /** 总览模式：**不做迷雾过滤**，全部要素直接可见（菜单里的地图用） */
+  /** 诊断开关（`?nofog=1`）：不做迷雾过滤，全部要素直接可见 */
   noFog?: boolean;
   /** 单点迷雾气泡（探索模式）：只保留这个点 ± radiusKm 内的要素 */
   focus?: { lon: number; lat: number } | null;
@@ -802,7 +802,7 @@ export default function ClickableLayer({
   // 探索迷雾：只保留落在任一脚迹点半径内的要素
   const visibleFeatures = useMemo(() => {
     if (!features) return null;
-    if (noFog) return features;        // 总览模式：不做迷雾过滤
+    if (noFog) return features;        // 诊断开关 ?nofog=1：不过滤
     if (focus) {
       // 探索模式：**只留玩家附近的要素**（单点气泡，不累积足迹）
       const r2 = radiusKm * radiusKm;
