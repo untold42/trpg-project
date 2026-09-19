@@ -29,6 +29,7 @@ from tools.大模型.state import (
     get_state,
 )
 from tools.大模型.ability import get_ability
+from tools.大模型.facility import use_facility
 from tools.大模型.file_tools import list_directory, read_file, write_file, edit_file
 from tools.大模型.get_character import get_character
 from tools.大模型.character_archive import update_character_archive
@@ -267,6 +268,29 @@ _ENTRIES = [
             },
         },
         get_ability,
+    ),
+    (
+        "use_facility",
+        {
+            "type": "function",
+            "function": {
+                "name": "use_facility",
+                "description": "玩家在基础设施（相扑场/武馆/棋馆/书院/游园/神庙…）里做了**具体活动**后，结算养成："
+                "点数类永久加对应属性；buff 类给当天成长加成。"
+                "玩家只表达「想要…」时先叙事铺垫，确已做了这次活动才调；一次活动只调一次。"
+                "`option` 用设施选项标签（如 练习 / 挑战 / 奉祀）；`target` 仅在设施效果为「五行.*」时填（火/金/木/土/水）。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "facility": {"type": "string", "description": "设施 kind（如 go）或名称（如 棋馆）"},
+                        "option": {"type": "string", "description": "玩家选的选项标签（如 练习 / 挑战 / 奉祀）"},
+                        "target": {"type": "string", "description": "五行行名，仅当效果为 五行.* 时填：火/金/木/土/水"},
+                    },
+                    "required": ["facility"],
+                },
+            },
+        },
+        use_facility,
     ),
     (
         "list_directory",
@@ -779,7 +803,7 @@ _ENTRIES = [
             "type": "function",
             "function": {
                 "name": "sleep",
-                "description": "玩家睡觉 / 打盹 / 过夜：推进时间并恢复精力。默认睡 4 个时辰。"
+                "description": "玩家睡觉 / 打盹 / 过夜：推进时间、恢复精力，并按睡过的时辰扣饥饿。默认睡 4 个时辰。"
                 "玩家明说睡下、歇息、过夜时调用；睡醒后时间已推进，不用再调 update_time。",
                 "parameters": {
                     "type": "object",
@@ -961,8 +985,8 @@ _SAVE_ONLY = {
 #:     设 `TRPG_FILE_TOOLS=1` 可临时启用（仅供开发调试）。
 #:   - 内容生成型骰子——已由「地点定时事件 + 世界系统」取代，见 `TODO.md`；
 #:     设 `TRPG_EVENT_DICE=1` 可临时启用（回滚/对照用）。
-#:   - `resume_exploration`——叙事→探索已改为「探索」按钮的**确定性元操作**
-#:     （`main.py` 传 `force_explore`）；不再依赖 GM 调工具。设 `TRPG_RESUME_TOOL=1` 可回滚。
+#:   - `resume_exploration`——叙事→探索已改为玩家的**自主切换**（纯前后端逻辑，
+#:     `engine.enter_explore()`，不经 GM）；不再依赖 GM 调工具。设 `TRPG_RESUME_TOOL=1` 可回滚。
 _DISABLED: set[str] = set()
 if os.environ.get("TRPG_FILE_TOOLS") != "1":
     _DISABLED |= {"list_directory", "read_file", "write_file", "edit_file"}

@@ -213,6 +213,20 @@ def _finalize() -> dict:
         st["生命值"] = int(p["生命"])
         st["精力值"] = int(p["内力"])
         game_state.save("状态", st)
+
+    growth_log = [] if _META.get("模拟") else _grant_battle_growth(b, p)
+
+    # 技能点：真实战斗（含败）2% 机率得 1 点；模拟战不算
+    point = None
+    if not _META.get("模拟"):
+        try:
+            from tools.核心 import skill_tree
+            pr = skill_tree.roll_point(skill_tree.chance_battle(), "战斗")
+            if pr.get("获得"):
+                point = pr["技能点"]
+        except Exception:
+            point = None
+
     summary = {
         "胜方": b.winner,
         "原因": b.result_reason,
@@ -223,9 +237,52 @@ def _finalize() -> dict:
         "约定撤退": [c["名字"] for c in b.cs if c.get("约定撤退")],
         "缘由": _META.get("缘由", ""),
     }
+    if growth_log:
+        summary["成长"] = growth_log
+    if point is not None:
+        summary["技能点"] = point
     _RUNNER = None
     _META = {}
     return summary
+
+
+def _grant_battle_growth(b, p) -> list:
+    """战斗结束 → 养成管道（用过的五行行 / 兵器 / 轻功）。参数在 `成长.json.战斗成长`。"""
+    if p is None:
+        return []
+    try:
+        from tools.核心 import growth
+    except Exception:
+        return []
+    cfg = (growth._config().get("战斗成长") or {})
+
+    def num(key):
+        try:
+            return float(cfg.get(key, 0) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    got = []
+    # 用过的五行行（日志里的「技能」招式 → 招式表的五行）
+    rows = set()
+    for e in getattr(b, "log", []) or []:
+        if e.get("类型") == "技能" and e.get("行动者") == p.get("名字"):
+            sk = B.get_skill(e.get("招式", ""))
+            row = (sk or {}).get("五行")
+            if row in growth.WUXING:
+                rows.add(row)
+    g_wx = num("五行")
+    if g_wx > 0:
+        for row in sorted(rows):
+            got.append(growth.gain(f"五行.{row}", g_wx, source="战斗"))
+    # 兵器（玩家最高兵器属性）
+    basic = (game_state.load("属性", {}) or {}).get("基础属性", {}) or {}
+    weapon = max(("剑法", "拳掌", "暗器"), key=lambda k: basic.get(k, 0) or 0)
+    if num("兵器") > 0:
+        got.append(growth.gain(f"基础属性.{weapon}", num("兵器"), source="战斗"))
+    if num("轻功") > 0:
+        got.append(growth.gain("基础属性.轻功", num("轻功"), source="战斗"))
+    return [g for g in got if isinstance(g, dict) and g.get("success")]
 
 
 def clear():

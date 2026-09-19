@@ -18,6 +18,7 @@ ui_sim.py
 总开关：`TRPG_UI_SIM=0` 关闭。
 """
 
+import hashlib
 import os
 import re
 from pathlib import Path
@@ -54,7 +55,7 @@ SYSTEM = (
     "「推门进了 / 屋里 / 雅间 / 房内 / 楼上」→ 用**室内**场景；分不清就用能涵盖两者的（如 街区 / 城市大街 / 坊）。"
     "音乐要按叙事的**情境 / 情绪**选（用户会给出候选与说明）。"
     "场景与音乐都**只能从给定枚举里选一个**；没有合适的、或与当前一致、或拿不准，就填「无」。"
-    "禁止叙述、禁止解释、禁止输出 JSON 以外的任何内容。"
+    "禁止叙述、禁止解释、禁止输出 JSON 以外的任何内容。\n/no_think"
 )
 
 
@@ -188,16 +189,10 @@ def _kind_of(location: str) -> str:
     return ""
 
 
-def scene_candidates(location: str = None, indoor: bool = False) -> list[str]:
-    """本地点允许的背景场景集合（**每个类型只给 2~4 个**，候选越少越不乱选）。
-
-    - 地点类型已映射（`场景映射.md`）→ 只在该类内选；
-    - 未映射 → 用 `室内` / `室外` **小兜底组**（按叙事判断），而不是放开全部 49 个；
-    - 城内安全网：排除荒野 / 乡村。
-    """
+def _scenes_for_kind(kind: str, indoor: bool = False) -> list[str]:
+    """按**已解析的地点类型**给背景候选（纯查表 + 城内安全网；不查库、不调模型）。"""
     all_scenes = scene_keys()
     mapping = scene_kind_map()
-    kind = _kind_of(location)
     if kind and mapping.get(kind):
         allowed = [s for s in all_scenes if s in mapping[kind]]
         # 城内安全网也要管「已映射」的类型：
@@ -218,6 +213,35 @@ def scene_candidates(location: str = None, indoor: bool = False) -> list[str]:
         if urban:
             return urban
     return all_scenes
+
+
+def scene_candidates(location: str = None, indoor: bool = False) -> list[str]:
+    """本地点允许的背景场景集合（**每个类型只给 2~4 个**，候选越少越不乱选）。
+
+    - 地点类型已映射（`场景映射.md`）→ 只在该类内选；
+    - 未映射 → 用 `室内` / `室外` **小兜底组**（按叙事判断），而不是放开全部 49 个；
+    - 城内安全网：排除荒野 / 乡村。
+    """
+    return _scenes_for_kind(_kind_of(location), indoor)
+
+
+def scenes_for_kind(kind: str, indoor: bool = False) -> list[str]:
+    """按地点类型（kind）直接给候选——不查库（调用方已知 kind 时用）。"""
+    return _scenes_for_kind((kind or "").strip(), indoor)
+
+
+def scene_for(kind: str, place: str = "", indoor: bool = False) -> str:
+    """**确定性**选一个背景场景（不调模型）。
+
+    kind 有映射：在候选里按 `place`（地点名）做**稳定散列**取一个——
+    同一地点每次相同，不同地点可能不同；没映射就退回兜底组第一个。
+    """
+    cands = scenes_for_kind(kind, indoor)
+    if not cands:
+        return "城市大街"
+    seed = (place or kind or "").encode("utf-8")
+    idx = int(hashlib.md5(seed).hexdigest(), 16) % len(cands)
+    return cands[idx]
 
 
 #: 叙事里表示「进/出/移动」的词——只有出现这些才允许换背景（场景状态机，见 engine）
@@ -320,6 +344,20 @@ _EXPLORE_SYSTEM = (
     "从给定通用曲里挑**一首**适合赶路 / 逛街 / 探索的（偏中性、清闲、行进感），只输出 JSON。"
     "只能选给定清单里的一首；拿不准就选「" + DEFAULT_TRACK + "」。禁止思考、禁止解释。\n/no_think"
 )
+
+
+def default_explore_track(current: str = "") -> str:
+    """确定性的通用探索曲（**不调小模型**，瞬时返回）。
+
+    优先 `DEFAULT_TRACK`，否则取通用曲第一首；当前已在放通用曲则返回 ""（无需切换）。
+    供 `engine.enter_explore()`（玩家自主切探索）使用。
+    """
+    tracks = general_tracks()
+    if not tracks:
+        return ""
+    if current and current in tracks:
+        return ""
+    return DEFAULT_TRACK if DEFAULT_TRACK in tracks else tracks[0]
 
 
 def explore_track(current: str = "") -> str:
@@ -478,7 +516,7 @@ def generate(narration: str, location: str = None,
         f"当前时辰：{current_shichen() or '未知'}\n"
         f"最近叙事：\n{narration[:800]}"
     )
-    r = small_model.ask_json(SYSTEM, user, _schema(scenes, tracks))
+    r = small_model.ask_json(SYSTEM, user, _schema(scenes, tracks), max_tokens=128)
     if not isinstance(r, dict):
         return []
 

@@ -32,8 +32,7 @@ from tools.核心.state_manager import state
 # ------------------------------------------------------------
 # 路径 / 常量
 # ------------------------------------------------------------
-_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-_SKILL_TABLE_PATH = _ROOT / "trpg-world" / "招式表.json"
+_SKILL_TABLE_PATH = Path(__file__).resolve().parent.parent.parent / "招式表.json"
 
 GRID_W, GRID_H = 10, 6
 ALLIES_START_X = (0, 1)     # 友方起始列（左）
@@ -122,7 +121,7 @@ def weapon_kind(c: dict) -> str:
 
 
 def _skill_table() -> dict:
-    """读 `trpg-world/招式表.json`（带缓存）。失败返回空结构。"""
+    """读 `trpg-server/招式表.json`（玩家当前可用招式，带缓存）。失败返回空结构。"""
     cached = getattr(_skill_table, "_cache", None)
     try:
         mtime = _SKILL_TABLE_PATH.stat().st_mtime
@@ -214,6 +213,9 @@ def player_combatant(x: int = None, y: int = None) -> dict:
         },
         "兵器": weapon,
         "武器类型": "利器",   # 五行剑 → 利器（伤害高、命中即流血）
+        # 五行熟练度（战斗伤害系数：每点 +1%）；与「五行克制」用的 target["五行"] 区分开
+        "五行熟练度": {k: int(((ab.get("五行") or {}).get(k) or {}).get("熟练度", 0) or 0)
+                     for k in ("火", "金", "木", "土", "水")},
         "梯度": (state.load("基本信息", {}) or {}).get("人物", {}).get("梯度", "T2"),
         "招式": _player_skills(ab),
         "buff": [],
@@ -228,20 +230,11 @@ def player_combatant(x: int = None, y: int = None) -> dict:
 
 
 def _player_skills(属性: dict) -> list[str]:
-    """玩家可用的五行招式：熟练度 ≥ 30 的行，其招式且招式表里存在。
-
-    字段名兼容：现为 `五行`，旧档为 `五行剑`。
-    """
+    """玩家已点亮的招式（由技能树写入 `属性.五行.<行>.招式[]`，且招式表里存在）。"""
     rows = 属性.get("五行") or 属性.get("五行剑") or {}
     out = []
     for 行, data in rows.items():
         if not isinstance(data, dict) or 行.startswith("_"):
-            continue
-        try:
-            prof = int(data.get("熟练度", 0))
-        except (TypeError, ValueError):
-            prof = 0
-        if prof < 30:
             continue
         for s in data.get("招式", []) or []:
             name = (s or {}).get("名称") if isinstance(s, dict) else None
@@ -778,6 +771,9 @@ class Battle:
                 ke = KE_ADV
             elif WUXING_KE.get(d5) == a5:
                 ke = KE_DIS
+        # 五行熟练度 → 伤害系数（每点 +1%；普通攻击 a5="无" → 0）
+        prof = int((actor.get("五行熟练度") or {}).get(a5, 0) or 0)
+        base *= (1 + prof * 0.01)
         base *= ke * pos["伤害"] * dmg_k
         # 蓄力（水行伤害招式消耗全部层数，每层 +33%）
         stack = self._stack(actor, "蓄力")

@@ -45,7 +45,7 @@ from tools.小模型 import ui_sim
 from tools.核心 import map_query
 from tools.小模型 import expression_sim
 from tools.核心 import audit
-from tools.大模型.registry import SAVE_TOOLS, ALL_TOOL_NAMES, SAVE_TOOL_NAMES
+from tools.大模型.registry import SAVE_TOOLS, ALL_TOOLS, ALL_TOOL_NAMES, SAVE_TOOL_NAMES
 
 # ------------------------------------------------------------
 # 路径
@@ -187,13 +187,82 @@ def _time_advanced(events) -> str:
 
 
 def _to_explore(ui_events) -> bool:
-    """本轮是否切到探索模式（`mode:"explore"` UI 事件：探索按钮 / 旧工具）。"""
+    """本轮是否切到探索模式（`mode:"explore"` UI 事件：GM 调 `resume_exploration`）。"""
     for e in ui_events or []:
         if not isinstance(e, dict) or e.get("type") != "ui" or e.get("kind") != "mode":
             continue
         if (e.get("data") or {}).get("mode") == "explore":
             return True
     return False
+
+
+# ------------------------------------------------------------
+# 时间工具的硬门禁（只有玩家在说「花时间的事」才下发）
+# ------------------------------------------------------------
+#: 「时间工具」——默认**不下发**给大模型，除非玩家本轮输入命中下方关键词。
+#: 为什么：时钟是连续的（叙事/探索中一直在走），「起身 / 道谢 / 离开 / 出门」这类
+#: 微动作本就已被时钟计入；再让 GM 随手 advance_time 会重复计时。更关键的是，
+#: 每次工具调用都会让模型**多走一轮 LLM**，那一轮极易滑出 JSON 格式（实测）。
+TIME_TOOL_NAMES = frozenset({"advance_time", "update_time", "sleep"})
+
+#: 玩家输入命中这些词才把时间工具下发。按需增删（子串匹配，不用分词）。
+TIME_ACTION_KEYWORDS = (
+    # 睡觉 / 休息 / 疗养
+    "睡", "眠", "寝", "歇", "打盹", "小憩", "过夜", "午休",
+    "休息", "休整", "调息", "养伤", "疗伤", "静养", "养病", "歇脚", "休憩",
+    "留宿", "住下", "投宿",
+    # 等待 / 蹲守 / 逗留
+    "等", "等待", "等候", "稍等", "久等", "静候", "守候", "蹲守", "埋伏",
+    "候着", "停留", "逗留", "驻扎", "待久", "多待", "多留",
+    "一会儿", "片刻", "半晌", "多时", "许久", "良久", "一阵", "半天",
+    # 大跨度（玩家直说时长）
+    "几日", "数日", "几天", "数天", "多日", "半月", "数月", "隔天", "次日", "翌日",
+    # 工作 / 干活
+    "工作", "干活", "做工", "上工", "帮工", "打杂", "劳作", "务农",
+    "做事", "看店", "经营", "当值", "值班",
+    # 修行 / 训练 / 钻研
+    "修行", "修炼", "练功", "习武", "练武", "打坐", "运功", "参悟",
+    "打拳", "练剑", "练刀", "训练", "演练", "钻研", "闭关", "吐纳",
+    "静修", "静坐", "参禅", "入定", "面壁",
+    # 赶路 / 长途（连续时钟兜不住的大跨度）
+    "赶路", "赶车", "赶船", "行路", "赶赴", "长途", "跋涉", "远行",
+    "启程", "动身", "乘船", "坐船", "搭船", "骑马",
+)
+
+
+def _tool_name(schema: dict) -> str:
+    return ((schema.get("function") or {}).get("name") or "")
+
+
+#: 去掉时间工具后的 schema 列表（按轮下发给大模型）
+ALL_TOOLS_NO_TIME = [t for t in ALL_TOOLS if _tool_name(t) not in TIME_TOOL_NAMES]
+#: 去掉时间工具后的工具名集合（按轮校验，防幻觉调用）
+ALL_TOOL_NAMES_NO_TIME = ALL_TOOL_NAMES - TIME_TOOL_NAMES
+
+
+def is_time_action(mode: str, raw: str, ke: int = 0) -> bool:
+    """本轮是否允许把「时间工具」下发给大模型。
+
+    - 「继续」按钮（`mode="continue"` 且 `ke>0`）：本来就是让时间流逝 → 放行；
+    - 角色行动（`action`）：输入里出现「花时间的事」的关键词才放行；
+    - 台词 / 场外 / 观察：不放行（本来也禁止改时间）。
+    """
+    if mode == "continue":
+        try:
+            return int(ke or 0) > 0
+        except (TypeError, ValueError):
+            return False
+    if mode != "action":
+        return False
+    text = raw or ""
+    if any(k in text for k in TIME_ACTION_KEYWORDS):
+        return True
+    # 设施活动（相扑 / 游园 / 拜神 / 下棋 / 读书…）也消耗时间，由 facilities.json 的触发词判定
+    try:
+        from tools.大模型.facility import trigger_hit
+        return trigger_hit(text)
+    except Exception:
+        return False
 
 
 # ------------------------------------------------------------
@@ -264,8 +333,11 @@ def read_turns(log_path) -> list[dict]:
 
 
 def parse_instructions(raw) -> list:
-    """解析 assistant_raw 里的指令数组（容错 JSON，见 parse_instruction_array）。"""
-    return parse_instruction_array(raw) or []
+    """解析 assistant_raw 里的指令数组（容错 JSON，见 parse_instruction_array）。
+
+    完全解析不出数组时，退一步把整段文本当作一条旁白（历史面板不至于漏掉这一轮）。
+    """
+    return parse_instruction_array(raw) or salvage_narration(raw)
 
 
 def history_lines(turns: list[dict]) -> list[str]:
@@ -546,12 +618,21 @@ def _escape_inner_quotes(s: str) -> str:
     return "".join(out)
 
 
+def _coerce_instructions(data):
+    """把解析出的 JSON 变成指令数组：数组原样；单个 `chat`/`narration` 对象包成数组。"""
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict) and data.get("type") in ("chat", "narration"):
+        return [data]
+    return None
+
+
 def _try_json_array(s: str):
     try:
         data = json.loads(s)
     except (json.JSONDecodeError, TypeError):
         return None
-    return data if isinstance(data, list) else None
+    return _coerce_instructions(data)
 
 
 def parse_instruction_array(raw: str):
@@ -570,8 +651,10 @@ def parse_instruction_array(raw: str):
     data = _try_json_array(_escape_inner_quotes(s))
     if data is not None:
         return data
-    # 再退一步：截取最外层 [...]（去掉前后废话）再试一次
+    # 再退一步：截取最外层 [...]（去掉前后废话）再试一次；没有数组时试最外层 {...}
     a, b = s.find("["), s.rfind("]")
+    if a == -1 or b <= a:
+        a, b = s.find("{"), s.rfind("}")
     if a != -1 and b > a:
         seg = s[a:b + 1]
         for cand in (seg, _escape_inner_quotes(seg)):
@@ -581,14 +664,37 @@ def parse_instruction_array(raw: str):
     return None
 
 
+def _looks_like_json(s: str) -> bool:
+    """文本像不像「正在尝试输出 JSON」——用来决定失败时能不能当散文兑底。"""
+    t = _strip_code_fence(s or "").strip()
+    return t.startswith("[") or t.startswith("{") or '"type"' in t
+
+
+def salvage_narration(raw: str) -> list:
+    """最后的兜底：把模型整段散文当作一条 `narration` 用掉。
+
+    仅当 `parse_instruction_array` 完全失败、且文本**不像在尝试 JSON** 时使用。
+    大模型在一次工具调用之后偶尔会不按 JSON 输出、直接把旁白写出来（实测：
+    `advance_time` 之后）。此时散文往往就是可用旁白，不该拿“格式异常”占位把它丢掉。
+    反之，若文本已经是「一截坏 JSON」（以 `[`/`{`/`"type"` 开头），不能当旁白嗂给玩家。
+    """
+    txt = _strip_code_fence(raw or "").strip()
+    if not txt or _looks_like_json(txt):
+        return []
+    return [{"type": "narration", "content": txt}]
+
+
 def normalized_assistant(raw: str) -> str:
     """喂回模型的 assistant 文本：能解析就回写**规范 JSON**。
 
     避免把模型自己的非法输出（未转义引号等）原样再喂回去，恶性循环。
+    连数组都解析不出时，把散文包成规范 narration 再喂回（引导它下一轮回到 JSON）。
     日志仍保留原始 `assistant_raw` 便于排查。
     """
     ev = parse_instruction_array(raw)
-    if isinstance(ev, list):
+    if not isinstance(ev, list):
+        ev = salvage_narration(raw)
+    if isinstance(ev, list) and ev:
         try:
             return json.dumps(ev, ensure_ascii=False)
         except (TypeError, ValueError):
@@ -648,36 +754,69 @@ class TurnRunner:
         self.send_messages = send_messages
         self.tools_map = tools_map
         #: 本轮允许调用的工具名（None = 不校验）。**按轮设置**：
-        #:   游戏回合 = ALL_TOOL_NAMES；存档回合 = SAVE_TOOL_NAMES。
+        #:   游戏回合 = ALL_TOOL_NAMES（未说「花时间的事」时减去时间工具）；存档回合 = SAVE_TOOL_NAMES。
         #:   存档专用工具既不会下发给游戏中的模型，也无法被幻觉调用。
         self._allowed: set[str] | None = None
+        #: 本轮**实际下发**给大模型的工具 schema（按轮设置，见 `run`）。
+        self._tools: list | None = None
         self._lock = threading.RLock()  # 串行化回合（**可重入**：run_save 会嵌套调 _run_save）
 
     def run(self, user_input: str, mode: str = "action", from_explore: bool = False,
-            force_explore: bool = False) -> list[dict]:
+            allow_time: bool = True) -> list[dict]:
         """跑完一个回合，返回统一事件流。
 
         mode: "action"（角色行动）| "gm"（玩家对主持人的场外话）。
         from_explore: 本轮是**玩家从探索模式发起的输入**（带坐标）——
                       进入叙事时必须重新选一次背景/音乐（见 #5）。
-        force_explore: 玩家点了「探索」按钮（确定性元操作）——无论 GM 调没调
-                       `resume_exploration`，都保证发一份 `mode:explore`。
+        allow_time: 是否把**时间工具**（advance_time/update_time/sleep）下发给大模型。
+                    默认 True（兼容直接调用）；HTTP 层用 `is_time_action()` 按玩家输入判定。
         形状：[...工具 UI 事件, ...LLM 叙事指令]
         每条为 {"type": "ui"|"chat"|"narration", ...}
         """
         with self._lock:
             # LLM 请求窗口：暂停连续时钟（生成/工具耗时不计入游戏时间），返回后恢复
             clock.pause("turn")
-            prev, self._allowed = self._allowed, ALL_TOOL_NAMES
+            prev_allowed, prev_tools = self._allowed, self._tools
+            self._select_tools(allow_time)
             try:
-                return self._run(user_input, mode, from_explore, force_explore)
+                return self._run(user_input, mode, from_explore)
             finally:
-                self._allowed = prev
+                self._allowed, self._tools = prev_allowed, prev_tools
                 clock.resume("turn")
 
+    def _select_tools(self, allow_time: bool) -> None:
+        """按轮决定下发哪些工具：时间工具硬门禁。
+
+        `allow_time=False` 时，`advance_time` / `update_time` / `sleep`
+        **既不下发给大模型，也不在 `_allowed` 白名单里**（幻觉调用也会被拒）。
+        """
+        if allow_time:
+            self._allowed, self._tools = ALL_TOOL_NAMES, ALL_TOOLS
+        else:
+            self._allowed, self._tools = ALL_TOOL_NAMES_NO_TIME, ALL_TOOLS_NO_TIME
+
+    def enter_explore(self) -> list[dict]:
+        """玩家自主从叙事切回探索（**纯前后端逻辑，不经 GM、不调任何大模型**）。
+
+        何时回大地图是玩家的自由，不需要主持人同意，也不该花一次 LLM 回合。
+        只产出 UI 事件：切模式 + 换一首**通用**探索 BGM（确定性选曲）。
+        不写 `history`、不落 `current.jsonl`（这不是叙事回合）。
+        """
+        with self._lock:
+            return [mode_event("explore"), *self._explore_music_events()]
+
+    def _explore_music_events(self) -> list[dict]:
+        """切到探索时换通用曲（确定性、不叫小模型）。已在放通用曲则不动。"""
+        if not ui_sim.ENABLED:
+            return []
+        track = ui_sim.default_explore_track(self.session.last_music)
+        if track and track != self.session.last_music:
+            self.session.last_music = track
+            return [music_event(track)]
+        return []
+
     # ---- 内部 ----
-    def _run(self, user_input: str, mode: str = "action", from_explore: bool = False,
-             force_explore: bool = False) -> list[dict]:
+    def _run(self, user_input: str, mode: str = "action", from_explore: bool = False) -> list[dict]:
         session = self.session
         session.history.append({"role": "user", "content": user_input})
 
@@ -685,7 +824,7 @@ class TurnRunner:
         tool_records: list[dict] = []
         ui_events: list[dict] = []
 
-        result = self.send_messages(session.build_messages(tool_msgs))
+        result = self.send_messages(session.build_messages(tool_msgs), tools=self._tools)
         _rounds = 0
         while result.tool_calls and _rounds < 12:      # 轮数上限，防模型无限调工具
             _rounds += 1
@@ -725,7 +864,7 @@ class TurnRunner:
                     "result": llm_result,
                 })
             # 4) 工具执行完，再次请求（build_messages 会重拼最新状态）
-            result = self.send_messages(session.build_messages(tool_msgs))
+            result = self.send_messages(session.build_messages(tool_msgs), tools=self._tools)
 
         # 5) 解析最终 JSON（必要时请求一次格式修正）
         raw, events = self._finalize(result, tool_msgs)
@@ -736,19 +875,11 @@ class TurnRunner:
         # 5c) UI 事件（小模型）：背景 / 音乐
         #     探索→叙事（from_explore）时 **强制重选**（绕过去重），保证一切入叙事就有 bg+音乐
         scene_ui = self._scene_ui_events(events, force=from_explore)
-        # 「探索」按钮是**确定性元操作**：GM 忘了调 resume_exploration 也照样切回地图
-        if force_explore and not _to_explore(ui_events):
-            ui_events = [*ui_events, mode_event("explore")]
-        # 叙事 → 探索（resume_exploration）：换一首**通用**背景乐，
-        # 别把青楼/酒楼等场所专属曲带到大地图上（小模型从「通用曲」里挑）
-        if ui_sim.ENABLED and _to_explore(ui_events):
-            try:
-                track = ui_sim.explore_track(self.session.last_music)
-            except Exception:
-                track = ui_sim.DEFAULT_TRACK
-            if track and track != self.session.last_music:
-                self.session.last_music = track
-                scene_ui = [*scene_ui, music_event(track)]
+        # 叙事 → 探索（GM 调 resume_exploration）：换一首**通用**背景乐，
+        # 别把青楼/酒楼等场所专属曲带到大地图上（小模型从「通用曲」里挑）。
+        # 注：玩家点「探索」按钮走 `enter_explore()`，不经过本方法。
+        if _to_explore(ui_events):
+            scene_ui = [*scene_ui, *self._explore_music_events()]
 
         session.history.append({"role": "assistant", "content": normalized_assistant(raw)})
         session.append_turn({
@@ -891,7 +1022,14 @@ class TurnRunner:
             return {"success": False, "error": str(e)}
 
     def _check_time_authority(self, events, tool_records):
-        """时间权威：叙述推进了时间，却未调用 advance_time / update_time → 记提醒，下一轮注入。"""
+        """时间权威：叙述推进了时间，却未调用 advance_time / update_time → 记提醒，下一轮注入。
+
+        本轮**没下发**时间工具时（玩家没说「花时间的事」）不提醒：模型想补也补不了，
+        提醒只会让下一轮更加混乱。
+        """
+        if self._allowed is not None and not (self._allowed & TIME_TOOL_NAMES):
+            self.session.pending_time_note = ""
+            return
         called = any(tc.get("name") in ("advance_time", "update_time") for tc in tool_records)
         hit = _time_advanced(events)
         if called:
@@ -1024,13 +1162,21 @@ class TurnRunner:
             {"role": "assistant", "content": raw},
             {"role": "user", "content": self.FORMAT_CORRECTION},
         ]
-        retry = self.send_messages(self.session.build_messages(correction_msgs))
+        retry = self.send_messages(self.session.build_messages(correction_msgs), tools=self._tools)
         retry_raw = retry.content or ""
         retry_events = self._parse(retry_raw)
         if retry_events is not None:
             return retry_raw, retry_events
 
-        # 两次都失败：不让整局崩，返回一条旁白占位
+        # 两次都不合 JSON：模型很可能整段直接写了旁白（工具调用后偶发）——
+        # 兜底当作 narration 用掉，别让玩家看到「格式异常」占位。
+        for cand in (retry_raw, raw):
+            salvage = salvage_narration(cand)
+            if salvage:
+                print(f"[engine] 最终回复非 JSON，按旁白兜底：{salvage[0]['content'][:80]!r}")
+                return cand, salvage
+
+        # 两次都空：这才给占位
         return raw, [{
             "type": "narration",
             "content": "（系统：主持人回复格式异常，请再行动一次。）",

@@ -13,6 +13,7 @@ from tools.大模型.factions import list_factions
 from tools.大模型.recap import build_recap
 from tools.大模型.place_recall import recall_place
 from tools.大模型.difficulty_settings import get_settings, set_difficulty
+from tools.大模型.facility import facility_detail
 from tools.核心.map_settings import get_settings as get_map_settings, set_map
 from tools.核心 import movement
 
@@ -22,7 +23,7 @@ from tools.大模型 import battle_session
 from tools.大模型.battle_settings import THOUGHT_MODEL_OPTIONS, get_thought_model, set_thought_model
 
 # 引擎（回合运行 + 会话 + 过程日志）
-from engine import GameSession, TurnRunner, continue_cue, observe_cue, OBSERVE_NOTE, OOC_NOTE
+from engine import GameSession, TurnRunner, continue_cue, observe_cue, OBSERVE_NOTE, OOC_NOTE, is_time_action
 
 # 存档收尾管线
 from save_pipeline import run_save
@@ -221,6 +222,38 @@ def _apply_move(coord) -> str:
     return "【移动】" + msg + "。" + (f"（{hint}）" if hint else "")
 
 
+#: 过城门意图词（玩家点「出城/入城」或直接说）
+_GATE_WORDS = ("出城", "入城", "进城", "过城门", "出城门")
+
+
+def _gate_note(raw: str) -> str:
+    """玩家要过城门 → 算「城墙另一侧」落脚点，返回给主持人的系统提醒。
+
+    城门是硬事实（由城墙算），但**移动仍由大模型调 `update_location` 落库**（不自动挪）。
+    """
+    if not any(w in (raw or "") for w in _GATE_WORDS):
+        return ""
+    pos = (state.load("基本信息", {}) or {}).get("位置", {}) or {}
+    try:
+        from tools.核心.map_query import gate_crossing
+        gc = gate_crossing(pos.get("经度"), pos.get("纬度"))
+    except Exception:
+        return ""
+    if not gc:
+        return ""
+    lp = gc["落脚点"]
+    side = "外" if gc.get("落脚在城内") is False else "内"
+    closed = (
+        "⚠️ 此刻城门**闭着**——不得放行，只能等开门（先 advance_time）或另想办法。"
+        if not gc.get("可通行") else "（此刻门开着）"
+    )
+    return (
+        f"【过城门】玩家欲{gc['方向']}，最近城门「{gc['城门']}」。{closed}"
+        f"请先叙验籍 / 门军，再调 `update_location(lon={lp['lon']}, lat={lp['lat']})` "
+        f"把梁峰移到城墙{side}侧的合理地点（之后城内外字段会自动更新）。"
+    )
+
+
 # ------------------------------------------------------------
 # 战斗（回合制 n vs n）
 # ------------------------------------------------------------
@@ -350,6 +383,44 @@ def save():
     return jsonify(result)
 
 
+@app.route("/explore", methods=["POST"])
+def enter_explore_route():
+    """玩家自主从叙事切回探索（纯前后端逻辑，不经 GM）。
+
+    前端「探索」按钮的新入口；旧前端仍可走 /action（mode=gm，内含「进入探索」），
+    后端会短路到同一逻辑。返回统一 UI 事件流（mode:explore + 通用 BGM）。
+    """
+    return jsonify(runner.enter_explore())
+
+
+@app.route("/facility", methods=["GET"])
+def get_facility_route():
+    """基础设施「详细」界面用：名称 + 选项 + 耗时 + **背景**（映射，不调模型）。
+
+    **秒返回**：选项查 `facilities.json`，背景查 `场景映射.md` + 按地名稳定散列。
+    参数：`?kind=棋馆&name=棋馆`（kind 优先；设施不在表里也能返回通用选项 + 背景）。
+    """
+    q = request.args.get("kind") or request.args.get("name") or ""
+    nm = request.args.get("name") or q
+    return jsonify(facility_detail(q, nm))
+
+
+@app.route("/skilltree", methods=["GET"])
+def get_skilltree_route():
+    """技能树全貌 + 玩家状态（技能点 / 每节点 已学·可学·锁定 + 原因）。**不调模型、秒回**。"""
+    from tools.核心 import skill_tree
+    return jsonify(skill_tree.view())
+
+
+@app.route("/skilltree/learn", methods=["POST"])
+def learn_skill_route():
+    """点亮一个技能（花技能点）→ 同步写 `属性.json` + `招式表.json`。body: `{name}`。"""
+    from tools.核心 import skill_tree
+    data = request.get_json(silent=True) or {}
+    name = str(data.get("name") or data.get("技能") or "").strip()
+    return jsonify(skill_tree.learn(name))
+
+
 @app.route("/action", methods=["POST"])
 def action():
     data = request.json or {}
@@ -359,23 +430,41 @@ def action():
     if mode not in ("action", "say", "gm", "continue", "observe"):
         mode = "action"
 
+    # 叙事 → 探索：玩家的自主决定（**纯前后端逻辑**）——不发给 GM、不调大模型，立即切回地图。
+    # 前端「探索」按钮仍走 /action（mode=gm），这里短路处理；新入口见 POST /explore。
+    if mode == "gm" and "进入探索" in raw:
+        return jsonify(runner.enter_explore())
+
     # 探索模式：前端带上光标坐标 → 更新玩家位置，并把「从哪到哪」作为系统提醒注入本轮
     from_explore = bool(data.get("坐标"))
     note = _apply_move(data.get("坐标"))
     if note:
         runner.session.pending_notes.append(note)
 
+    # 过城门：玩家点「出城/入城」（或直说）→ 注入「墙另一侧落脚点」，由 GM 调 update_location
+    if mode == "action":
+        gate_note = _gate_note(raw)
+        if gate_note:
+            runner.session.pending_notes.append(gate_note)
+
     # 意外机制：只作用于角色行动
     if mode == "action" and accident():
         raw += "(意外：梁峰行动失败)"
 
-    # 组装 LLM 看到的文本
-    is_explore_req = mode == "gm" and "进入探索" in raw
+    # 时间工具的**硬门禁**：只有玩家本轮在说「花时间的事」（睡觉 / 等待 / 工作 / 修行…）
+    # 才把 advance_time / update_time / sleep 下发给大模型；否则模型根本看不到这些工具。
+    # 「继续」按钮（ke>0）另算。详见 engine.is_time_action / TIME_ACTION_KEYWORDS。
     if mode == "continue":
         try:
             ke = max(0, int(data.get("ke", 2)))
         except (TypeError, ValueError):
             ke = 2
+    else:
+        ke = 0
+    allow_time = is_time_action(mode, raw, ke)
+
+    # 组装 LLM 看到的文本
+    if mode == "continue":
         text = continue_cue(ke)
     elif mode == "say":
         text = "梁峰开口说：「" + raw + "」"
@@ -387,10 +476,9 @@ def action():
         text = "梁峰：" + raw
     else:
         text = "玩家的对主持人说的话：" + raw
-        # 场外话（OOC）：用现代白话直答，不得入戏（探索请求除外——那要叙述离场）
-        if not is_explore_req:
-            runner.session.pending_notes.append(OOC_NOTE)
-    events = runner.run(text, mode, from_explore, force_explore=is_explore_req)
+        # 场外话（OOC）：用现代白话直答，不得入戏
+        runner.session.pending_notes.append(OOC_NOTE)
+    events = runner.run(text, mode, from_explore, allow_time=allow_time)
     time_flow.pump()   # 回合结束后结算时间流逝（精力 / 跨日）
     return jsonify(events)
 

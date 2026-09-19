@@ -8,7 +8,8 @@ time_flow.py
     - 跨**时辰** → 精力随昼夜流逝（**熬夜的夜时辰扣得更狠**）；
     - 跨**日**   → 切当天天气 + 触发世界推演 worker。
 - `rest(时辰)`（工具 `sleep`）：
-    - 先 `pump()` 结算清醒时段 → 推进时钟 → 把睡眠时段按**恢复**而非消耗结算。
+    - 先 `pump()` 结算清醒时段 → 推进时钟 → 精力按**恢复**结算；
+    - **饥饿仍按睡过的时辰照扣**（睡觉也会饿），结果一并返回 `饥饿` / `饥饿下降`。
 
 调参：`trpg-server/时间影响.json`（缺失/损坏用代码默认；改文件即时生效）。
 """
@@ -128,12 +129,19 @@ def _recover_tp(n: int) -> int:
 
 
 def _on_new_day(date: str):
-    """跨日联动：切当天天气 + 触发世界推演。失败不影响玩（off-screen）。"""
+    """跨日联动：切当天天气 + 触发世界推演 + 清过期加成。失败不影响玩（off-screen）。"""
     try:
         from tools.核心 import weather_system
         weather_system.get_weather(date=date)
     except Exception as e:
         print(f"[time_flow] 天气更新失败：{e}")
+    try:
+        from tools.核心 import growth
+        dead = growth.clear_expired(date)
+        if dead:
+            print(f"[time_flow] 加成跨日失效：{dead}")
+    except Exception as e:
+        print(f"[time_flow] 加成清理失败：{e}")
     try:
         from tools.小模型 import world_worker
         world_worker.on_turn_end()
@@ -158,24 +166,28 @@ def pump() -> dict:
 
 
 def rest(shichen: int = 4) -> dict:
-    """睡觉：先结算清醒时段 → 推进 N 时辰 → 睡眠时段按**恢复**结算。"""
+    """睡觉：先结算清醒时段 → 推进 N 时辰 → 睡眠时段按**恢复**结算，饥饿照扣。"""
     try:
         n = int(shichen)
     except (TypeError, ValueError):
         n = 4
     n = max(1, min(n, 12))
-    pump()                                   # 先结算清醒时段（含熬夜扣精力）
+    pump()                                   # 先结算清醒时段（含熬夜扣精力、饥饿）
     clock.advance(n * SECONDS_PER_SHICHEN)   # 睡过去
-    ev = clock.take_crossings()              # 睡过的时辰不再按清醒扣
-    hunger.drain(ev["shichen_indices"])      # 但饥饿照掉（睡觉也会饿）
+    ev = clock.take_crossings()              # 睡过的时辰不再按清醒扣精力
+    h_before = hunger.sync().get("饥饿", 50)  # 睡前的饥饿（sync 顺带归一化）
+    hunger.drain(ev["shichen_indices"])      # 睡觉也照掉饥饿（每时辰 `每时辰饥饿`）
     gain = _recover_tp(ev["shichen"] or n)
     if ev["days"] > 0:
         _on_new_day(ev["date"])
     data = state.load("状态", {}) or {}
+    h_after = hunger.coerce(data.get("饥饿", 50))
     return {
         "success": True,
         "睡了": f"{n} 时辰（约 {n * 2} 小时）",
         "时间": clock.civil(),
         "精力": data.get("精力值"),
         "恢复": gain,
+        "饥饿": data.get("饥饿"),
+        "饥饿下降": round(h_before - h_after, 1),
     }
