@@ -31,7 +31,7 @@ import random
 from shapely.geometry import (
     Point, LineString, Polygon, MultiPolygon, box as shp_box,
 )
-from shapely.ops import unary_union
+from shapely.ops import nearest_points, unary_union
 
 from song_kinds import KINDS as SONG_KINDS
 from water_width import width_m as waterway_width_m
@@ -381,20 +381,27 @@ ZONE_POOLS = {
         "书坊": 2, "铁匠铺": 2, "木匠行": 2, "磨坊": 2, "油坊": 1,
         "豆腐坊": 1, "酱园": 1, "酒坊": 2, "寺": 2, "观": 2, "祠": 2,
         "土地庙": 2, "蒙馆": 2, "武馆": 1, "车马行": 1, "马厩": 1,
-        "递铺": 1, "桥": 2, "园": 1, "书场": 1, "棋馆": 1, "市集": 2,
+        "递铺": 1, "园": 1, "书场": 1, "棋馆": 1, "市集": 2,
         "绣坊": 1, "织坊": 1,
     },
+        # edge 池不能有水类 kind：edge 是**随机撒点**（不看水），放水类就会陆上行舟。
     "edge": {
-        "驿站": 3, "递铺": 3, "车马行": 3, "马厩": 2, "棺材铺": 2,
+        "驿站": 3, "递铺": 3, "车马行": 5, "马厩": 2, "棺材铺": 2,
         "纸扎铺": 2, "义冢": 2, "坟地": 2, "寺": 2, "观": 2, "祠": 1,
         "磨坊": 2, "油坊": 2, "豆腐坊": 1, "酒坊": 2, "染坊": 1,
-        "客栈": 2, "渡口": 2, "码头": 1, "镖行": 1,
+        "客栈": 2, "镖行": 1,
     },
 }
 
 # ----------------------------------------------------------------------
 # 几何小工具
 # ----------------------------------------------------------------------
+
+#: 必须依水的 POI kind（随机布点池里已移除；这里对冻结表再做一道校验）
+WATER_POI_KINDS = {"画舫", "船行", "码头", "渡口", "鱼行", "浮桥", "桥"}
+WATER_POI_KEEP_M = 60.0     # ≤ 此距离：已在岸边，不动
+WATER_POI_SNAP_M = 2000.0   # ≤ 此距离：吸附到最近水域；> 此距离：删除
+
 
 def bbox_polygon(lon_min, lat_min, lon_max, lat_max):
     """lon/lat bbox -> 米制 Polygon"""
@@ -1063,6 +1070,38 @@ class WorldBuilder:
         return out
 
     # ---- POI 冻结表读写 ----
+    def _repair_water_pois(self, objs):
+        """把「必须依水」的 POI 吸附到最近水域；离水 > WATER_POI_SNAP_M 的直接删除。
+
+        幂等：已在岸边（≤ WATER_POI_KEEP_M）的不动。**冻结表**与**随机生成**都过一遍，
+        从根上杠绝「陆地上的船行 / 画舫 / 码头 / 桥」。
+        """
+        if self.water_geom is None or self.water_geom.is_empty:
+            return objs
+        kept, moved, dropped = [], 0, 0
+        for o in objs:
+            if o.get("ancient_kind") not in WATER_POI_KINDS:
+                kept.append(o); continue
+            g = o.get("geometry") or {}
+            if g.get("type") != "Point" or not g.get("coordinates"):
+                kept.append(o); continue
+            lon, lat = g["coordinates"][:2]
+            p = Point(*lonlat_to_xy(lon, lat))
+            near = nearest_points(p, self.water_geom)[1]
+            d = p.distance(near)
+            if d > WATER_POI_SNAP_M:
+                dropped += 1
+                continue
+            if d > WATER_POI_KEEP_M:
+                nlon, nlat = xy_to_lonlat(near.x, near.y)
+                o = dict(o)
+                o["geometry"] = {"type": "Point", "coordinates": [nlon, nlat]}
+                moved += 1
+            kept.append(o)
+        if moved or dropped:
+            print(f"水域 POI 校验修复：吸附 {moved}、删除 {dropped}")
+        return kept
+
     def _load_frozen_pois(self, path):
         data = json.load(open(path, encoding="utf-8"))
         out = []
@@ -1076,7 +1115,7 @@ class WorldBuilder:
                 "tags": {},
                 "ancient_kind": p.get("kind"),
             })
-        return out
+        return self._repair_water_pois(out)
 
     def _save_frozen_pois(self, objs, path):
         pois = []
