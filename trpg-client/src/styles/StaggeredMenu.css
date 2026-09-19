@@ -75,7 +75,7 @@
     width: 120px;
     height: 50px;
 
-    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-image: url("../assets/ui/未选中时按钮.png");
     background-size: 100% 100%;
     background-repeat: no-repeat;
     background-position: center;
@@ -172,4 +172,9 @@
 .sm-menu-item:hover {
     background: rgba(255, 255, 255, 0.92);
     color: var(--sm-accent, #c0392b);
+}
+
+/* ---------- 悬停：正常=未选中时按钮.png，悬停=金红矩形按钮.png ---------- */
+.sm-toggle:hover {
+    background-image: url("../assets/ui/金红矩形按钮.png");
 }

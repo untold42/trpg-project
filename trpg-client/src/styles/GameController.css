@@ -8,7 +8,7 @@
     width: 120px;
     height: 50px;
 
-    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-image: url("../assets/ui/未选中时按钮.png");
     background-size: 100% 100%;
     background-repeat: no-repeat;
     background-position: center;
@@ -37,7 +37,7 @@
     width: 96px;
     height: 44px;
 
-    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-image: url("../assets/ui/未选中时按钮.png");
     background-size: 100% 100%;
     background-repeat: no-repeat;
     background-position: center;
@@ -290,7 +290,7 @@
     width: 120px;
     height: 50px;
 
-    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-image: url("../assets/ui/未选中时按钮.png");
     background-size: 100% 100%;
     background-repeat: no-repeat;
     background-position: center;
@@ -313,7 +313,7 @@
     width: 120px;
     height: 50px;
 
-    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-image: url("../assets/ui/未选中时按钮.png");
     background-size: 100% 100%;
     background-repeat: no-repeat;
     background-position: center;
@@ -486,7 +486,7 @@
     width: 120px;
     height: 50px;
 
-    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-image: url("../assets/ui/未选中时按钮.png");
     background-size: 100% 100%;
     background-repeat: no-repeat;
     background-position: center;
@@ -564,7 +564,7 @@
     width: 120px;
     height: 50px;
 
-    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-image: url("../assets/ui/未选中时按钮.png");
     background-size: 100% 100%;
     background-repeat: no-repeat;
     background-position: center;
@@ -587,7 +587,7 @@
     width: 120px;
     height: 50px;
 
-    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-image: url("../assets/ui/未选中时按钮.png");
     background-size: 100% 100%;
     background-repeat: no-repeat;
     background-position: center;
@@ -610,7 +610,7 @@
     width: 120px;
     height: 50px;
 
-    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-image: url("../assets/ui/未选中时按钮.png");
     background-size: 100% 100%;
     background-repeat: no-repeat;
     background-position: center;
@@ -638,7 +638,7 @@
     height: 50px;
     border: none;
     background-color: transparent;
-    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-image: url("../assets/ui/未选中时按钮.png");
     background-size: 100% 100%;
     background-repeat: no-repeat;
     background-position: center;
@@ -657,7 +657,7 @@
     width: 120px;
     height: 50px;
 
-    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-image: url("../assets/ui/未选中时按钮.png");
     background-size: 100% 100%;
     background-repeat: no-repeat;
     background-position: center;
@@ -743,7 +743,7 @@
     width: 120px;
     height: 50px;
 
-    background-image: url("../assets/ui/金红矩形按钮.png");
+    background-image: url("../assets/ui/未选中时按钮.png");
     background-size: 100% 100%;
     background-repeat: no-repeat;
     background-position: center;
@@ -844,4 +844,19 @@
     color: #ffb4a2;
     font: 13px/1.6 Consolas, Menlo, monospace;
     white-space: pre-wrap;
+}
+
+/* ---------- 按钮悬停：正常=未选中时按钮.png，悬停=金红矩形按钮.png ---------- */
+.data-button:hover,
+.map-close:hover,
+.map-button:hover,
+.explore-button:hover,
+.history-button:hover,
+.act-button:hover,
+.say-button:hover,
+.continue-button:hover,
+.continue-opt:hover,
+.chat-button:hover,
+.gallery-close:hover {
+    background-image: url("../assets/ui/金红矩形按钮.png");
 }
