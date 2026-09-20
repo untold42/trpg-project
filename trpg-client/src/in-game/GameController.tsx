@@ -891,7 +891,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                 </button>
 
                 {
-                showMap && (
+                showMap && mapsReady && (
                     <div className="game-map">
                         {/* 菜单地图 = 总览图：**按已探索足迹启用迷雾**（只显示去过的区域，未探索的 POI 不可见/不可点）；
                             **不带进入/观察/回忆按钮**。它只是「看」，可以自由搜/切城市——不会动玩家坐标（游戏城市由坐标决定）。 */}
