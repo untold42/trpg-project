@@ -28,8 +28,10 @@ export function periodOfShichen(i: number): string {
 export const 默认背景 = backgroundImages[`./主页面.png`] as string;
 
 /**
- * 取背景图：
- * 优先「地点/时段」，其次「地点/白天」，都没有则回落到主页面。
+ * 取背景图（回退链）：
+ *   ① 「地点/时段」 ② 「地点/白天」 ③ 「地点」下其他时段的图 ④ 主页面。
+ * ③ 是给「只有一种时段图」的场景兜底（画舫只有黑夜图）——
+ * 宁可看错时段，也别把背景打回主页面。
  * time 可传时辰（如「酉时」）或已转换的时段（如「黄昏」）。
  */
 export function getBackgroundImage(position: string, time: string): string {
@@ -39,6 +41,14 @@ export function getBackgroundImage(position: string, time: string): string {
 
   const just_p = backgroundImages[`./${position}/白天.png`] as string | undefined;
   if (just_p) return just_p;
+
+  const prefix = `./${position}/`;
+  for (const name of ["黄昏", "黑夜"]) {
+    const hit = backgroundImages[`${prefix}${name}.png`] as string | undefined;
+    if (hit) return hit;
+  }
+  const any = Object.keys(backgroundImages).find((k) => k.startsWith(prefix));
+  if (any) return backgroundImages[any] as string;
 
   return 默认背景;
 }

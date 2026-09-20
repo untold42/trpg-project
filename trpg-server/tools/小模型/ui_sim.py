@@ -11,7 +11,7 @@ ui_sim.py
 
 小模型只做**从固定枚举里选一个**（离散、无幻觉面）：
     场景 ∈ 前端 `assets/背景/` 下的场景目录 + 「无」
-    音乐 ∈ `音乐清单.md`（叙事）里的曲目 + 「无」；战斗曲在 `战斗音乐清单.md`，叙事候选**看不到**
+    音乐 ∈ `音乐表.md`「叙事」节里的曲目 + 「无」；战斗曲在同文件的「战斗」节，叙事候选看不到
 「无」= 保持当前不变。
 
 降级：小模型不可用 / 输出非法 → 返回空列表，前端保持原样。
@@ -30,10 +30,11 @@ from tools.核心.ui_events import bg_event, music_event
 _ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _SCENE_DIR = _ROOT / "trpg-client" / "src" / "assets" / "背景"
 _MUSIC_DIR = _ROOT / "trpg-client" / "src" / "assets" / "音乐"
-_MUSIC_MANIFEST = _ROOT / "trpg-world" / "音乐清单.md"
-_BATTLE_MANIFEST = _ROOT / "trpg-world" / "战斗音乐清单.md"
-_SCENE_MANIFEST = _ROOT / "trpg-world" / "场景清单.md"
-_SCENE_MAP_MANIFEST = _ROOT / "trpg-world" / "场景映射.md"
+_MUSIC_DYNAMIC_DIR = _MUSIC_DIR / "动态"   # AI 选曲在 动态/；固定/ 是界面专用，不进候选
+_MUSIC_MANIFEST = _ROOT / "trpg-world" / "音乐表.md"   # 一份两节：叙事 + 战斗
+_MUSIC_SECTION = "叙事"
+_BATTLE_SECTION = "战斗"
+_SCENE_MANIFEST = _ROOT / "trpg-world" / "场景表.md"   # 一份两节：场景说明 + 地点类型映射
 
 ENABLED = os.environ.get("TRPG_UI_SIM", "1") != "0"
 
@@ -69,20 +70,16 @@ def scene_keys() -> list[str]:
 
 
 def music_tracks() -> list[str]:
-    """可选音乐：扫前端 `assets/音乐/` 的 mp3 曲名。"""
-    if _MUSIC_DIR.is_dir():
-        return sorted(p.stem for p in _MUSIC_DIR.glob("*.mp3"))
+    """可选音乐：扫前端 `assets/音乐/动态/` 的 mp3 曲名（`固定/` 是界面专用，不走 AI）。"""
+    if _MUSIC_DYNAMIC_DIR.is_dir():
+        return sorted(p.stem for p in _MUSIC_DYNAMIC_DIR.glob("*.mp3"))
     return []
 
 
-def _parse_manifest(path: Path) -> dict:
-    """解析 `- 名称：说明` 形式的清单为 {名称: 说明}。"""
+def _parse_lines(lines) -> dict:
+    """解析 `- 名称：说明` 形式的行 → {名称: 说明}。"""
     out = {}
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        return out
-    for line in text.splitlines():
+    for line in lines:
         line = line.strip()
         if not line.startswith("-"):
             continue
@@ -92,6 +89,31 @@ def _parse_manifest(path: Path) -> dict:
                 name, desc = body.split(sep, 1)
                 out[name.strip()] = desc.strip()
                 break
+    return out
+
+
+def _parse_manifest(path: Path) -> dict:
+    """解析 `- 名称：说明` 形式的清单为 {名称: 说明}。"""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    return _parse_lines(text.splitlines())
+
+
+def _manifest_section(title: str, path: Path = None) -> list:
+    """取清单文件里 `## <title>` 到下一个 `## ` 之间的行（默认 `场景表.md`）。"""
+    try:
+        text = (path or _SCENE_MANIFEST).read_text(encoding="utf-8")
+    except OSError:
+        return []
+    out, on = [], False
+    for line in text.splitlines():
+        if line.startswith("## "):
+            on = line[3:].strip() == title
+            continue
+        if on:
+            out.append(line)
     return out
 
 
@@ -105,18 +127,14 @@ def _split_bind(raw: str) -> tuple:
 
 
 def scene_descriptions() -> dict:
-    """场景名 → 适用情境说明（读 `trpg-world/场景清单.md`）。"""
-    return _parse_manifest(_SCENE_MANIFEST)
+    """场景名 → 适用情境说明（`trpg-world/场景表.md` 的「场景说明」节）。"""
+    return _parse_lines(_manifest_section("场景说明"))
 
 
 def scene_kind_map() -> dict:
-    """地点类型 → 允许的场景列表（读 `trpg-world/场景映射.md`）。"""
+    """地点类型 → 允许的场景列表（`trpg-world/场景表.md` 的「地点类型映射」节）。"""
     out = {}
-    try:
-        text = _SCENE_MAP_MANIFEST.read_text(encoding="utf-8")
-    except OSError:
-        return out
-    for line in text.splitlines():
+    for line in _manifest_section("地点类型映射"):
         line = line.strip()
         if not line.startswith("-"):
             continue
@@ -218,8 +236,8 @@ def _scenes_for_kind(kind: str, indoor: bool = False) -> list[str]:
 def scene_candidates(location: str = None, indoor: bool = False) -> list[str]:
     """本地点允许的背景场景集合（**每个类型只给 2~4 个**，候选越少越不乱选）。
 
-    - 地点类型已映射（`场景映射.md`）→ 只在该类内选；
-    - 未映射 → 用 `室内` / `室外` **小兜底组**（按叙事判断），而不是放开全部 49 个；
+    - 地点类型已映射（`场景表.md`）→ 只在该类内选；
+    - 未映射 → 用 `室内` / `室外` **小兜底组**（按叙事判断），而不是放开全部 48 个；
     - 城内安全网：排除荒野 / 乡村。
     """
     return _scenes_for_kind(_kind_of(location), indoor)
@@ -268,23 +286,23 @@ def scene_switch_signal(text: str) -> bool:
     return bool(_SCENE_SWITCH_RE.search(text or ""))
 
 
-def _parse_music(path: Path) -> dict:
-    """{曲名: {"desc": 说明, "bind": 绑定对象}}。"""
+def _parse_music(section: str) -> dict:
+    """{曲名: {"desc": 说明, "bind": 绑定对象}}（按节读 `音乐表.md`）。"""
     out = {}
-    for raw, desc in _parse_manifest(path).items():
+    for raw, desc in _parse_lines(_manifest_section(section, _MUSIC_MANIFEST)).items():
         name, bind = _split_bind(raw)
         out[name] = {"desc": desc, "bind": bind}
     return out
 
 
-def music_descriptions(path: Path = None) -> dict:
-    """曲名 → 适用情境说明（默认读叙事清单）。"""
-    return {n: v["desc"] for n, v in _parse_music(path or _MUSIC_MANIFEST).items()}
+def music_descriptions(section: str = None) -> dict:
+    """曲名 → 适用情境说明（默认读「叙事」节）。"""
+    return {n: v["desc"] for n, v in _parse_music(section or _MUSIC_SECTION).items()}
 
 
-def music_bindings(path: Path = None) -> dict:
-    """曲名 → 绑定对象（默认读叙事清单）。"""
-    return {n: v["bind"] for n, v in _parse_music(path or _MUSIC_MANIFEST).items()}
+def music_bindings(section: str = None) -> dict:
+    """曲名 → 绑定对象（默认读「叙事」节）。"""
+    return {n: v["bind"] for n, v in _parse_music(section or _MUSIC_SECTION).items()}
 
 
 def _binding_matches(binding: str, location: str, present, kind: str = "") -> bool:
@@ -314,16 +332,16 @@ def _listed(path: Path) -> list[str]:
 
 
 def narrative_tracks(location: str = None, present=None) -> list[str]:
-    """叙事背景可用曲 = `音乐清单.md` 中、且**绑定命中**的曲目。
+    """叙事背景可用曲 = `音乐表.md`「叙事」节中、且绑定命中的曲目。
 
     - 无绑定 → 始终可用；
     - 有绑定 → 仅当绑定对象在场（地点名 / 地点类型 / 登场人物）时可用。
-    - **战斗曲在另一个文件，天然不在此列。**
+    - 战斗曲在「战斗」节，天然不在此列。
     """
     kind = _kind_of(location)
-    binds = music_bindings(_MUSIC_MANIFEST)
+    binds = music_bindings()
     out = []
-    for name in _listed(_MUSIC_MANIFEST):
+    for name in _listed(_MUSIC_SECTION):
         b = binds.get(name, "")
         if not b or _binding_matches(b, location, present, kind):
             out.append(name)
@@ -331,12 +349,12 @@ def narrative_tracks(location: str = None, present=None) -> list[str]:
 
 
 def general_tracks() -> list[str]:
-    """通用曲：`音乐清单.md` 里**无绑定**的曲目（不依附任何地点/人物）。
+    """通用曲：`音乐表.md`「叙事」节里无绑定的曲目（不依附任何地点/人物）。
 
     探索大地图用它们，避免从青楼/酒楼等地出来还搂着场所专属曲。
     """
-    binds = music_bindings(_MUSIC_MANIFEST)
-    return [t for t in _listed(_MUSIC_MANIFEST) if not binds.get(t)]
+    binds = music_bindings()
+    return [t for t in _listed(_MUSIC_SECTION) if not binds.get(t)]
 
 
 _EXPLORE_SYSTEM = (
@@ -389,11 +407,11 @@ def explore_track(current: str = "") -> str:
 
 
 def battle_tracks() -> list[str]:
-    """战斗系统可用曲 = `战斗音乐清单.md` 中、且 mp3 存在的曲目（叙事候选看不到）。
+    """战斗系统可用曲 = `音乐表.md`「战斗」节中、且 mp3 存在的曲目（叙事候选看不到）。
 
     供战斗系统（第⑨节）选曲：无绑定=通用战斗曲；有绑定（如 `温夫人`）=boss 专属。
     """
-    return _listed(_BATTLE_MANIFEST)
+    return _listed(_BATTLE_SECTION)
 
 
 _BATTLE_BGM_SYSTEM = (
@@ -415,7 +433,7 @@ def battle_track_model(context: str, present=None, location: str = None,
     listed = battle_tracks()
     if not listed:
         return ""
-    binds = music_bindings(_BATTLE_MANIFEST)
+    binds = music_bindings(_BATTLE_SECTION)
     kind = _kind_of(location) if location else ""
     names = [str(x).strip() for x in (present or []) if str(x).strip()]
     适用 = [t for t in listed
@@ -429,7 +447,7 @@ def battle_track_model(context: str, present=None, location: str = None,
     if bound:
         return bound[0]
 
-    desc = music_descriptions(_BATTLE_MANIFEST)
+    desc = music_descriptions(_BATTLE_SECTION)
     lines = "\n".join(f"- {t}：{desc.get(t, '')}" for t in 适用)
     user = (
         f"战局情境：\n{context}\n\n"
@@ -457,7 +475,7 @@ def battle_track_for(present=None, location: str = None, avoid: str = None) -> s
     listed = battle_tracks()
     if not listed:
         return ""
-    binds = music_bindings(_BATTLE_MANIFEST)
+    binds = music_bindings(_BATTLE_SECTION)
     kind = _kind_of(location) if location else ""
     names = [str(x).strip() for x in (present or []) if str(x).strip()]
     for t in listed:

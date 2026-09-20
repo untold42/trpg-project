@@ -1,10 +1,11 @@
 import musicFiles from "../assets/音乐";
 
 // 背景音乐控制：由 UI 事件 kind:"music" 触发（后端小模型选择曲目）。
-// 曲名 = 文件名去扩展名；把 mp3 丢进 src/assets/音乐/ 即自动进入曲库。
+// 曲库 = assets/音乐/ 下两个子目录：动态/（AI 选曲，见 trpg-world/音乐表.md）+ 固定/（界面专用，不走 AI）。
+// 曲名 = 文件名去扩展名（不含子目录）；把 mp3 丢进去即自动进曲库。
 const 曲库: Record<string, string> = {};
 for (const [path, url] of Object.entries(musicFiles)) {
-  const name = path.replace(/^\.\//, "").replace(/\.[^.]+$/, "");
+  const name = path.split("/").pop()!.replace(/\.[^.]+$/, "");
   曲库[name] = url as string;
 }
 console.info(`[music] 曲库载入 ${Object.keys(曲库).length} 首`);
@@ -62,4 +63,9 @@ export function stopMusic() {
   当前 = null;
   当前曲 = "";
   待播 = null;
+}
+
+/** 当前正在播放的曲名（未播放时为空串）——供界面临时换曲后恢复。 */
+export function currentTrack(): string {
+  return 当前曲;
 }

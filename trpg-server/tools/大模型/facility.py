@@ -140,7 +140,7 @@ def use_facility(facility: str = "", option: str = "", target: str = ""):
 def facility_detail(facility: str = "", name: str = ""):
     """给前端「详细」界面：名称 + 选项 + 耗时 + 触发词 + **背景**（全部确定性，不调模型）。
 
-    `背景` 按 `kind`（缺则按请求名）查 `场景映射.md`，用地点名做**稳定散列**取一个候选场景——
+    `背景` 按 `kind`（缺则按请求名）查 `场景表.md`，用地点名做**稳定散列**取一个候选场景——
     同一地点每次相同，不同地点可能不同。**不要求设施在表里**（染坊 / 戏台之类也能给背景）。
     """
     kind, entry = _resolve(facility)
@@ -178,7 +178,7 @@ def facility_detail(facility: str = "", name: str = ""):
 
 
 def _scene_for(kind: str, place: str) -> str:
-    """确定性背景：查 `场景映射.md` + 按地点名稳定散列（不调模型、不查库）。"""
+    """确定性背景：查 `场景表.md` + 按地点名稳定散列（不调模型、不查库）。"""
     try:
         from tools.小模型 import ui_sim
         return ui_sim.scene_for(kind, place)

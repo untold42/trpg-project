@@ -8,7 +8,7 @@ import GameMap from "./Map"
 import { StaggeredMenu } from "./Staggered Menu";
 import AccordionGallery, { type AccordionGalleryItem } from "./AccordionGallery";
 import { 默认背景, getBackgroundImage, periodOfShichen } from "./background";
-import { playMusic, stopMusic } from "./music";
+import { currentTrack, playMusic, stopMusic } from "./music";
 import BattleScene, { type BattleState } from "./battle";
 import Clock from "./Clock";
 import { fetchClock, requestClockSync, useWorldTime } from "./useGameClock";
@@ -351,6 +351,18 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
 
     // 离开游戏时停止背景音乐
     useEffect(() => () => stopMusic(), []);
+
+    // 技能树 BGM：开面板换成《技能树》，关掉后恢复原来的叙事曲
+    const 技能树前曲 = useRef("");
+    useEffect(() => {
+        if (showSkillTree) {
+            技能树前曲.current = currentTrack();
+            playMusic("技能树");
+        } else if (技能树前曲.current) {
+            playMusic(技能树前曲.current);
+            技能树前曲.current = "";
+        }
+    }, [showSkillTree]);
 
     // 存档：调用后端收尾管线（蒸馏→誊写→归档→重置），完成后返回主菜单
     async function triggerSave() {
