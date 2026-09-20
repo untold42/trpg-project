@@ -5,15 +5,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { instruction } from "../types/gametype";
 import preloadImages from "./PreloadImages";
 import GameMap from "./Map"
+import WeatherLayer from "./WeatherLayer";
 import { StaggeredMenu } from "./Staggered Menu";
 import AccordionGallery, { type AccordionGalleryItem } from "./AccordionGallery";
 import { 默认背景, getBackgroundImage, periodOfShichen } from "./background";
-import { currentTrack, playMusic, stopMusic } from "./music";
+import { playMusic, popUiMusic, pushUiMusic, stopMusic } from "./music";
 import BattleScene, { type BattleState } from "./battle";
 import Clock from "./Clock";
 import { fetchClock, requestClockSync, useWorldTime } from "./useGameClock";
 import { MAP_ID } from "./mapId";
 import { API } from "../api";
+import { useEsc } from "../escStack";
 import FacilityPanel, { type FacilityDetail } from "./FacilityPanel";
 import SkillTree from "./SkillTree";
 
@@ -193,6 +195,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     const [input, setInput] = useState(""); //输入框输入的内容
     const [history, setHistory] = useState<instruction[]>([]); //拿到llm的回复
     const historyRef = useRef<instruction[]>([]); // 同步 history 长度（探索→叙事断点用）
+    const lastTurnBaseRef = useRef(0); // 上一轮叙事在 history 中的起点（驳回时替换用）
     historyRef.current = history;
     // 叙事层对话框的起始句下标：探索→叙事时跳到**本轮叙事的第一句**
     const [sceneStart, setSceneStart] = useState(0);
@@ -352,16 +355,10 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     // 离开游戏时停止背景音乐
     useEffect(() => () => stopMusic(), []);
 
-    // 技能树 BGM：开面板换成《技能树》，关掉后恢复原来的叙事曲
-    const 技能树前曲 = useRef("");
+    // 技能树 BGM：开面板换《技能树》，关掉后恢复原曲（之前没在放就停掉）
     useEffect(() => {
-        if (showSkillTree) {
-            技能树前曲.current = currentTrack();
-            playMusic("技能树");
-        } else if (技能树前曲.current) {
-            playMusic(技能树前曲.current);
-            技能树前曲.current = "";
-        }
+        if (showSkillTree) pushUiMusic("技能树");
+        else popUiMusic();
     }, [showSkillTree]);
 
     // 存档：调用后端收尾管线（蒸馏→誊写→归档→重置），完成后返回主菜单
@@ -401,6 +398,33 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
             // 后端没起：忽略
         }
         onBackMenu();
+    }
+
+    // 驳回上轮：后端回滚到本轮开始前、用同一输入重发 → 前端**替换**上一轮叙事（不是追加）
+    async function handleReject() {
+        if (sending) return;
+        setSending(true);
+        try {
+            const res = await fetch("http://localhost:5000/reject", { method: "POST" });
+            const response: instruction[] = await res.json();
+            const narrative = response.filter(
+                (item): item is NarrativeLine => item.type === "chat" || item.type === "narration"
+            );
+            const uiEvents = response.filter(
+                (item): item is UiEvent => item.type === "ui"
+            );
+            handleUiEvents(uiEvents);
+            const base = lastTurnBaseRef.current;
+            setHistory(prev => [...prev.slice(0, base), ...narrative]);
+            if (narrative.length) setSceneStart(base);
+            const s = await getState();
+            applyState(s);
+            requestClockSync();
+        } catch {
+            // 后端没起 / 请求失败：静默
+        } finally {
+            setSending(false);
+        }
     }
 
     // WASD 移动停下 → 同步快照 + 记轨迹
@@ -449,6 +473,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
             );
             const uiMode = handleUiEvents(uiEvents);
             const base = historyRef.current.length;   // 本轮新增叙事在 history 中的起点
+            lastTurnBaseRef.current = base;
             setHistory(prev => [...prev, ...narrative]);
             // 目标模式：主持人裁定（mode 事件）优先；否则探索中输入 → 叙事，叙事中 → 保持叙事
             // 硬约束：**探索模式下只有「行动 / 台词」能进入叙事**；
@@ -672,26 +697,17 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         }
     }, [showHistory]);
 
-    //监听Esc键位从而关闭
-    useEffect(() => {
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                setShowHistory(false);
-                setShowInputAct(false);
-                setshowInputGM(false);
-                setShowMap(false)
-                setShowGallery(false)
-                setShowData(false)
-                setShowInputSay(false)
-                setShowContinue(false)
-                setRecallInfo(null)
-                setReadingIndex(null)
-            }
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, []);
+    // Esc：层级退栈（最后打开的先退，见 escStack.ts）——不再一次性全关
+    useEsc(() => setShowHistory(false), showHistory);
+    useEsc(() => setShowInputAct(false), showInputAct);
+    useEsc(() => setshowInputGM(false), showInputGM);
+    useEsc(() => setShowMap(false), showMap);
+    useEsc(() => setShowGallery(false), showGallery);
+    useEsc(() => setShowData(false), showData);
+    useEsc(() => setShowInputSay(false), showInputSay);
+    useEsc(() => setShowContinue(false), showContinue);
+    useEsc(() => setRecallInfo(null), recallInfo !== null);
+    useEsc(() => setReadingIndex(null), readingIndex !== null);
 
     //判断是否预加载完成
     if (!loaded) {
@@ -733,6 +749,8 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         const 状态 = playerState?.状态 ?? {};        const 基础 = playerState?.属性?.基础属性 ?? {};
         const 物品 = playerState?.背包?.物品 ?? {};
         const 金钱 = playerState?.金钱?.金钱;
+        // 天气（探索层动效用）：基本信息.天气.状况
+        const 天气状况 = (((playerState?.基本信息 ?? {}) as Record<string, unknown>)["天气"] as { 状况?: string } | undefined)?.状况 ?? "";
         // 移动：轻功→步速、奔跑倍率（参数由后端 移动.json 下发）
         const 轻功 = Number(基础.轻功 ?? 0) || 0;
         const 移动 = playerState?.移动 ?? {};
@@ -779,6 +797,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                             onPlaceAction={handlePlaceAction}
                             onPositionChange={handleExploreStop}
                         />
+                        <WeatherLayer weather={天气状况} isNight={isNight} />
                     </div>
                 )}
 
@@ -892,7 +911,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                                 onChange={(e) => setSearchQ(e.target.value)}
                                 onKeyDown={(e) => {
                                     if (e.key === "Enter") { e.preventDefault(); 回车跳转(); }
-                                    if (e.key === "Escape") { setSearchRes([]); setSearchDone(false); }
+                                    if (e.key === "Escape") { e.stopPropagation(); setSearchRes([]); setSearchDone(false); }
                                 }}
                             />
                             {searchRes.length > 0 && (
@@ -1047,6 +1066,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                 <StaggeredMenu position="left" menuLabel="菜单" accentColor="#c0392b" closeOnContentClick>
                     <button className="sm-menu-item" onClick={triggerSave}>存档游戏</button>
                     <button className="sm-menu-item" onClick={handleAbandon}>放弃本轮</button>
+                    <button className="sm-menu-item" onClick={handleReject}>驳回上轮</button>
                     <button className="sm-menu-item" onClick={() => setShowGallery(true)}>势力</button>
                     <button className="sm-menu-item" onClick={() => setShowSkillTree(true)}>技能树</button>
                     <button className="sm-menu-item" onClick={onBackMenu}>返回主菜单</button>

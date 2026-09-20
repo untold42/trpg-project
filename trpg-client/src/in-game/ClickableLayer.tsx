@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useMap } from "react-leaflet";
+import { useEsc } from "../escStack";
 import * as L from "leaflet";
 import type { Feature, FeatureCollection, GeoJsonObject } from "geojson";
 import { mapStats } from "./mapStats";
@@ -741,6 +742,17 @@ export default function ClickableLayer({
     document.addEventListener("click", h);
     return () => document.removeEventListener("click", h);
   }, [map]);
+
+  // Esc：层级栈一层——气泡开着时才入栈（只关气泡，不动别的面板）
+  const [popupOpen, setPopupOpen] = useState(false);
+  useEffect(() => {
+    const onOpen = () => setPopupOpen(true);
+    const onClosed = () => setPopupOpen(false);
+    map.on("popupopen", onOpen);
+    map.on("popupclose", onClosed);
+    return () => { map.off("popupopen", onOpen); map.off("popupclose", onClosed); };
+  }, [map]);
+  useEsc(() => map.closePopup(), popupOpen);
 
   const [features, setFeatures] = useState<Feature[] | null>(null);
 

@@ -7,6 +7,7 @@
 //   - 路 ∩ 城墙：默认不可走，只有**城门 25m 半径**是通道；
 //   - 路 ∩ 水域：默认路可走（路廊道内可通行）；
 //   - 有**桥**：桥 100m 半径内可走。
+//   - 有**渡口 / 码头**：80m 半径内可走（泊位/码头路面常落在水里，否则人会卡死在岸边）。
 //
 // 另提供**地形步速倍率** `speedMultiplier(lon, lat)`：
 //   - 有路走 → 路倍率（官道 1.15 / 坊巷 1.0），不算钻林子；
@@ -25,6 +26,7 @@ export type Pt = [number, number];
 
 // ---- 规则参数（米）----
 const BRIDGE_R = 100;   // 桥可走半径
+const DOCK_R = 80;      // 渡口 / 码头可走半径（泊位多在水上）
 const WALL_HALF = 12;   // 城墙阻挡半宽（城墙中心线 ±）
 const ROAD_HALF = 6;    // 路廊道半宽（路∩水域时可走）
 
@@ -49,6 +51,7 @@ type Index = {
   wallBB: BBox | null;
   gates: Gate[];
   bridges: Pt[];
+  docks: Pt[];
 };
 
 let IDX: Index | null = null;
@@ -162,6 +165,7 @@ function build(features: GeoJSONFeature[]): Index {
   const terrain: Zone[] = [];
   const gates: Gate[] = [];
   const bridges: Pt[] = [];
+  const docks: Pt[] = [];
   let wall: Pt[] = [];
   const waterGrid = new Map<string, number[]>();
   const roadGrid = new Map<string, number[]>();
@@ -217,6 +221,8 @@ function build(features: GeoJSONFeature[]): Index {
       gates.push({ lon: co[0], lat: co[1], hours });
     } else if (t === "bridge" && g.type === "Point") {
       bridges.push(g.coordinates as Pt);
+    } else if (t === "dock" && g.type === "Point") {
+      docks.push(g.coordinates as Pt);
     }
   }
 
@@ -224,6 +230,7 @@ function build(features: GeoJSONFeature[]): Index {
     water, waterGrid, roads, roadGrid, terrain, terrainGrid,
     wall, wallBB: wall.length ? bboxOf(wall) : null,
     gates, bridges,
+    docks,
   };
 }
 
@@ -389,10 +396,16 @@ export function isWalkable(lon: number, lat: number): boolean {
     }
   }
 
-  // 2) 水域（桥 / 路通道）
+  // 2) 水域（桥 / 渡口码头 / 路通道）
   if (inWater(lon, lat, idx)) {
     for (const b of idx.bridges) {
       if (distM(lon, lat, b[0], b[1]) <= BRIDGE_R) {
+        lastBlocked = false;
+        return true;
+      }
+    }
+    for (const d of idx.docks) {
+      if (distM(lon, lat, d[0], d[1]) <= DOCK_R) {
         lastBlocked = false;
         return true;
       }

@@ -348,6 +348,24 @@ def narrative_tracks(location: str = None, present=None) -> list[str]:
     return out
 
 
+def location_bound_tracks(location: str, kind: str = None) -> list[str]:
+    """当前地点 / 地点类型**专属绑定**的叙事曲（不计人物绑定）。
+
+    仅当一曲的绑定命中当前地点名 / 地点类型时算数；用于「进入某地就放它的主题曲」。
+    例：锦香宫 → 锦绣织岁，玄烛照心；青城 → 雨后松林香。
+    """
+    if not location:
+        return []
+    kind = kind if kind is not None else _kind_of(location)
+    binds = music_bindings()
+    out = []
+    for name in _listed(_MUSIC_SECTION):
+        b = binds.get(name, "")
+        if b and _binding_matches(b, location, (), kind):
+            out.append(name)
+    return out
+
+
 def general_tracks() -> list[str]:
     """通用曲：`音乐表.md`「叙事」节里无绑定的曲目（不依附任何地点/人物）。
 
@@ -517,18 +535,21 @@ def generate(narration: str, location: str = None,
         return []
     scenes = scene_candidates(location, indoor=looks_indoor(narration))
     tracks = narrative_tracks(location, present)
+    loc_bound = location_bound_tracks(location)
     scene_desc = scene_descriptions()
     music_desc = music_descriptions()
     scene_lines = "\n".join(
         f"- {s}：{scene_desc.get(s, '（无说明）')}" for s in scenes
     ) or "（无）"
     music_lines = "\n".join(
-        f"- {t}：{music_desc.get(t, '（无说明）')}" for t in tracks
+        f"- {t}：{music_desc.get(t, '（无说明）')}" + ("【本地点专属】" if t in loc_bound else "")
+        for t in tracks
     ) or "（无）"
     user = (
         f"可选场景（据玩家当前所处环境选）：\n{scene_lines}\n"
         f"可选音乐（据叙事的情境 / 情绪选）：\n{music_lines}\n"
-        f"（音乐：选最贴合情境者；**无明显更合适的就默认选「{DEFAULT_TRACK}」**。）\n"
+        f"（音乐：带【本地点专属】的是**当前地点的主题曲**，进入该地点应优先选它；"
+        f"没有更贴合的就填「{NONE}」＝保持当前曲。）\n"
         f"当前地点：{location or '未知'}\n"
         f"当前背景：{current_scene or '无'} ｜ 当前音乐：{current_music or '无'}\n"
         f"当前时辰：{current_shichen() or '未知'}\n"
@@ -542,10 +563,14 @@ def generate(narration: str, location: str = None,
     pos = r.get("场景")
     if pos in scenes:
         out.append(bg_event(pos, current_shichen()))
-    track = r.get("音乐")
-    if track not in tracks:
-        # 没有更贴合者 → 默认底色曲
-        track = DEFAULT_TRACK if DEFAULT_TRACK in tracks else None
+    # 地点主题曲：当前地点 / 类型恰好只绑一首 → 硬选它（不劳模型）；
+    # 多首（如书坊的两首）才交模型按情境挑。
+    if len(loc_bound) == 1:
+        track = loc_bound[0]
+    else:
+        track = r.get("音乐")
+        if track == NONE or track not in tracks:
+            track = None          # 「无」= 保持当前曲，不再兵底到默认曲
     if track:
         out.append(music_event(track))
     return out

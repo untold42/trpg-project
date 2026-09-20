@@ -5,7 +5,7 @@ from llm import send_messages
 # 需要单独用到的非工具函数
 from tools.核心.explore import read_player_position, record_position
 from tools.大模型.location import update_location
-from tools.大模型.accident import accident
+from tools.大模型 import accident as accident_mod
 from tools.核心.state_manager import state
 from tools.核心.game_clock import clock
 from tools.核心 import time_flow
@@ -14,6 +14,9 @@ from tools.大模型.recap import build_recap
 from tools.大模型.place_recall import recall_place
 from tools.大模型.difficulty_settings import get_settings, set_difficulty
 from tools.大模型.facility import facility_detail
+from tools.大模型 import facility as facility_mod
+from tools.大模型 import time_weather as time_weather_mod
+from tools.大模型 import turn_context as turn_context_mod
 from tools.核心.map_settings import get_settings as get_map_settings, set_map
 from tools.核心 import movement
 
@@ -247,10 +250,32 @@ def _gate_note(raw: str) -> str:
         "⚠️ 此刻城门**闭着**——不得放行，只能等开门（先 advance_time）或另想办法。"
         if not gc.get("可通行") else "（此刻门开着）"
     )
+    # 起点以状态为准（防止模型凭印象另编一条街/一段路线）
+    cur = pos.get("地点") or "（未知）"
+    cur_bear = pos.get("城区方位") or ("城内" if pos.get("在城内") else "城外")
+    cur_dist = pos.get("距城墙（米）")
+    from_desc = f"「{cur}」（{cur_bear}" + (f"，距城墙约 {cur_dist} 米" if cur_dist is not None else "") + "）"
+    # 落脚点真实周边（硬事实，供叙事取景）
+    nearby = []
+    try:
+        from tools.核心.map_query import query_nearby
+        nb = query_nearby(lp["lon"], lp["lat"], radius_km=0.8, limit=25)
+        for x in (nb.get("results") or []):
+            nm = x.get("name")
+            if not nm:
+                continue
+            km = x.get("distance_km") or 0
+            nearby.append(f"{nm}（{x.get('kind') or '—'}·约{int(round(km * 1000))}米）")
+            if len(nearby) >= 8:
+                break
+    except Exception:
+        pass
+    nearby_txt = "、".join(nearby) if nearby else "（取不到，改用泛称）"
     return (
-        f"【过城门】玩家欲{gc['方向']}，最近城门「{gc['城门']}」。{closed}"
-        f"请先叙验籍 / 门军，再调 `update_location(lon={lp['lon']}, lat={lp['lat']})` "
-        f"把梁峰移到城墙{side}侧的合理地点（之后城内外字段会自动更新）。"
+        f"【过城门】玩家此刻在{from_desc}，欲{gc['方向']}，最近城门「{gc['城门']}」。{closed}"
+        f"落脚点 `lon={lp['lon']}, lat={lp['lat']}`，其附近真实地点：{nearby_txt}。"
+        f"请从当前地点按实际方位叙到城门、验籍 / 门军，再调 `update_location(lon={lp['lon']}, lat={lp['lat']})` "
+        f"把梁峰移到城墙{side}侧；**沿途与墙外景物一律用上述真实地点，不得另编街名 / 水田 / 土路等**。"
     )
 
 
@@ -369,6 +394,16 @@ def abandon():
     return jsonify({"success": True, "restored": restored})
 
 
+@app.route("/reject", methods=["POST"])
+def reject_turn():
+    """驳回上一轮：回滚到本轮开始前（不含本次生成），用同一输入重发一次。
+
+    返回与 `/action` 同形状的事件流，前端用它**替换**上一轮的叙事（不是追加）。
+    """
+    events = runner.reject()
+    return jsonify(events)
+
+
 @app.route("/save", methods=["POST", "GET"])   # GET 便于在浏览器地址栏直接触发 / 诊断
 def save():
     """存档收尾管线（存档 = 结束本局）。
@@ -447,8 +482,13 @@ def action():
         if gate_note:
             runner.session.pending_notes.append(gate_note)
 
-    # 意外机制：只作用于角色行动
-    if mode == "action" and accident():
+    # 意外机制：只作用于角色行动（每轮都要**重置标志**，避免上轮残留）
+    acc = bool(mode == "action" and accident_mod.accident())
+    accident_mod.set_turn(acc)
+    facility_mod.reset_turn()          # 设施耗时标志：每轮重置
+    time_weather_mod.reset_turn()      # 时间工具使用标志：每轮重置
+    turn_context_mod.set_turn(raw, mode)   # 本轮玩家动作（供 modify_hunger 等工具判定）
+    if acc:
         raw += "(意外：梁峰行动失败)"
 
     # 时间工具的**硬门禁**：只有玩家本轮在说「花时间的事」（睡觉 / 等待 / 工作 / 修行…）

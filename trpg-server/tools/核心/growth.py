@@ -84,6 +84,37 @@ def curve_factor(target: str, cur) -> float:
     return fac
 
 
+def duration_factor(ke) -> float:
+    """修行时长（刻）→ 收益系数（`成长.json.时长曲线`）。
+
+    取『不超请求刻数的最大档』；低于最小档按最小档，超过最大档按最大档。
+    最终点数 = 选项基准点数 × 本系数。
+    """
+    tiers = (_config().get("时长曲线") or {}).get("表") or []
+    if not isinstance(tiers, list) or not tiers:
+        return 1.0
+    parsed = []
+    for item in tiers:
+        try:
+            parsed.append((float(item[0]), float(item[1])))
+        except (TypeError, ValueError, IndexError):
+            continue
+    if not parsed:
+        return 1.0
+    parsed.sort()
+    try:
+        v = float(ke)
+    except (TypeError, ValueError):
+        v = 0.0
+    fac = parsed[0][1]
+    for th, f in parsed:
+        if v >= th:
+            fac = f
+        else:
+            break
+    return fac
+
+
 def _today() -> str:
     from tools.核心.game_clock import clock
     try:

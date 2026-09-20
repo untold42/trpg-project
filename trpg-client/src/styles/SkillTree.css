@@ -114,14 +114,21 @@
 }
 
 /* ---------------- 第二幕：技能树 ---------------- */
-.st-tree {
+/* 自动取景的滚动视口：画布比视口大时用滚轮往下看 */
+.st-tree-wrap {
     position: absolute;
-    inset: 0;
-    margin: auto;
-    width: 88%;
-    height: 84%;
-    overflow: visible;
+    inset: 66px 0 148px;
+    z-index: 2;
+    display: flex;
+    overflow: auto;
     animation: stFadeIn 460ms ease both;
+}
+/* 尺寸由 JS 按视野算好（放得下放大、放不下原尺寸）；margin:auto = 居中且不裁顶 */
+.st-tree {
+    display: block;
+    margin: auto;
+    flex: 0 0 auto;
+    overflow: visible;
 }
 @keyframes stFadeIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; } }
 

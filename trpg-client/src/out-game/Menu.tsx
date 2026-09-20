@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import Ziye_Jijunshu from "../assets/音乐/动态/子夜寄君书.mp3";
+import Ziye_Jijunshu from "../assets/音乐/固定/子夜寄君书.mp3";
 import "../styles/menu.css";
 import bg from "../assets/背景/主页面.png";
 import "../styles/Background.css";
@@ -8,6 +8,7 @@ import MoveLogo from "./Logo";
 import type { instruction } from "../types/gametype";
 import BattleScene, { type BattleState } from "../in-game/battle";
 import { MAP_ID, rememberMap } from "../in-game/mapId";
+import { useEsc } from "../escStack";
 import { API } from "../api";
 
 // 模拟战斗可选名单条目
@@ -169,17 +170,8 @@ function Menu({ onStartGame }: MenuProps) {
         setQuit(true);       // 否则（普通标签页）显示退出屏
     }
 
-    //按Esc退出环境设定
-    useEffect(() => {
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                setshowSetting(false)
-            }
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, []);
+    // Esc：层级栈一层（设置面板）
+    useEsc(() => setshowSetting(false), showSetting);
 
 
     return (

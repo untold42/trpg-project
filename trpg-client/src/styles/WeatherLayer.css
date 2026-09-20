@@ -1,0 +1,83 @@
+/* WeatherLayer.css —— 探索模式的天气动效层（仅叠加，不吃点击） */
+
+.weather-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 550;              /* 高于瓦片(200)/覆盖物(400)，低于 POI 标记(600)——标记仍清晰可读 */
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.weather-canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+}
+
+/* 色调罩：各类天气的底色（过渡柔和，切天气不闪） */
+.weather-tint {
+    position: absolute;
+    inset: 0;
+    transition: background .8s ease, opacity .8s ease;
+}
+
+/* ---- 雨：冷青灰压暗 ---- */
+.w-rain .weather-tint {
+    background: linear-gradient(180deg, rgba(38, 52, 78, .24), rgba(18, 28, 48, .34));
+}
+
+/* ---- 雪：冷白提亮 ---- */
+.w-snow .weather-tint {
+    background: linear-gradient(180deg, rgba(206, 220, 238, .20), rgba(170, 190, 220, .26));
+}
+
+/* ---- 阴 / 雾 / 风沙：灰暗 ---- */
+.w-overcast .weather-tint {
+    background: linear-gradient(180deg, rgba(58, 62, 72, .40), rgba(38, 42, 52, .48));
+}
+.w-overcast .weather-cloud {
+    position: absolute;
+    inset: -30%;
+    background:
+        radial-gradient(closest-side, rgba(255, 255, 255, .10), transparent 70%) 22% 30% / 62% 42% no-repeat,
+        radial-gradient(closest-side, rgba(255, 255, 255, .08), transparent 70%) 68% 62% / 72% 52% no-repeat,
+        radial-gradient(closest-side, rgba(255, 255, 255, .06), transparent 70%) 45% 12% / 55% 38% no-repeat;
+    animation: weatherCloudDrift 90s linear infinite;
+}
+@keyframes weatherCloudDrift {
+    from { transform: translateX(-6%); }
+    to   { transform: translateX(6%); }
+}
+
+/* ---- 晴：暖阳辉光（右上角外光源 + 缓慢呼吸） ---- */
+.w-sun .weather-tint {
+    background: radial-gradient(circle at 74% 16%,
+        rgba(255, 228, 156, .30), rgba(255, 202, 96, .08) 42%, transparent 72%);
+}
+.w-sun .weather-sun {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 74% 14%,
+        rgba(255, 240, 186, .55), rgba(255, 214, 120, .16) 24%, transparent 58%);
+    mix-blend-mode: screen;
+    animation: weatherSunPulse 7s ease-in-out infinite;
+}
+@keyframes weatherSunPulse {
+    0%, 100% { opacity: .72; }
+    50%      { opacity: 1; }
+}
+
+/* 夜晚：**不要太阳**；整体压一档，别在夜色里亮得刺眼 */
+.weather-layer.night .weather-sun { display: none; }        /* 夜里没有阳光 */
+.weather-layer.night .weather-cloud { opacity: .38; }       /* 云影也别发光 */
+.weather-layer.night .weather-tint { filter: brightness(.82); opacity: .92; }
+/* 夜里「晴 / 多云」换成冷色月华（不是暖阳） */
+.weather-layer.night.w-sun .weather-tint {
+    background: radial-gradient(circle at 74% 16%,
+        rgba(150, 180, 230, .16), rgba(80, 110, 170, .05) 42%, transparent 72%);
+}
+.weather-layer.night.w-snow .weather-tint { filter: brightness(.9); }
+
+@media (prefers-reduced-motion: reduce) {
+    .weather-cloud, .weather-sun { animation: none; }
+}

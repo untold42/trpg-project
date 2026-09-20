@@ -28,6 +28,26 @@ from tools.核心.game_clock import (
     clock, SHICHEN, KE_PER_SHICHEN, KE_CN, SECONDS_PER_KE, _parse_date,  # noqa: F401
 )
 
+#: 本轮 LLM 是否已自行调用过时间工具（advance_time / update_time）。
+#: 供 use_facility 判重：LLM 已推过 → 后端不再按「耗时刻」重复推进。
+_TIME_TOOL_USED = False
+
+
+def reset_turn() -> None:
+    """每轮 /action 开始时由后端调用。"""
+    global _TIME_TOOL_USED
+    _TIME_TOOL_USED = False
+
+
+def time_tool_used() -> bool:
+    """本轮 LLM 是否已调用过时间工具。"""
+    return _TIME_TOOL_USED
+
+
+def _mark_time_tool_used() -> None:
+    global _TIME_TOOL_USED
+    _TIME_TOOL_USED = True
+
 
 def advance_time(ke=None, shichen=None):
     """推进游戏时间：`ke` 刻 + `shichen` 时辰（可只给其一，或二者叠加）。
@@ -46,6 +66,7 @@ def advance_time(ke=None, shichen=None):
         return {"success": False,
                 "error": "推进量必须为正（ke 刻 / shichen 时辰，至少 1 刻）"}
     c = clock.advance(n_ke * SECONDS_PER_KE)
+    _mark_time_tool_used()
     return {"success": True, "推进": {"刻": n_ke}, "时间": c}
 
 
@@ -69,6 +90,7 @@ def update_time(date=None, shichen=None, ke=None):
     c = clock.set_civil(date=date, shichen=shichen, ke=ke)
     if c is None:
         return {"success": False, "error": "时间参数非法"}
+    _mark_time_tool_used()
     return {"success": True, "时间": c}
 
 

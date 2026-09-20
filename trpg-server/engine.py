@@ -76,6 +76,10 @@ def _rules_text(folder: str) -> str:
 # ------------------------------------------------------------
 # 上下文素材
 # ------------------------------------------------------------
+#: 基本不变的块：从「每轮必变」的状态尾巴里拿出来，放**前缀**（稳定前缀利于缓存命中）。
+_STABLE_STATE_KEYS = ("导演简报", "地图设置", "难度设置")
+
+
 def state_dict() -> dict:
     """现拼的机械状态 dict（排除 足迹 / 时钟 / **属性**；世界线程已按上下文裁剪）。
 
@@ -89,12 +93,8 @@ def state_dict() -> dict:
     snapshot = state.snapshot()
     if "世界线程" in snapshot:
         snapshot["世界线程"] = world_threads.threads_view()
-    for _skip in ("足迹", "时钟", "属性"):
+    for _skip in ("足迹", "时钟", "属性", *_STABLE_STATE_KEYS):
         snapshot.pop(_skip, None)
-    # 导演简报：只在生成成功且有内容时注入（生成中/失败不占上下文）
-    _b = snapshot.get("导演简报")
-    if isinstance(_b, dict) and not str(_b.get("内容", "")).strip():
-        snapshot.pop("导演简报", None)
     # 宏观时间线：只读剧本 + 时间窗（近 N 月已发生 / 未来 N 月预兆），不落档
     snapshot["宏观时间线"] = macro_timeline.view(world_threads.current_date())
     return snapshot
@@ -123,6 +123,76 @@ def snapshot_state() -> str:
         **`属性`体量大且几乎不变——需要时由大模型自行调 `get_ability`**）。
     """
     return render_state(state_dict())
+
+
+def stable_state_text() -> str:
+    """基本不变的块（导演简报 / 地图设置 / 难度设置）——放**前缀**，利于缓存命中。"""
+    snap = state.snapshot()
+    out = {}
+    for k in _STABLE_STATE_KEYS:
+        v = snap.get(k)
+        if v is None:
+            continue
+        if k == "导演简报" and not (isinstance(v, dict) and str(v.get("内容", "")).strip()):
+            continue
+        out[k] = v
+    return render_state(out) if out else ""
+
+
+def _dig(d, *keys, default=None):
+    cur = d
+    for k in keys:
+        if not isinstance(cur, dict):
+            return default
+        cur = cur.get(k)
+    return cur if cur is not None else default
+
+
+def _diff_state(prev: dict, cur: dict) -> str:
+    """本轮相对上一轮**变了什么**（代码算，替代「塞两份全量状态让模型自己比」）。"""
+    if not prev:
+        return ""
+    out = []
+    pt = _dig(prev, "基本信息", "时间", default={})
+    ct = _dig(cur, "基本信息", "时间", default={})
+    if pt != ct:
+        def _fmt(t):
+            return f"{t.get('日期','')} {t.get('时辰','')}{t.get('刻','')}刻"
+        out.append(f"时间 {_fmt(pt)} → {_fmt(ct)}")
+    pp = _dig(prev, "基本信息", "位置", default={})
+    cp = _dig(cur, "基本信息", "位置", default={})
+    if pp.get("地点") != cp.get("地点"):
+        out.append(f"位置 {pp.get('地点','?')} → {cp.get('地点','?')}")
+    pw = _dig(prev, "基本信息", "天气", default={})
+    cw = _dig(cur, "基本信息", "天气", default={})
+    if pw.get("状况") != cw.get("状况"):
+        out.append(f"天气 {pw.get('状况','?')} → {cw.get('状况','?')}")
+    for k in ("生命值", "精力值", "饥饿", "健康"):
+        a, b = _dig(prev, "状态", k), _dig(cur, "状态", k)
+        if a != b:
+            out.append(f"{k} {a} → {b}")
+    a, b = _dig(prev, "金钱", "金钱"), _dig(cur, "金钱", "金钱")
+    if a != b:
+        out.append(f"金钱 {a} → {b} 文")
+    pa = _dig(prev, "背包", "物品", default={}) or {}
+    ca = _dig(cur, "背包", "物品", default={}) or {}
+    for name in sorted(set(pa) | set(ca)):
+        ia, ib = name in pa, name in ca
+        na = (pa.get(name) or {}).get("数量", 1)
+        nb = (ca.get(name) or {}).get("数量", 1)
+        if ia and not ib:
+            out.append(f"失去 {name}")
+        elif ib and not ia:
+            out.append(f"获得 {name}")
+        elif na != nb:
+            out.append(f"{name} {na}→{nb}")
+    pb = _dig(prev, "加成", "生效", default={}) or {}
+    cb = _dig(cur, "加成", "生效", default={}) or {}
+    for k in sorted(set(cb) - set(pb)):
+        out.append(f"+{k}")
+    for k in sorted(set(pb) - set(cb)):
+        out.append(f"-{k}")
+    return "；".join(out)
 
 
 def nearby_places_text(radius_km: float = 0.6, limit: int = 12) -> str:
@@ -312,6 +382,106 @@ OOC_NOTE = (
     "**禁止**：文言 / 话本体 /「某」「在下」这类书中口吻；「你正立在…」这类入戏句；"
     "代替玩家叙述或行动；用书中旁白口吻把回答包成剧情。"
 )
+
+#: 【GM 守则】——每次请求都拼在**上下文最末端**（位置最靠后，最显眼）。
+#: 目的：让主持人认清自己只是「世界的组织者」，不代入任何角色、不借 NPC 之口传系统信息。
+_GM_CREED = (
+    "===== GM 守则（每轮重申，优先级最高）=====\n"
+    "你是这个世界的组织者，不是戏里的任何一个角色。\n"
+    "1. 不代入：不替梁峰（玩家）行动 / 说话；也不代 NPC 说台词。\n"
+    "2. 忠于事实：只陈述代码给的硬事实与由此产生的后果；不臆造、不脑补、不为「剧情需要」安排。\n"
+    "3. 系统信息只走旁白：时间压力、行程提醒、地点导航、任务提示——一律写进 narration，绝不借 NPC 之口。\n"
+    "4. NPC 只知道他亲历 / 亲闻 / 该知道的：你在旁白里掌握全局，但角色的嘴受其知悉集限制。\n"
+)
+
+#: 曲牌 / 篇名去重：从每轮输出抽 `《…》`，记进 游戏数据/曲牌.json，下一轮注入「勿重复」。
+_USED_TITLES_FILE = "曲牌"
+_USED_TITLES_MAX = 12
+_TITLE_RE = re.compile(r"《([^》\n]{1,12})》")
+
+
+def _extract_titles(text: str) -> list[str]:
+    seen, out = set(), []
+    for m in _TITLE_RE.findall(text or ""):
+        t = m.strip()
+        if t and t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
+
+
+def _record_titles(raw: str) -> None:
+    """把本轮输出里的《…》记入 游戏数据/曲牌.json（去重、保留最近 N 条）。"""
+    names = _extract_titles(raw)
+    if not names:
+        return
+    data = state.load(_USED_TITLES_FILE, {}) or {}
+    used = list(data.get("已用") or [])
+    for n in names:
+        if n not in used:
+            used.append(n)
+    data["已用"] = used[-_USED_TITLES_MAX:]
+    try:
+        state.save(_USED_TITLES_FILE, data)
+    except Exception:
+        pass
+
+
+def _used_titles_text() -> str:
+    data = state.load(_USED_TITLES_FILE, {}) or {}
+    return "、".join(data.get("已用") or [])
+
+
+def _weather_condition() -> str:
+    """当前天气状况（硬事实）。"""
+    w = (state.load("基本信息", {}) or {}).get("天气") or {}
+    return str(w.get("状况") or "").strip()
+
+
+#: 天气硬门禁词表：状况里没有对应天气时，输出里不得出现这些词。
+_RAIN_WORDS = ("阵雨", "暴雨", "大雨", "小雨", "细雨", "落雨", "下雨", "雨点", "雨幕",
+               "雨意", "雨势", "雨水", "雨丝", "雷", "雨")
+_SNOW_WORDS = ("雪花", "飘雪", "落雪", "大雪", "暴雪", "风雪", "积雪", "下雪", "飞雪", "雪片", "雪")
+
+#: 兜底机械改写（按顺序，长词在前；雨→云、雪→霜、雷→风、雹→霰）
+_WEATHER_SWAP = (
+    ("雨意", "云意"), ("雨幕", "天色"), ("雨点", "云气"), ("雨丝", "云气"),
+    ("雨势", "天色"), ("雨水", "云气"), ("阵雨", "云气"), ("暴雨", "天色"),
+    ("大雨", "天色"), ("小雨", "薄云"), ("细雨", "薄云"), ("落雨", "起云"),
+    ("下雨", "起云"), ("雨", "云"),
+    ("雪花", "霜花"), ("飘雪", "飞絮"), ("落雪", "凝霜"), ("大雪", "浓云"),
+    ("暴雪", "浓云"), ("风雪", "寒风"), ("积雪", "薄霜"), ("下雪", "起霜"),
+    ("飞雪", "飞絮"), ("雪", "霜"), ("雷", "风"), ("雹", "霰"),
+)
+
+
+def _events_text(events) -> str:
+    return "".join(str(e.get("content") or "") for e in (events or [])
+                    if isinstance(e, dict) and e.get("type") in ("narration", "chat"))
+
+
+def _weather_conflict(text: str) -> str:
+    """输出里与当前状况不符的天气词（无冲突返回 ""）。"""
+    cond = _weather_condition()
+    if not cond:
+        return ""
+    t = text or ""
+    if not any(w in cond for w in ("雨", "雷", "台")):
+        for w in _RAIN_WORDS:
+            if w in t:
+                return w
+    if not any(w in cond for w in ("雪", "雹")):
+        for w in _SNOW_WORDS:
+            if w in t:
+                return w
+    return ""
+
+
+def _swap_weather(s: str) -> str:
+    for a, b in _WEATHER_SWAP:
+        if a in s:
+            s = s.replace(a, b)
+    return s
 
 
 def read_turns(log_path) -> list[dict]:
@@ -528,13 +698,20 @@ class GameSession:
                 "role": "system",
                 "content": "===== 前情提要（上一轮存档）=====\n" + self.previous_story,
             })
+        # 基本不变的块（导演简报/地图设置/难度设置）：放**前缀** → 稳定前缀利于缓存，不陪尾巴每轮 miss
+        stable = stable_state_text()
+        if stable:
+            msgs.append({
+                "role": "system",
+                "content": "===== 长期设定（很少变）=====\n" + stable,
+            })
         return msgs
 
     def build_messages(self, tool_msgs: list[dict] | None = None) -> list[dict]:
         """组装本次发往 LLM 的 messages。
 
-        结构：[规则, 前情?, ...history, ...本轮工具消息, 时间提醒?, 上一轮状态?, 当前状态]
-        状态放末尾（稳定前缀利于上下文缓存）；**只保留两份**：栈顶（上一轮）+ 现拼当前。
+        结构：[规则, 前情?, 长期设定?, ...history, ...本轮工具消息, 时间提醒?, 本轮变化?, 当前状态]
+        稳定前缀（规则/前情/长期设定/history）利于上下文缓存；动态块一律放**末尾**。
         """
         msgs = self._system_messages() + self.history + list(tool_msgs or [])
         if self.pending_time_note:
@@ -547,17 +724,18 @@ class GameSession:
                 "role": "system",
                 "content": "===== 系统提醒 =====\n" + "\n".join(self.pending_notes),
             })
+        # 当前状态（现拼）+ 本轮变化（代码算的差分）——替代「塞上一轮全量状态」，每轮必 miss 更小
+        cur_state = state_dict()
         if self.state_stack:
-            # 栈顶 = 上一轮的状态；与现拼的「当前状态」一起给出，让模型**自行对比**
-            # 时间 / 地点 / 数值的变化（探索时时间在流动、玩家在走动，无需代码计算差值）
-            msgs.append({
-                "role": "system",
-                "content": "===== 上一轮状态（供对比：时间 / 地点 / 数值发生了什么变化）=====\n"
-                           + render_state(self.state_stack[-1]),
-            })
+            diff = _diff_state(self.state_stack[-1], cur_state)
+            if diff:
+                msgs.append({
+                    "role": "system",
+                    "content": "===== 本轮变化（相对上一轮）=====\n" + diff,
+                })
         msgs.append({
             "role": "system",
-            "content": "===== 当前状态 =====\n" + snapshot_state(),
+            "content": "===== 当前状态 =====\n" + render_state(cur_state),
         })
         # 「地名必须真实」——附玩家附近实名地点，供主持人取用真名（禁止生造）
         nearby = nearby_places_text()
@@ -566,6 +744,16 @@ class GameSession:
                 "role": "system",
                 "content": "===== 附近实名地点（NPC 提地名只能用真实存在的，禁止生造）=====\n" + nearby,
             })
+        # 曲牌 / 篇名去重：写唱曲 / 点戏 / 题诗 / 引书时换新的，勿反复用同一支
+        used = _used_titles_text()
+        if used:
+            msgs.append({
+                "role": "system",
+                "content": ("===== 近期用过的曲牌 / 篇名（写唱曲、点戏、题诗、引书时"
+                            "**换新的，勿重复**）=====\n" + used),
+            })
+        # GM 守则：**最末端**（每轮重申，位置最靠后最显眼）
+        msgs.append({"role": "system", "content": _GM_CREED})
         return msgs
 
 # ------------------------------------------------------------
@@ -760,6 +948,8 @@ class TurnRunner:
         #: 本轮**实际下发**给大模型的工具 schema（按轮设置，见 `run`）。
         self._tools: list | None = None
         self._lock = threading.RLock()  # 串行化回合（**可重入**：run_save 会嵌套调 _run_save）
+        #: 上一轮开始前的完整状态（供「驳回重发」回滚；只存最近一轮）
+        self._last_turn: dict | None = None
 
     def run(self, user_input: str, mode: str = "action", from_explore: bool = False,
             allow_time: bool = True) -> list[dict]:
@@ -776,6 +966,8 @@ class TurnRunner:
         with self._lock:
             # LLM 请求窗口：暂停连续时钟（生成/工具耗时不计入游戏时间），返回后恢复
             clock.pause("turn")
+            # 记录本轮开始前的完整状态（供「驳回重发」回滚；不含本次生成）
+            self._last_turn = self._snap_turn(user_input, mode, from_explore, allow_time)
             prev_allowed, prev_tools = self._allowed, self._tools
             self._select_tools(allow_time)
             try:
@@ -783,6 +975,92 @@ class TurnRunner:
             finally:
                 self._allowed, self._tools = prev_allowed, prev_tools
                 clock.resume("turn")
+
+    # ---- 「驳回重发」----
+    def _snap_turn(self, user_input: str, mode: str, from_explore: bool, allow_time: bool) -> dict:
+        """把本轮**开始前**的状态打包（游戏数据全量 + 时钟 + 日志长度 + history + 会话内存）。"""
+        try:
+            clock.persist()   # 冻结时钟落盘，保证快照里的时钟是最新值
+        except Exception:
+            pass
+        try:
+            log_size = self.session.log_path.stat().st_size
+        except OSError:
+            log_size = 0
+        try:
+            from tools.大模型 import accident as _accident
+            accident_on = bool(_accident.turn_accident())
+        except Exception:
+            accident_on = False
+        return {
+            "state": state.snapshot(),
+            "hist_len": len(self.session.history),
+            "log_size": log_size,
+            "stack": list(self.session.state_stack),
+            "last_bg": self.session.last_bg,
+            "last_bg_location": self.session.last_bg_location,
+            "last_music": self.session.last_music,
+            "pending_notes": list(self.session.pending_notes),
+            "pending_time_note": self.session.pending_time_note,
+            "accident": accident_on,
+            "input": user_input,
+            "mode": mode,
+            "from_explore": from_explore,
+            "allow_time": allow_time,
+        }
+
+    def reject(self) -> list[dict]:
+        """驳回上一轮：回滚到本轮开始前，用**同一输入**重发一次（不含上次的生成）。
+
+        - 回滚：游戏数据（时钟 / 金钱 / 属性 / 位置 / 足迹 / 世界线程…）+ current.jsonl + history + 会话内存；
+        - 意外标志沿用本轮原结果（重发不重抽意外）；设施 / 时间标志清零；
+        - 可反复驳回（每次重发都会重新快照到同一个“本轮之前”）。
+        """
+        with self._lock:
+            s = self._last_turn
+            if not s:
+                return [{"type": "narration", "content": "（没有可驳回的上一轮。）"}]
+            # 1) 游戏数据全量回滚
+            for name, value in (s.get("state") or {}).items():
+                try:
+                    state.save(name, value)
+                except Exception:
+                    pass
+            try:
+                clock.reload()
+            except Exception:
+                pass
+            # 2) 过程日志：截断到本轮之前
+            p = self.session.log_path
+            try:
+                if s["log_size"] <= 0:
+                    if p.exists():
+                        p.unlink()
+                elif p.exists():
+                    with open(p, "r+b") as f:
+                        f.truncate(s["log_size"])
+            except OSError:
+                pass
+            # 3) history / 会话内存
+            del self.session.history[s["hist_len"]:]
+            self.session.state_stack = deque(s["stack"], maxlen=2)
+            self.session.last_bg = s["last_bg"]
+            self.session.last_bg_location = s["last_bg_location"]
+            self.session.last_music = s["last_music"]
+            self.session.pending_notes = list(s["pending_notes"])
+            self.session.pending_time_note = s["pending_time_note"]
+            # 4) 每轮标志：意外沿用，设施 / 时间清零
+            try:
+                from tools.大模型 import accident as _accident
+                from tools.大模型 import facility as _facility
+                from tools.大模型 import time_weather as _time_weather
+                _accident.set_turn(bool(s.get("accident")))
+                _facility.reset_turn()
+                _time_weather.reset_turn()
+            except Exception:
+                pass
+            # 5) 同一输入重发
+            return self.run(s["input"], s["mode"], s["from_explore"], s["allow_time"])
 
     def _select_tools(self, allow_time: bool) -> None:
         """按轮决定下发哪些工具：时间工具硬门禁。
@@ -868,6 +1146,9 @@ class TurnRunner:
 
         # 5) 解析最终 JSON（必要时请求一次格式修正）
         raw, events = self._finalize(result, tool_msgs)
+        # 5a) 天气硬门禁：与当前天气不符 → 带修正重发；仍不符 → 机械改写
+        raw, events = self._weather_guard(raw, events, tool_msgs)
+        _record_titles(raw)   # 记下本轮用过的曲牌 / 篇名（下一轮注入「勿重复」）
         # 5a) 人物表情（小模型）：给 chat 补 expression（唯一影响返回事件流，不改 raw）
         expression_sim.fill(events)
         # 5b) 时间权威：叙述推进了时间却没调 update_time → 记提醒，下一轮注入
@@ -1013,6 +1294,15 @@ class TurnRunner:
         if self._allowed is not None and name not in self._allowed:
             return {"success": False,
                     "error": f"本轮未下发该工具，已拒绝调用: {name}"}
+        # 设施活动的耗时已由后端 use_facility 自动推进 → 拒绝 LLM 再调 advance_time（防重复计时）
+        if name == "advance_time":
+            try:
+                from tools.大模型 import facility as _facility
+                if _facility.time_advanced_this_turn():
+                    return {"success": False,
+                            "error": "设施活动的耗时已由系统自动推进，本轮不要再调 `advance_time`。"}
+            except Exception:
+                pass
         tool = self.tools_map.get(name)
         if tool is None:
             return {"success": False, "error": f"未知工具: {name}"}
@@ -1031,6 +1321,13 @@ class TurnRunner:
             self.session.pending_time_note = ""
             return
         called = any(tc.get("name") in ("advance_time", "update_time") for tc in tool_records)
+        if not called:
+            # 设施活动耗时由后端 use_facility 自动推进，也算“已落库”
+            try:
+                from tools.大模型 import facility as _facility
+                called = _facility.time_advanced_this_turn()
+            except Exception:
+                called = False
         hit = _time_advanced(events)
         if called:
             self.session.pending_time_note = ""
@@ -1120,10 +1417,19 @@ class TurnRunner:
             allowed = set()
         last = self.session.last_music
         music_invalid = bool(last) and last not in allowed
+        # 地点主题曲（当前地点唯一绑定的一首）：即使背景没变，也允许切到它
+        theme = None
+        try:
+            lb = ui_sim.location_bound_tracks(loc) if loc else []
+            if len(lb) == 1:
+                theme = lb[0]
+        except Exception:
+            theme = None
 
         if music_ev:
             track = (music_ev.get("data") or {}).get("track")
-            if force or scene_changed or music_invalid:
+            theme_switch = bool(track) and track == theme and track != last
+            if force or scene_changed or music_invalid or theme_switch:
                 if force or track != last or music_invalid:
                     self.session.last_music = track
                     out.append(music_ev)
@@ -1181,6 +1487,41 @@ class TurnRunner:
             "type": "narration",
             "content": "（系统：主持人回复格式异常，请再行动一次。）",
         }]
+
+    def _weather_guard(self, raw, events, tool_msgs):
+        """天气**硬门禁**：输出里的天气必须与 `基本信息.天气.状况` 一致。
+
+        1) 不一致 → 带「天气修正」提示重发一次（修正消息不写 history）；
+        2) 仍不一致 → **机械改写**（雨→云、雪→霜…）——玩家绝看不到矛盾天气。
+        """
+        bad = _weather_conflict(_events_text(events))
+        if not bad:
+            return raw, events
+        cond = _weather_condition()
+        note = (
+            f"本轮天气由系统给定：**{cond}**。你的输出里出现了「{bad}」，与天气不符。"
+            f"请重写这一轮（剧情不变），**不要出现与「{cond}」不符的天气描写**；"
+            "要变天只能调 `update_weather`。"
+        )
+        correction = list(tool_msgs) + [
+            {"role": "assistant", "content": raw},
+            {"role": "user", "content": note},
+        ]
+        try:
+            retry = self.send_messages(self.session.build_messages(correction), tools=self._tools)
+            raw2, events2 = self._finalize(retry, tool_msgs)
+        except Exception:
+            raw2, events2 = raw, events
+        if events2 and not _weather_conflict(_events_text(events2)):
+            return raw2, events2
+        # 兜底：机械改写（只改 narration / chat 的正文）
+        print(f"[weather] 重发仍冲突，机械改写「{bad}」（状况={cond}）")
+        fixed = []
+        for e in (events2 or events or []):
+            if isinstance(e, dict) and e.get("type") in ("narration", "chat") and e.get("content"):
+                e = {**e, "content": _swap_weather(str(e["content"]))}
+            fixed.append(e)
+        return json.dumps(fixed, ensure_ascii=False), fixed
 
     @staticmethod
     def _parse(raw: str):

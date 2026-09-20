@@ -69,3 +69,22 @@ export function stopMusic() {
 export function currentTrack(): string {
   return 当前曲;
 }
+
+// 界面专用曲（技能树等）：压倒游戏 BGM，关掉界面后恢复原曲。
+// 存在模块里而不是组件里——“之前那首”与 当前曲 同源，不会读到旧值。
+let 界面前曲: string | null = null;
+
+/** 开始播放界面专用曲（记下当前曲，供 popUiMusic 恢复）。可重入：已压过则不覆盖存档。 */
+export function pushUiMusic(track: string) {
+  if (界面前曲 === null) 界面前曲 = 当前曲;
+  playMusic(track);
+}
+
+/** 退出界面：恢复 pushUiMusic 之前的曲；之前没在放就停掉。没压过则不动。 */
+export function popUiMusic() {
+  if (界面前曲 === null) return;
+  const 前 = 界面前曲;
+  界面前曲 = null;
+  if (前) playMusic(前);
+  else stopMusic();
+}

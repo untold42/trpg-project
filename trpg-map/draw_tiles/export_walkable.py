@@ -15,6 +15,7 @@ export_walkable.py
     wall    城墙（闭合 LineString）
     gate    城门（Point）
     bridge  桥 / 浮桥（Point）
+    dock    渡口 / 码头（Point；前端按半径放行走，避免泊位落在水里把人卡死）
     road    道路（category='road'，含坊巷/官道，不含城墙）
     terrain 地形步速区（林地/山岩/滩涂/农田…；properties.mult = 步速倍率）
 
@@ -180,6 +181,13 @@ def main():
             "WHERE ancient_kind IN ('桥','浮桥')"):
         add("bridge", {"type": gt, "coordinates": round_coords(json.loads(ct))},
             name=name, kind=None)
+
+    # ---- 渡口 / 码头（水边落脚点：点常落在水域内，前端按半径放行）----
+    for name, gt, ct, akind in conn.execute(
+            "SELECT name, geometry_type, coords, ancient_kind FROM features "
+            "WHERE ancient_kind IN ('渡口','码头')"):
+        add("dock", {"type": gt, "coordinates": round_coords(json.loads(ct))},
+            name=name, kind=akind)
 
     # ---- 道路（不含城墙）----
     for name, gt, ct, akind in conn.execute(

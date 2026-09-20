@@ -203,3 +203,45 @@
 }
 
 .facility-other button:hover { background: #d9c9a0; }
+
+/* 修行时长选择（点数类设施才有）：一排小按钮 */
+.facility-time {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 14px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: rgba(10, 8, 6, .55);
+}
+
+.facility-time .ft-label {
+    font-size: 14px;
+    color: #e7ca9c;
+    margin-right: 4px;
+}
+
+.facility-time .ft-btn {
+    padding: 4px 10px;
+    border: 1px solid rgba(231, 202, 156, .45);
+    border-radius: 6px;
+    background: rgba(0, 0, 0, .35);
+    color: #f3ead6;
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.facility-time .ft-btn:hover {
+    border-color: #e7ca9c;
+    background: rgba(231, 202, 156, .18);
+}
+
+.facility-time .ft-btn.on {
+    background: #e7ca9c;
+    border-color: #e7ca9c;
+    color: #2b2622;
+}

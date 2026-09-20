@@ -353,6 +353,7 @@ def query_nearby(lon, lat, radius_km=1.0, kind=None, category=None, limit=20):
         # 线/面可能很长，代表点（中点/内部点）会离查询点很远，
         # 若把它当地标就会把玩家瞬移出去（实测差过 184 米）。
         np_m = nearest_points(geom_m, pt_m)[0]
+        _b = geom_m.bounds
         results.append({
             "name": name,
             "kind": akind,
@@ -361,6 +362,7 @@ def query_nearby(lon, lat, radius_km=1.0, kind=None, category=None, limit=20):
             "lon": round(np_m.x / m_per_deg_lon, 6),
             "lat": round(np_m.y / M_PER_DEG_LAT, 6),
             "distance_km": round(d_m / 1000.0, 3),
+            "size_m": round(math.hypot(_b[2] - _b[0], _b[3] - _b[1])),
             "name_modern": name_modern,
             "营业时间": hours_for(akind),
             "现在": ("营业" if is_open(hours_for(akind), now_i) else "打烊"),
@@ -433,7 +435,7 @@ def query_place(name=None, kind=None, category=None, limit=20):
         sql += " AND f.category = ?"
         params.append(category)
     sql += " LIMIT ?"
-    params.append(limit)
+    params.append(max(limit * 20, 200))   # 先多取，再按「同名优先 + 距玩家」排序后切片
 
     now_i = now_shichen_index()
     results = []
@@ -462,7 +464,15 @@ def query_place(name=None, kind=None, category=None, limit=20):
             if isinstance(r.get("lon"), (int, float)) and isinstance(r.get("lat"), (int, float)):
                 r["方位"] = bearing_name(plon, plat, r["lon"], r["lat"])
                 r["距玩家（米）"] = round(distance_m(plon, plat, r["lon"], r["lat"]))
+        # 同名地点（如「玄冥庙」城内 / 君山各一所）必须按**离玩家远近**排，近的在前；
+        # 否则 limit=1 会取到数据库里先出现的那一个，把玩家瞬移到几公里外。
+        if name:
+            results.sort(key=lambda r: (0 if r.get("name") == name else 1,
+                                        r.get("距玩家（米）", float("inf"))))
+        else:
+            results.sort(key=lambda r: r.get("距玩家（米）", float("inf")))
 
+    results = results[:limit]
     return {"success": True, "count": len(results), "results": results}
 
 

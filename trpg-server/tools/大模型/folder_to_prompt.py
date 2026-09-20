@@ -24,7 +24,9 @@ def strip_markdown(text: str) -> str:
 def folder_to_prompt(folder_path, clean: bool = True):
     folder = Path(folder_path)
     prompt = ""
-    for file in folder.rglob("*"):
+    # 排序：文件遍历顺序不保证稳定，而这段规则是**缓存前缀的最前部**——
+    # 顺序一变，整段前缀就变，上下文缓存全废（rglob 在部分文件系统/机器上顺序不同）。
+    for file in sorted(folder.rglob("*")):
         if not file.is_file():
             continue
         try:

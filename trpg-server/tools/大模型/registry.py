@@ -278,13 +278,15 @@ _ENTRIES = [
                 "description": "玩家在基础设施（相扑场/武馆/棋馆/书院/游园/神庙…）里做了**具体活动**后，结算养成："
                 "点数类永久加对应属性；buff 类给当天成长加成。"
                 "玩家只表达「想要…」时先叙事铺垫，确已做了这次活动才调；一次活动只调一次。"
-                "`option` 用设施选项标签（如 练习 / 挑战 / 奉祀）；`target` 仅在设施效果为「五行.*」时填（火/金/木/土/水）。",
+                "`option` 用设施选项标签（如 练习 / 挑战 / 奉祀）；`target` 仅在设施效果为「五行.*」时填（火/金/木/土/水）。"
+                "`ke` = 玩家自选的修行时长（刻，1 时辰=8 刻）；没说就省（用设施默认）。",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "facility": {"type": "string", "description": "设施 kind（如 go）或名称（如 棋馆）"},
                         "option": {"type": "string", "description": "玩家选的选项标签（如 练习 / 挑战 / 奉祀）"},
                         "target": {"type": "string", "description": "五行行名，仅当效果为 五行.* 时填：火/金/木/土/水"},
+                        "ke": {"type": "integer", "description": "玩家自选的修行刻数（1 时辰=8 刻）；如「静修一个时辰」传 8。不传则用设施默认。"},
                     },
                     "required": ["facility"],
                 },

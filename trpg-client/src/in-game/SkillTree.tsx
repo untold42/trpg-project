@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Galaxy from "./Galaxy";
 import { API } from "../api";
+import { useEsc } from "../escStack";
 import "../styles/SkillTree.css";
 
 /* =========================================================================
@@ -124,6 +125,43 @@ function useLayout(nodes: SkillNode[]) {
     }, [nodes]);
 }
 
+/* ---------------- 技能树视野（自动取景 + 滚轮滚动） ---------------- */
+/** 节点外接框 + 边距 → viewBox。再深的链也不会被裁掉。 */
+const PAD_X = 120, PAD_Y = 90;
+function useFitView(pos: Map<string, { x: number; y: number }>) {
+    return useMemo(() => {
+        if (pos.size === 0) return { x: 0, y: 0, w: 1200, h: 820 };
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        for (const p of pos.values()) {
+            minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+            minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+        }
+        return {
+            x: minX - PAD_X, y: minY - PAD_Y,
+            w: (maxX - minX) + PAD_X * 2, h: (maxY - minY) + PAD_Y * 2,
+        };
+    }, [pos]);
+}
+
+/** 缩放：放得下就放大到占满，放不下就用原尺寸（画布比视口大 → 外层滚轮滚动） */
+function useTreeScale(fit: { w: number; h: number }, wrapRef: React.RefObject<HTMLDivElement | null>) {
+    const [scale, setScale] = useState(1);
+    useEffect(() => {
+        const el = wrapRef.current;
+        if (!el) return;
+        const measure = () => {
+            const w = el.clientWidth, h = el.clientHeight;
+            if (!w || !h) return;
+            setScale(Math.max(1, Math.min(w / fit.w, h / fit.h)));
+        };
+        measure();
+        const ro = new ResizeObserver(measure);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, [fit.w, fit.h, wrapRef]);
+    return scale;
+}
+
 /* ======================================================================== */
 
 export default function SkillTree({ onClose }: { onClose: () => void }) {
@@ -141,21 +179,21 @@ export default function SkillTree({ onClose }: { onClose: () => void }) {
     }, []);
     useEffect(() => { reload(); }, [reload]);
 
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key !== "Escape") return;
-            if (row) { setRow(null); setSel(null); }
-            else onClose();
-        };
-        document.addEventListener("keydown", onKey);
-        return () => document.removeEventListener("keydown", onKey);
-    }, [row, onClose]);
+    // Esc：层级栈里自己这一层（详情卡 → 某一行 → 关闭）
+    useEsc(() => {
+        if (sel) { setSel(null); return; }
+        if (row) { setRow(null); return; }
+        onClose();
+    });
 
     const rowNodes = useMemo(
         () => (view?.节点 ?? []).filter((n) => n.五行 === row),
         [view, row],
     );
     const { pos, edges } = useLayout(rowNodes);
+    const fit = useFitView(pos);
+    const treeWrapRef = useRef<HTMLDivElement>(null);
+    const treeScale = useTreeScale(fit, treeWrapRef);
     const god = GODS.find((g) => g.行 === row) ?? null;
     const geo = useMemo(() => arcGeometry(STAGE.w, STAGE.h), []);
 
@@ -184,7 +222,7 @@ export default function SkillTree({ onClose }: { onClose: () => void }) {
     }
 
     return (
-        <div className="skilltree" onClick={onClose}>
+        <div className="skilltree">
             <div className="st-frame">
             <Galaxy transparent mouseInteraction={false} mouseRepulsion={false} {...GALAXY} />
             {god && <div className="st-tint" style={{ background: god.色 }} />}
@@ -261,7 +299,12 @@ export default function SkillTree({ onClose }: { onClose: () => void }) {
 
             {/* ---- 第二幕：某一行技能树 ---- */}
             {view && row && (
-                <svg className="st-tree" viewBox="0 0 1200 820" onClick={(e) => e.stopPropagation()}>
+                <div className="st-tree-wrap" ref={treeWrapRef}>
+                <svg className="st-tree"
+                    width={fit.w * treeScale} height={fit.h * treeScale}
+                    viewBox={`${fit.x} ${fit.y} ${fit.w} ${fit.h}`}
+                    preserveAspectRatio="xMidYMid meet"
+                    onClick={(e) => e.stopPropagation()}>
                     {edges.map(({ from, to }, i) => {
                         const a = pos.get(from), b = pos.get(to);
                         if (!a || !b) return null;
@@ -291,6 +334,7 @@ export default function SkillTree({ onClose }: { onClose: () => void }) {
                         );
                     })}
                 </svg>
+                </div>
             )}
 
             {msg && <div className="st-msg" onClick={(e) => e.stopPropagation()}>{msg}</div>}

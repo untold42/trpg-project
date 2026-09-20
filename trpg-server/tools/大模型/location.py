@@ -175,16 +175,27 @@ def update_location(place_name=None, lon=None, lat=None, move_mode=None):
     # 名字回填：坐标移动时，用最近的有名地点作为「地点」（否则会存成坐标字符串，
     # 导致地图类型查不到、背景/音乐约束失效）。
     if not place_name:
-        near1 = query_nearby(target_lon, target_lat, radius_km=0.15, limit=5)
-        for x in near1.get("results", []):
-            if x.get("name"):
-                better = x["name"]
-                if better != resolved_name:
-                    data = state.load("基本信息", {})
-                    data.setdefault("位置", {})["地点"] = better
-                    state.save("基本信息", data)
-                    resolved_name = better
-                break
+        near1 = query_nearby(target_lon, target_lat, radius_km=0.2, limit=8)
+        cands = [x for x in near1.get("results", []) if x.get("name")]
+
+        # 优先「具体地点」：小建筑/点，其次才是把整片包住的大区域（洲/湖/园/院墙…），
+        # 否则站在锦香宫院里也会被标成「君山岛」（距离同为 0，按几何大小分高低）。
+        _BROAD = {"洲", "湖", "山", "园", "水域", "区域", "城墙", "院墙"}
+
+        def _rank(x):
+            size = x.get("size_m")
+            size = size if isinstance(size, (int, float)) else 0
+            broad = size > 800 or (x.get("kind") in _BROAD)
+            return (broad, x.get("distance_km") or 0.0, size)
+
+        cands.sort(key=_rank)
+        if cands:
+            better = cands[0]["name"]
+            if better != resolved_name:
+                data = state.load("基本信息", {})
+                data.setdefault("位置", {})["地点"] = better
+                state.save("基本信息", data)
+                resolved_name = better
 
     return {
         "success": True,

@@ -9,6 +9,8 @@ import {
 import { gsap } from 'gsap';
 import '../styles/StaggeredMenu.css';
 
+import { useEsc } from "../escStack";
+
 export interface StatusMenuProps {
   /** 菜单从哪一侧滑出 */
   position?: 'left' | 'right';
@@ -176,6 +178,9 @@ export function StaggeredMenu({
   const handleContentClick = useCallback(() => {
     if (closeOnContentClick && openRef.current) toggleMenu();
   }, [closeOnContentClick, toggleMenu]);
+
+  // Esc：菜单自己也是一层（面板在上面时先退面板，再退菜单）
+  useEsc(() => { if (openRef.current) toggleMenu(); }, open);
 
   return (
     <div

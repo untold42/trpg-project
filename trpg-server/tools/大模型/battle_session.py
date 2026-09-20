@@ -216,7 +216,7 @@ def _finalize() -> dict:
 
     growth_log = [] if _META.get("模拟") else _grant_battle_growth(b, p)
 
-    # 技能点：真实战斗（含败）2% 机率得 1 点；模拟战不算
+    # 技能点：真实战斗（含败）按 `成长.json.技能点概率.战斗` 掷**一次**（整场一次）；模拟战不算
     point = None
     if not _META.get("模拟"):
         try:

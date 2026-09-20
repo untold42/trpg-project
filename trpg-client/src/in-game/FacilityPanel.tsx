@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useEsc } from "../escStack";
 import "../styles/FacilityPanel.css";
 
 export type FacilityOption = {
     标签: string;
     意图?: string;
     类型?: string;   // 养成 | 自由
+    效果类型?: string;   // 点数 | buff（点数才有时长选择）
     介绍?: string;
     图标?: string;
 };
@@ -18,6 +20,19 @@ export type FacilityDetail = {
     背景?: string;
     error?: string;
 };
+
+//: 修行时长可选（刻）：1 时辰 = 8 刻
+const KE_CHOICES: { v: number; t: string }[] = [
+    { v: 2, t: "2刻（约半小时）" },
+    { v: 4, t: "4刻（半个时辰）" },
+    { v: 8, t: "8刻（一个时辰）" },
+    { v: 16, t: "16刻（两个时辰）" },
+];
+
+function keLabel(ke: number): string {
+    const hit = KE_CHOICES.find((c) => c.v === ke);
+    return hit ? hit.t.replace(/^\d+刻（|）$/g, "") : `${ke}刻`;
+}
 
 /**
  * 基础设施「详细」界面：菱形事件图 + 类型（养成/自由）+ 活动名 + 固定介绍。
@@ -36,23 +51,20 @@ export default function FacilityPanel({
     onClose: () => void;
 }) {
     const [otherMode, setOtherMode] = useState(false);
+    // 修行时长（刻）：仅「点数」类选项生效；默认 8 刻＝1 个时辰
+    const [ke, setKe] = useState(8);
     const [text, setText] = useState("");
     const name = detail.名称 || place;
     const options = detail.选项 || [];
 
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape" && !busy && !leaving) onClose();
-        };
-        document.addEventListener("keydown", onKey);
-        return () => document.removeEventListener("keydown", onKey);
-    }, [onClose, busy, leaving]);
-
+    // Esc：层级栈里自己这一层（忙碌 / 淡出中不响应）
+    useEsc(() => { if (!busy && !leaving) onClose(); });
     function pick(o: FacilityOption) {
         if (busy || leaving) return;
         if (o.标签 === "其他") { setOtherMode(true); return; }
-        if (o.意图) onChoose(`进入${name}，想要${o.意图}`);
-        else onChoose(`进入「${name}」`);
+        const dur = o.效果类型 === "点数" ? `（修行${ke}刻＝${keLabel(ke)}）` : "";
+        if (o.意图) onChoose(`进入${name}，想要${o.意图}${dur}`);
+        else onChoose(`进入「${name}」${dur}`);
     }
     function submitOther() {
         if (busy || leaving) return;
@@ -106,6 +118,21 @@ export default function FacilityPanel({
                 </div>
 
                 {busy && <div className="facility-hint">……</div>}
+
+                {options.some((o) => o.效果类型 === "点数") && !busy && !leaving && (
+                    <div className="facility-time">
+                        <span className="ft-label">修行时长</span>
+                        {KE_CHOICES.map((c) => (
+                            <button
+                                key={c.v}
+                                className={`ft-btn${ke === c.v ? " on" : ""}`}
+                                onClick={(e) => { e.stopPropagation(); setKe(c.v); }}
+                            >
+                                {c.t}
+                            </button>
+                        ))}
+                    </div>
+                )}
 
                 {otherMode && (
                     <div className="facility-other">
