@@ -267,7 +267,8 @@ export default function SkillTree({ onClose }: { onClose: () => void }) {
                         const nameX = px + (i - 2) * NAME_OUT;   // 名字远离中心（后土 = 0）
                         const src = godImg(g.行);
                         return (
-                            <g key={g.行} className="st-panel-hit" onClick={() => setRow(g.行)}>
+                            <g key={g.行} className="st-panel-hit" onClick={() => setRow(g.行)}
+                                style={{ ["--god" as string]: g.色 }}>
                                 <path className="st-panel" d={panelPath(geo, a0, a1)}
                                     style={{ ["--god" as string]: g.色 }} />
                                 {src ? (

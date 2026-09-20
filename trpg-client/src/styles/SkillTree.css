@@ -88,10 +88,18 @@
 .st-panel-hit:hover .st-panel {
     fill: color-mix(in srgb, var(--god) 16%, transparent);
 }
-/* 神像发光：颜色随该行的 --god（双层 drop-shadow = 软光晕） */
+/* 神像发光：颜色随该行的 --god（双层 drop-shadow = 软光晕）；呼吸明暗 + 悬停更快 */
 .st-panel-hit image {
     filter: drop-shadow(0 0 6px var(--god)) drop-shadow(0 0 20px var(--god));
+    animation: stGodGlow 3.6s ease-in-out infinite;
 }
+@keyframes stGodGlow {
+    0%, 100% { filter: drop-shadow(0 0 5px var(--god)) drop-shadow(0 0 16px var(--god)); }
+    50%      { filter: drop-shadow(0 0 9px var(--god)) drop-shadow(0 0 28px var(--god)); }
+}
+.st-panel-hit:hover image { animation-duration: 1.5s; }
+/* 神名也带一层同色微光 */
+.st-god { filter: drop-shadow(0 0 7px var(--god)); }
 .st-imgbox rect {
     fill: rgba(255, 255, 255, 0.02);
     stroke: currentColor;
