@@ -97,7 +97,12 @@
     0%, 100% { filter: drop-shadow(0 0 5px var(--god)) drop-shadow(0 0 16px var(--god)); }
     50%      { filter: drop-shadow(0 0 9px var(--god)) drop-shadow(0 0 28px var(--god)); }
 }
-.st-panel-hit:hover image { animation-duration: 1.5s; }
+/* 悬停：更亮、更快，颜色用 --god-hover（默认 = 行色；如蓐收用更黄的金） */
+.st-panel-hit:hover image { animation: stGodGlowHover 1.5s ease-in-out infinite; }
+@keyframes stGodGlowHover {
+    0%, 100% { filter: drop-shadow(0 0 8px var(--god-hover)) drop-shadow(0 0 24px var(--god-hover)); }
+    50%      { filter: drop-shadow(0 0 13px var(--god-hover)) drop-shadow(0 0 38px var(--god-hover)); }
+}
 /* 神名也带一层同色微光 */
 .st-god { filter: drop-shadow(0 0 7px var(--god)); }
 .st-imgbox rect {

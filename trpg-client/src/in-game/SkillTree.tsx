@@ -50,12 +50,12 @@ type SkillView = {
 };
 
 /** 五神（按相生序：木→火→土→金→水，从左上到右下铺开）；`上移` = 该神像额外抬高（像素，可选） */
-type God = { 行: string; 神: string; 色: string; 上移?: number };
+type God = { 行: string; 神: string; 色: string; 悬停色?: string; 上移?: number };
 const GODS: God[] = [
     { 行: "木", 神: "句芒", 色: "#6fbf7a" },
     { 行: "火", 神: "祝融", 色: "#ff4d1a", 上移: 40 },
     { 行: "土", 神: "后土", 色: "#c19a5b" },
-    { 行: "金", 神: "蓐收", 色: "#e6d18a", 上移: 40 },
+    { 行: "金", 神: "蓐收", 色: "#e6d18a", 悬停色: "#ffd83b", 上移: 40 },
     { 行: "水", 神: "玄冥", 色: "#5aa0e0" },
 ];
 
@@ -268,7 +268,7 @@ export default function SkillTree({ onClose }: { onClose: () => void }) {
                         const src = godImg(g.行);
                         return (
                             <g key={g.行} className="st-panel-hit" onClick={() => setRow(g.行)}
-                                style={{ ["--god" as string]: g.色 }}>
+                                style={{ ["--god" as string]: g.色, ["--god-hover" as string]: (g.悬停色 ?? g.色) }}>
                                 <path className="st-panel" d={panelPath(geo, a0, a1)}
                                     style={{ ["--god" as string]: g.色 }} />
                                 {src ? (
