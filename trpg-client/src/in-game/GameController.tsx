@@ -249,7 +249,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     const [cursor, setCursor] = useState<{ lon: number; lat: number } | null>(null);
     const cursorRef = useRef<{ lon: number; lat: number } | null>(null);
     const prevCursorRef = useRef<{ lon: number; lat: number } | null>(null); // 上一次「输入」时的位置
-    const [clockRate, setClockRate] = useState(15);                           // 时钟倍率（移动速度随它缩放）
+    const [clockRate, setClockRate] = useState(10);                           // 时钟倍率（移动速度随它缩放）
     const [sending, setSending] = useState(false);                            // LLM 请求进行中（时钟冻结）
     const [saving, setSaving] = useState(false);                              // 存档进行中（蒸馏可能 1~3 分钟）
     const { isNight, shichen } = useWorldTime();                            // 昼夜 + 时辰：地图夜色 + 打烊不亮灯

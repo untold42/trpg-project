@@ -47,6 +47,17 @@ CITIES = {
 
 DEFAULT_CITY = "扬州"
 
+#: 城池尺寸档（**方形**，面积 km²）。城市在 CITIES 里写 "尺寸": "20"。
+#: 10=州城 / 20=府城 / 30=大府 / 40=巨城 / 50=都城。
+CITY_SIZES = {
+    "10": 10.0,
+    "20": 20.0,
+    "30": 30.0,
+    "40": 40.0,
+    "50": 50.0,
+}
+DEFAULT_SIZE = "20"
+
 
 def map_id(city=DEFAULT_CITY):
     """城市 -> 英文 map_id（目录名 / 服务端 TRPG_MAP 用）。"""
@@ -87,6 +98,19 @@ def frame_bbox(city=DEFAULT_CITY):
 def center_of(city=DEFAULT_CITY):
     c = CITIES[city]
     return (c["center_lon"], c["center_lat"])
+
+
+def square_bbox(center_lon, center_lat, area_km2):
+    """以 (center_lon, center_lat) 为中心的**方形**城池 bbox，面积 area_km2。
+
+    返回 (min_lon, min_lat, max_lon, max_lat)。边长为 √(面积)，
+    经纬方向各自按当地尺度换算，保证是「米制正方形」（等面积、等边长）。
+    """
+    side = math.sqrt(float(area_km2) * 1_000_000.0)   # 米
+    dlat = (side / 2.0) / M_PER_DEG_LAT               # 米 / (米/度)
+    dlon = (side / 2.0) / m_per_deg_lon(center_lat)   # 米 / (米/度)
+    return (center_lon - dlon, center_lat - dlat,
+            center_lon + dlon, center_lat + dlat)
 
 
 def parse_bbox(text):

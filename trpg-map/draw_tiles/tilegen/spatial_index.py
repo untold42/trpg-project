@@ -18,7 +18,12 @@ LAYERS = (
 )
 
 
-def build_tile_index(objects, zoom):
+def build_tile_index(objects, zoom, bounds=None):
+    """bounds=(min_tx,max_tx,min_ty,max_ty)：只把对象挂到**画框内**的瓦片。
+
+    洞庭湖这类超大多边形，bbox 会盖住画框外的几千张瓦片；
+    不裁剪就会白建索引（内存 + 时间）。
+    """
 
     print("建立空间索引...")
 
@@ -60,6 +65,14 @@ def build_tile_index(objects, zoom):
 
         min_tile_y = int(min_y // 256)
         max_tile_y = int(max_y // 256)
+
+        if bounds is not None:
+            min_tile_x = max(min_tile_x, bounds[0])
+            max_tile_x = min(max_tile_x, bounds[1])
+            min_tile_y = max(min_tile_y, bounds[2])
+            max_tile_y = min(max_tile_y, bounds[3])
+            if min_tile_x > max_tile_x or min_tile_y > max_tile_y:
+                continue
 
         for tile_y in range(
             min_tile_y,

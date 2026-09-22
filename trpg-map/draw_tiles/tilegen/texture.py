@@ -29,6 +29,25 @@ def _hash01(gx, gy):
     return h - np.floor(h)
 
 
+#: 低频道场（色差/污渍/纸浆不匀/霉斑）在 1/COARSE 分辨率上计算，再双线性放大。
+#: 这些场都是低频连续函数，降采样看不出来；而逐像素三角函数是瓦片生成的大头。
+COARSE = 8
+
+
+def _coarse_axes(tile_x, tile_y):
+    """该瓦片的**全局**粗网格坐标（含右/下各多一格，供双线性）。"""
+    g = TILE_SIZE // COARSE
+    gx = (np.arange(g + 1) * COARSE + tile_x * TILE_SIZE).astype(np.float64)[None, :]
+    gy = (np.arange(g + 1) * COARSE + tile_y * TILE_SIZE).astype(np.float64)[:, None]
+    return gx, gy
+
+
+def _upsample(coarse):
+    im = Image.fromarray(np.asarray(coarse, dtype=np.float32), "F")
+    return np.asarray(im.resize((TILE_SIZE, TILE_SIZE), Image.BILINEAR),
+                      dtype=np.float64)
+
+
 def _global_grid(tile_x, tile_y):
 
     gx = (
@@ -40,6 +59,14 @@ def _global_grid(tile_x, tile_y):
     ).astype(np.float64)[:, None]
 
     return gx, gy
+
+
+def _mottle_field(gx, gy):
+    return (
+        np.sin(gx * 0.0131)
+        + np.cos(gy * 0.0173)
+        + np.sin((gx + gy) * 0.0091)
+    ) / 3.0
 
 
 # ============================================================
@@ -60,7 +87,7 @@ _PATCH_WAVES = (
 
 def _patch_field(gx, gy):
 
-    s = np.zeros((TILE_SIZE, TILE_SIZE))
+    s = np.zeros((gy.shape[0], gx.shape[1]))
     wsum = 0.0
 
     for i, (a, b, w) in enumerate(_PATCH_WAVES):
@@ -99,9 +126,12 @@ def add_paper_texture(img, tile_x, tile_y):
 
     arr = np.asarray(img).astype(np.float64)
 
-    gx, gy = _global_grid(tile_x, tile_y)
+    # 低频场：粗网格算 + 双线性放大（跨瓦片仍连续，因粗坐标对齐全局）
+    gx, gy = _coarse_axes(tile_x, tile_y)
 
-    patch = _patch_field(gx, gy)
+    patch = _upsample(_patch_field(gx, gy))
+    stain_f = _upsample(_stain_field(gx, gy))
+    mottle = _upsample(_mottle_field(gx, gy))
 
     # 色差：明暗
     shade = 1.0 + PATCH_STRENGTH * patch
@@ -112,34 +142,25 @@ def add_paper_texture(img, tile_x, tile_y):
     shade_b = shade * (1.0 - PATCH_HUE * patch)
 
     # 污渍
-    stain = 1.0 - STAIN_STRENGTH * _stain_field(gx, gy)
+    st = 1.0 - STAIN_STRENGTH * stain_f
+    shade_r *= st
+    shade_g *= st
+    shade_b *= st
 
-    shade_r *= stain
-    shade_g *= stain
-    shade_b *= stain
-
-    # 霉斑
-    fox = 1.0 - FOXING_STRENGTH * _foxing_mask(gx, gy)
+    # 霉斑（稀疏；粗网格足够）
+    fox = 1.0 - FOXING_STRENGTH * _upsample(_foxing_mask(gx, gy))
     shade_r *= fox
     shade_g *= fox
     shade_b *= fox
 
-    arr[:, :, 0] *= shade_r
-    arr[:, :, 1] *= shade_g
-    arr[:, :, 2] *= shade_b
+    # 三通道合成一次乘法
+    arr *= np.stack([shade_r, shade_g, shade_b], axis=2)
 
-    # 细颗粒 + 低频纸浆不匀
-    grain = _hash01(gx, gy) - 0.5
-    mottle = (
-        np.sin(gx * 0.0131)
-        + np.cos(gy * 0.0173)
-        + np.sin((gx + gy) * 0.0091)
-    ) / 3.0
-
-    arr += (
-        grain * PAPER_GRAIN_STRENGTH
-        + mottle * PAPER_MOTTLE_STRENGTH
-    )[:, :, None]
+    # 低频纸浆不匀（grain 已停用；若要颗粒感请在前端叠可平铺小图）
+    arr += mottle[:, :, None] * PAPER_MOTTLE_STRENGTH
+    if PAPER_GRAIN_STRENGTH:
+        gg, hh = _global_grid(tile_x, tile_y)
+        arr += ((_hash01(gg, hh) - 0.5) * PAPER_GRAIN_STRENGTH)[:, :, None]
 
     # 步长量化：所有瓦片用同一张量化表 → 无接缝，且 PNG 体积减半
     if QUANTIZE_STEP and QUANTIZE_STEP > 1:

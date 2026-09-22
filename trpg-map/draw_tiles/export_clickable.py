@@ -75,7 +75,7 @@ def hours_for_kind(kind):
 
 MAX_POINTS = 50000          # 超过这个坐标数的要素跳过
 SKIP_CATEGORIES = {"boundary"}  # 行政边界不参与点击
-SKIP_KINDS = {"民居", "水域"}          # 民居/环岛水域不进入前端可点层（瓦片上仍显示）
+SKIP_KINDS = {"民居", "水域"}          # 民居/环岛水域不进入前端可点层（民居已默认不生成）
 
 # 输出到 properties 里保留的 tags 子集（避免把整包 tag 全带上）
 KEEP_TAG_KEYS = (

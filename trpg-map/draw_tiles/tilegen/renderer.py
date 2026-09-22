@@ -139,10 +139,11 @@ def _iter_lines(prepared):
 
 def _draw_land(img, draw, layer, zoom, tile_x, tile_y, origin_x, origin_y):
 
-    gx, gy = _global_grid(tile_x, tile_y)
+    if not layer:
+        return
 
-    dots = _hash01(gx, gy) > 0.972
-    hatch = ((gx + gy) % 7.0) < 1.0
+    dots = None          # 惰性：只在真的需要点阵/斜线时才做全网格三角函数
+    hatch = None
 
     forest_fill = get_land_style({"landuse": "forest"})[0]
 
@@ -174,11 +175,19 @@ def _draw_land(img, draw, layer, zoom, tile_x, tile_y, origin_x, origin_y):
 
             if pattern == "dot":
 
+                if dots is None:
+                    gx, gy = _global_grid(tile_x, tile_y)
+                    dots = _hash01(gx, gy) > 0.972
+
                 color = FOREST_DOT if fill == forest_fill else SCRUB_DOT
 
                 _overlay_mask(img, inside & dots, color, alpha=0.75)
 
             elif pattern == "hatch":
+
+                if hatch is None:
+                    gx, gy = _global_grid(tile_x, tile_y)
+                    hatch = ((gx + gy) % 7.0) < 1.0
 
                 _overlay_mask(img, inside & hatch, FARMLAND_HATCH, alpha=0.55)
 
@@ -188,6 +197,9 @@ def _draw_land(img, draw, layer, zoom, tile_x, tile_y, origin_x, origin_y):
 # ============================================================
 
 def _draw_water(img, draw, layer, zoom, origin_x, origin_y):
+
+    if not layer:
+        return
 
     from config import WATER_EDGE_M
     from projection import meters_to_px
@@ -250,6 +262,9 @@ def _waterway_width(tags, zoom):
 
 def _draw_waterways(draw, layer, zoom, origin_x, origin_y):
 
+    if not layer:
+        return
+
     for prepared in layer:
 
         tags = prepared["obj"].get("tags", {})
@@ -281,6 +296,9 @@ def _draw_waterways(draw, layer, zoom, origin_x, origin_y):
 # ============================================================
 
 def _draw_roads(draw, layer, zoom, origin_x, origin_y):
+
+    if not layer:
+        return
 
     for prepared in layer:
 
@@ -350,6 +368,9 @@ def _building_style(prepared):
 
 def _draw_buildings(draw, layer, zoom, origin_x, origin_y):
 
+    if not layer:
+        return
+
     from projection import meters_to_px
 
     edge = meters_to_px(2.0, zoom, minimum=1, maximum=3)
@@ -383,6 +404,9 @@ def _draw_buildings(draw, layer, zoom, origin_x, origin_y):
 # ============================================================
 
 def _draw_wall(draw, layer, zoom, origin_x, origin_y):
+
+    if not layer:
+        return
 
     from config import WALL_WIDTH_M
     from projection import meters_to_px

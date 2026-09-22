@@ -40,6 +40,23 @@ def get_points_from_geometry(geometry):
     return points
 
 
+#: 按 zoom 简化几何（像素容差）：洞庭湖这种十万级顶点的多边形，
+#: 不简化就会在每张覆盖它的瓦片里重复绘制全都顶点。
+SIMPLIFY_PX = 0.75
+SIMPLIFY_MIN_PTS = 12
+
+
+def _simp(pts, tol, topology=False):
+    if len(pts) < SIMPLIFY_MIN_PTS:
+        return pts
+    try:
+        import shapely.geometry as sg
+        return list(sg.LineString(pts).simplify(
+            tol, preserve_topology=topology).coords)
+    except Exception:
+        return pts
+
+
 def prepare_object(obj, zoom, lonlat_to_pixel):
 
     geometry = obj.get("geometry")
@@ -66,7 +83,8 @@ def prepare_object(obj, zoom, lonlat_to_pixel):
 
         pixels = [lonlat_to_pixel(lon, lat, zoom) for lon, lat in coordinates]
 
-        return {"obj": obj, "type": "LineString", "coordinates": pixels}
+        return {"obj": obj, "type": "LineString",
+                "coordinates": _simp(pixels, SIMPLIFY_PX)}
 
     if geometry_type == "MultiLineString":
 
@@ -76,7 +94,7 @@ def prepare_object(obj, zoom, lonlat_to_pixel):
 
             pixels = [lonlat_to_pixel(lon, lat, zoom) for lon, lat in line]
 
-            all_lines.append(pixels)
+            all_lines.append(_simp(pixels, SIMPLIFY_PX))
 
         return {"obj": obj, "type": "MultiLineString", "coordinates": all_lines}
 
@@ -88,7 +106,7 @@ def prepare_object(obj, zoom, lonlat_to_pixel):
 
             pixels = [lonlat_to_pixel(lon, lat, zoom) for lon, lat in ring]
 
-            all_rings.append(pixels)
+            all_rings.append(_simp(pixels, SIMPLIFY_PX, topology=True))
 
         return {"obj": obj, "type": "Polygon", "coordinates": all_rings}
 
@@ -104,7 +122,7 @@ def prepare_object(obj, zoom, lonlat_to_pixel):
 
                 pixels = [lonlat_to_pixel(lon, lat, zoom) for lon, lat in ring]
 
-                polygon_rings.append(pixels)
+                polygon_rings.append(_simp(pixels, SIMPLIFY_PX, topology=True))
 
             all_polygons.append(polygon_rings)
 

@@ -98,7 +98,8 @@ def classify_object(prepared):
         return "road"
 
 
-    # 民居矩形不画在瓦片上（避免密集），但数据保留在 JSON/DB 里
+    # 民居：默认已不生成（build_world.GENERATE_HOUSES）；若用 TRPG_HOUSES=1 回滚生成，
+    # 这里仍不画到瓦片上（避免满城灰块）
     if obj.get("ancient_kind") == "民居":
         return "other"
 

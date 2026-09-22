@@ -14,8 +14,11 @@ build_world.py
 
 生成顺序（--stage 控制）：
     1 = 保留层(自然地理+锚点) + 城墙/城门 + 老城道路 + 坊面层
-    2 = + 坊内民居矩形
-    3 = + POI 布点 + 城外官道/聚落（完整）
+    2 = + 坊内民居矩形（**默认不生成**，见 GENERATE_HOUSES）
+    3 = + POI 布点 + 城外聚落 + 建筑群 + 五行神庙（完整）
+
+民居（坊内矩形 + 城外聚落）默认**不生成**：它们不渲染、不可点、不阻挡、
+查询默认排除；定位单位是「坊」，不需要具体房屋。需要时 `TRPG_HOUSES=1` 回滚。
 
 用法：
     python build_world.py --stage 1
@@ -32,6 +35,25 @@ from shapely.geometry import (
     Point, LineString, Polygon, MultiPolygon, box as shp_box, shape,
 )
 from shapely.ops import nearest_points, unary_union, transform as shp_transform
+from shapely.prepared import prep
+
+#: shapely.prepared 缓存：对「4k+ 个几何的并集」这类复杂图形，
+#: 裸 covers / intersects 每次都重建索引，大城会卡死；prep 一次提速几十倍。
+#: ⚠️ 值必须同时持有原几何：否则原几何被 GC 后 id 被新几何复用 → 返回错的对象
+#: （实测会导致两次生成结果不一致）。
+_PREP_CACHE = {}
+
+
+def _prepg(g):
+    if g is None:
+        return None
+    key = id(g)
+    hit = _PREP_CACHE.get(key)
+    if hit is not None and hit[0] is g:
+        return hit[1]
+    p = prep(g)
+    _PREP_CACHE[key] = (g, p)      # 持有 g → 防止 id 被复用
+    return p
 
 from song_kinds import KINDS as SONG_KINDS
 from water_width import width_m as waterway_width_m
@@ -39,6 +61,18 @@ from water_width import width_m as waterway_width_m
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # 数据统一放在 trpg-map/数据/（与 draw_tiles/ 同级）
 DATA_DIR = os.path.join(os.path.dirname(BASE_DIR), "数据")
+
+# 城市画框/尺寸的单一真相源：trpg-map/城市.py
+import sys
+try:  # Windows 控制台默认 GBK，撑不住中文/符号 → 强制 UTF-8
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+_MAP_ROOT = os.path.dirname(BASE_DIR)          # trpg-map/
+if _MAP_ROOT not in sys.path:
+    sys.path.insert(0, _MAP_ROOT)
+from 城市 import CITY_SIZES, square_bbox  # noqa: E402
 
 # 城市（可用 TRPG_CITY 覆盖）——决定输入/输出文件名
 CITY = os.environ.get("TRPG_CITY", "扬州")
@@ -55,6 +89,9 @@ POI_FILE = os.path.join(DATA_DIR, f"{CITY}_POI.json")
 # 建筑群（宫观 / 府邸 / 别业）：<城市>_建筑群.json
 #   与 POI 不同，建筑群是**手工定点的院落**，build_world 按布局生成院墙/殿宇/廊庑/园圃
 COMPOUND_FILE = os.path.join(DATA_DIR, f"{CITY}_建筑群.json")
+
+# 基础设施分配表（通用 + 地域；构建差异化城市）
+INFRA_FILE = os.path.join(DATA_DIR, "基础设施分配.json")
 
 # 「中轴三进」宫观布局（归一化：u,v ∈ [-0.5,0.5]；v 正 = 北/后，负 = 南/前/
 # 即面南临水）。每项：(名称后缀, ancient_kind, u, v, 宽占比例, 高占比例)
@@ -73,6 +110,12 @@ PALACE_CORRIDORS = [
 ]
 
 SEED = 42
+
+#: 城池尺寸改变后，旧的 POI 冻结表作废 → TRPG_REFREEZE=1 忽略它、重新随机生成
+REFREEZE = os.environ.get("TRPG_REFREEZE") == "1"
+
+#: 民居（坊内矩形 + 城外聚落）：默认不生成。TRPG_HOUSES=1 可回滚。
+GENERATE_HOUSES = os.environ.get("TRPG_HOUSES") == "1"
 
 #: 五行神庙：五座神各主一行；一城（城内+城外）合计上限
 FIVE_TEMPLE_ROWS = (
@@ -164,8 +207,11 @@ CITY_CONFIGS = {
     "扬州": {
         # 投影中心（文昌阁）
         "center": (119.4282, 32.3964),
-        # 老城核心区（护城河/小秦淮河/古运河/挹江门 围合，约 2.3×2.3 km）
-        "old_city_bbox": (119.4245, 32.3835, 119.4485, 32.4045),
+        # 城池：20 km² **方形**（中心 = 原老城 bbox 中心）；尺寸档见 城市.py CITY_SIZES
+        "尺寸": "20",
+        "城池中心": (119.4365, 32.394),
+        # 地域标签 → 基础设施分配表（水乡/大河/都会）
+        "地域": ["水乡", "大河", "都会"],
         "content_radius_m": 30000.0,
         "ward_names": [
             "太平坊", "仁丰坊", "开明坊", "甘泉坊", "东关坊", "通泗坊",
@@ -209,8 +255,11 @@ CITY_CONFIGS = {
     "岳阳": {
         # 投影中心：岳州古城中心（岳阳楼西门 ~20 km 内为城区）
         "center": (113.0975, 29.3765),
-        # 岳州古城：西墙即洞庭湖岸（岳阳门/岳阳楼），东至岳州文庙
-        "old_city_bbox": (113.0865, 29.3655, 113.1085, 29.3875),
+        # 城池：20 km² **方形**；中心东移 1.5km 避开洞庭湖（原古城中心西边 27% 是水，东移后 ~5%）
+        "尺寸": "20",
+        "城池中心": (113.113, 29.3765),
+        # 地域标签 → 基础设施分配表（大湖/大河）
+        "地域": ["大湖", "大河"],
         "content_radius_m": 30000.0,
         # 岳州坊名（不足的由通用吉祥字根池补齐）
         "ward_names": [
@@ -260,7 +309,17 @@ if CITY not in CITY_CONFIGS:
 _CFG = CITY_CONFIGS[CITY]
 
 CENTER_LON, CENTER_LAT = _CFG["center"]
-OLD_CITY_BBOX = tuple(_CFG["old_city_bbox"])
+CITY_REGIONS = list(_CFG.get("地域", []))
+CITY_CENTER_LON, CITY_CENTER_LAT = _CFG.get("城池中心", (CENTER_LON, CENTER_LAT))
+
+# 城池 bbox：显式 old_city_bbox 优先（legacy），否则由「尺寸 + 城池中心」派生**方形**
+if "old_city_bbox" in _CFG:
+    OLD_CITY_BBOX = tuple(_CFG["old_city_bbox"])
+else:
+    OLD_CITY_BBOX = square_bbox(
+        CITY_CENTER_LON, CITY_CENTER_LAT,
+        CITY_SIZES[str(_CFG.get("尺寸", "20"))])
+
 CONTENT_RADIUS_M = float(_CFG.get("content_radius_m", 30000.0))
 WARD_NAMES = list(_CFG["ward_names"])
 ROAD_RENAME = dict(_CFG["road_rename"])
@@ -268,6 +327,27 @@ ANCHOR_KIND = dict(_CFG["anchor_kind"])
 TOWNS = list(_CFG["towns"])
 # 地名改名（现代/中性名 -> 南宋名）；在 load_keep_objects 里统一应用
 NAME_RENAME = dict(_CFG.get("rename", {}))
+
+
+# ----------------------------------------------------------------------
+# 城池尺度：把「写死的绝对米数 / 数量」按城池大小缩放
+#   基准 = 原扬州城 5.24 km²（边长 2289m，POI core 900 等就是为它调的）
+# ----------------------------------------------------------------------
+def _bbox_side_m(bbox):
+    lon0, lat0, lon1, lat1 = bbox
+    latm = (lat0 + lat1) / 2.0
+    w = (lon1 - lon0) * _m_per_deg_lon(latm)
+    h = (lat1 - lat0) * M_PER_DEG_LAT
+    return w, h
+
+
+CITY_W_M, CITY_H_M = _bbox_side_m(OLD_CITY_BBOX)
+CITY_AREA_KM2 = (CITY_W_M * CITY_H_M) / 1e6
+CITY_RADIUS_M = math.hypot(CITY_W_M, CITY_H_M) / 2.0      # 外接圆半径
+#: 线性缩放（阈值类按它缩放）
+SIZE_SCALE = ((CITY_W_M + CITY_H_M) / 2.0) / 2289.0
+#: 面积缩放（数量类按它缩放）
+AREA_SCALE = CITY_AREA_KM2 / 5.24
 
 # ----------------------------------------------------------------------
 # 命名
@@ -285,6 +365,9 @@ _PREFIX_B = [
     "济", "福", "元", "景", "成", "源", "茂", "发", "通", "义",
 ]
 PREFIX2 = [a + b for a in _PREFIX_A for b in _PREFIX_B]
+# 备用命名池（大城用，防 POI 命名枯竭）：字池 = 前后缀去重并集
+_NAME_CHARS = list(dict.fromkeys(_PREFIX_A + _PREFIX_B))
+_NAME_SUFFIX = ("", "东", "西", "南", "北", "新", "老", "大", "小", "上", "下", "前", "后")
 
 # 现代设施名称标记：landuse/natural 保留层若名字命中则丢弃。
 # tourism/historic 已走 ANCHOR_KIND 白名单，无需此表。
@@ -352,6 +435,7 @@ PLAIN_KINDS = {
 # 坊名池：先保留 36 个专名，再用两字吉祥字根组合出更多（供 165 坊用）
 _WARD_SEQ = None
 _WARD_NUM = 0
+_WARD_SEEN = set()
 WARD_STEM_A = [
     "太", "永", "安", "长", "庆", "和", "兴", "仁", "义", "崇",
     "德", "文", "武", "清", "宁", "甘", "广", "琼", "梅", "竹",
@@ -401,6 +485,68 @@ ZONE_POOLS = {
         "客栈": 2, "镖行": 1,
     },
 }
+
+# ----------------------------------------------------------------------
+# 基础设施分配表：通用 + 本城「地域」标签 → 实际 POI 池
+#   （ZONE_POOLS 仅作读表失败时的兜底）
+# ----------------------------------------------------------------------
+def _load_infra():
+    try:
+        with open(INFRA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print("!! 读不到基础设施分配表，退回内置 ZONE_POOLS：", e)
+        return {"通用": ZONE_POOLS, "地域": {}, "限量": {},
+                "每档总量": [], "_尺寸档": []}
+
+
+_INFRA = _load_infra()
+
+
+def _build_poi_pools():
+    pools = {z: dict(d) for z, d in _INFRA.get("通用", {}).items()}
+    for tag in CITY_REGIONS:
+        for z, kinds in (_INFRA.get("地域", {}).get(tag, {}) or {}).items():
+            if z.startswith("_"):
+                continue
+            pools.setdefault(z, {})
+            for k, w in kinds.items():
+                pools[z][k] = pools[z].get(k, 0) + w
+    return pools
+
+
+POI_POOLS = _build_poi_pools()
+
+# ---- 尺寸档索引（限量 / 每档总量 按它取值；无 尺寸 字段时默认 20）----
+_SIZE_KEYS = [str(s) for s in _INFRA.get("_尺寸档", ["10", "20", "30", "40", "50"])]
+_size_key = str(_CFG.get("尺寸", "20"))
+SIZE_IDX = _SIZE_KEYS.index(_size_key) if _size_key in _SIZE_KEYS else 1
+
+# ---- 全城**最终 custom POI** 目标总数（每档总量；城内+城外，含锚点/城门/神庙）----
+_TOTALS = _INFRA.get("每档总量", [])
+if _TOTALS and SIZE_IDX < len(_TOTALS):
+    POI_TARGET = float(_TOTALS[SIZE_IDX])
+else:
+    POI_TARGET = 1825.0 * AREA_SCALE
+
+# ---- 按 zone 的**最终放置占比**（分布；不是抽样次数）----
+_SPLIT = {k: float(v) for k, v in (_INFRA.get("分布", {}) or {}).items()}
+if not _SPLIT:
+    _SPLIT = {"core": 0.409, "water": 0.159, "general": 0.295, "edge": 0.136}
+
+
+# ---- 每种设施的全城限量（标量=固定；列表=按尺寸档）----
+def _cap_of(v):
+    if isinstance(v, (list, tuple)):
+        return int(v[SIZE_IDX]) if SIZE_IDX < len(v) else int(v[-1])
+    return int(v)
+
+
+KIND_CAP = {k: _cap_of(v) for k, v in (_INFRA.get("限量", {}) or {}).items()}
+
+print("城池: %.2f km² | 边长 %.0fm | 尺寸档 %s | custom POI 目标 %d | 地域: %s"
+      % (CITY_AREA_KM2, CITY_W_M, _size_key, int(POI_TARGET),
+         "/".join(CITY_REGIONS) or "（无）"))
 
 # ----------------------------------------------------------------------
 # 几何小工具
@@ -458,7 +604,7 @@ class WorldBuilder:
         self.water_geom = None      # 米制 union
         self.water_features = []    # 米制 water 线/面（供画舫贴岸）
         self.water_polys = []       # 米制水面（**只含面**，buffer 时用来去重）
-        self.center_xy = lonlat_to_xy(CENTER_LON, CENTER_LAT)
+        self.center_xy = lonlat_to_xy(CITY_CENTER_LON, CITY_CENTER_LAT)
 
     # ---------------- id ----------------
     def new_id(self):
@@ -643,12 +789,15 @@ class WorldBuilder:
                     idxs = tree.query(LineString(sample_pts)) if tree is not None else None
                 except Exception:
                     idxs = None
-                near = [existing[j] for j in idxs] if idxs is not None and len(idxs) else existing
+                # idxs 为空 = 附近没有已有水面 → near 必须为空（旧代码退回「全部」
+                # 导致每组都要对全部水面做 60×N 次 contains，大城卡死）
+                near = [existing[j] for j in idxs] if idxs is not None else existing
+                prepared = [_prepg(g) for g in near]
                 step = max(1, len(sample_pts) // 60)
                 probe = sample_pts[::step]
                 covered = sum(
                     1 for p in probe
-                    if any(g.contains(Point(p)) for g in near)
+                    if any(pg.contains(Point(p)) for pg in prepared)
                 ) / max(1, len(probe))
                 if covered >= COVERAGE_SKIP:
                     # 保留原中线（它带着河名，而那些水面多边形是无名的），
@@ -669,9 +818,9 @@ class WorldBuilder:
                     try:
                         near = [existing[j] for j in tree.query(buf)]
                     except Exception:
-                        near = [p for p in existing if p.intersects(buf)]
+                        near = [p for p in existing if _prepg(p).intersects(buf)]
                 else:
-                    near = [p for p in existing if p.intersects(buf)]
+                    near = [p for p in existing if _prepg(p).intersects(buf)]
                 if near:
                     try:
                         buf = buf.difference(unary_union(near))
@@ -763,20 +912,40 @@ class WorldBuilder:
                 elif abs(pt.y - maxy) < tol:
                     cand["北"].append(pt)
         cx, cy = (minx + maxx) / 2, (miny + maxy) / 2
-        mid = {"东": Point(maxx, cy), "西": Point(minx, cy),
-               "南": Point(cx, miny), "北": Point(cx, maxy)}
-        for dname, gname in (("东", "东门"), ("西", "西门"),
-                             ("南", "南门"), ("北", "北门")):
+        # 每边城门数：按边长每 ~1.8km 一门（小城 1、都城 4）
+        n_gate = max(1, int(round(((CITY_W_M + CITY_H_M) / 2.0) / 1800.0)))
+        cn = ["一", "二", "三", "四", "五", "六", "七", "八"]
+        dirs = (("东", "东门", maxx, "y"), ("西", "西门", minx, "y"),
+                ("南", "南门", miny, "x"), ("北", "北门", maxy, "x"))
+        for dname, gname, fixed, axis in dirs:
             pts = cand[dname]
-            pt = min(pts, key=lambda p: dist_m(p, mid[dname])) if pts else mid[dname]
-            objs.append({
-                "id": self.new_id(),
-                "name": gname,
-                "category": "custom",
-                "geometry": xy_geom_to_geojson(pt),
-                "tags": {"man_made": "city_gate"},
-                "ancient_kind": "城门",
-            })
+            lo = miny if axis == "y" else minx
+            hi = maxy if axis == "y" else maxx
+            targets = [lo + (hi - lo) * (i + 0.5) / n_gate for i in range(n_gate)]
+            used = set()
+            for i, t in enumerate(targets):
+                best = None
+                for p in pts:
+                    v = p.y if axis == "y" else p.x
+                    if round(v / 10) in used:
+                        continue
+                    if best is None or abs(v - t) < abs(
+                            (best.y if axis == "y" else best.x) - t):
+                        best = p
+                if best is not None:
+                    used.add(round((best.y if axis == "y" else best.x) / 10))
+                    pt = best
+                else:
+                    pt = Point(fixed, t) if axis == "y" else Point(t, fixed)
+                nm = gname if i == 0 else gname + cn[i] if i < len(cn) else f"{gname}{i + 1}"
+                objs.append({
+                    "id": self.new_id(),
+                    "name": nm,
+                    "category": "custom",
+                    "geometry": xy_geom_to_geojson(pt),
+                    "tags": {"man_made": "city_gate"},
+                    "ancient_kind": "城门",
+                })
         # 水门：水系穿墙处（优先东墙古运河）
         wpt = self._water_gate_point(ring, minx, maxx)
         if wpt is not None:
@@ -968,8 +1137,17 @@ class WorldBuilder:
                         seen.add(nm)
                         pool.append(nm)
             _WARD_SEQ = pool
+            _WARD_SEEN.update(seen)
         if _WARD_SEQ:
             return _WARD_SEQ.pop(0)
+        # 池用尽（大城）：加方位后缀
+        for _ in range(300):
+            nm = (self.rng.choice(WARD_STEM_A) + self.rng.choice(WARD_STEM_B)
+                  + self.rng.choice(("东坊", "西坊", "南坊", "北坊",
+                                     "新坊", "上坊", "下坊")))
+            if nm not in _WARD_SEEN:
+                _WARD_SEEN.add(nm)
+                return nm
         _WARD_NUM += 1
         return f"第{_WARD_NUM}坊"
 
@@ -978,6 +1156,8 @@ class WorldBuilder:
         out = []
         for w in wards:
             p = w["_poly"]
+            pp = _prepg(p)
+            pw = _prepg(self.water_geom)
             cls = self._ward_class(p)
             density = {"core": 2000, "water": 1800,
                        "general": 1400, "edge": 600}[cls]
@@ -990,15 +1170,15 @@ class WorldBuilder:
                 attempts -= 1
                 cx = self.rng.uniform(minx, maxx)
                 cy = self.rng.uniform(miny, maxy)
-                if not p.covers(Point(cx, cy)):
+                if not pp.covers(Point(cx, cy)):
                     continue
-                if self.water_geom is not None and self.water_geom.covers(Point(cx, cy)):
+                if pw is not None and pw.covers(Point(cx, cy)):
                     continue
                 wdt = self.rng.uniform(6, 12)
                 hgt = self.rng.uniform(7, 15)
                 ang = self.rng.uniform(0, math.pi)
                 b = rect_poly(cx, cy, wdt, hgt, ang)
-                if not p.covers(b):
+                if not pp.covers(b):
                     continue
                 if any(b.intersects(q) for q in placed):
                     continue
@@ -1017,16 +1197,15 @@ class WorldBuilder:
     def _ward_class(self, p):
         c = p.centroid
         d_center = dist_m(c, Point(*self.center_xy))
-        east_edge = self.core_poly.bounds[2]
-        d_river = east_edge - c.x
-        if d_center < 250:
+        if d_center < 250.0 * SIZE_SCALE:
             return "core"
-        if d_river < 320:
-            return "water"
-        if (c.x < self.core_poly.bounds[0] + 180
-                or c.x > east_edge - 180
-                or c.y < self.core_poly.bounds[1] + 180
-                or c.y > self.core_poly.bounds[3] - 180):
+        if self.water_geom is not None and not self.water_geom.is_empty:
+            if self.water_geom.distance(c) < 320.0 * SIZE_SCALE:
+                return "water"
+        b = self.core_poly.bounds
+        edge_m = 180.0 * SIZE_SCALE
+        if (c.x < b[0] + edge_m or c.x > b[2] - edge_m
+                or c.y < b[1] + edge_m or c.y > b[3] - edge_m):
             return "edge"
         return "general"
 
@@ -1034,44 +1213,80 @@ class WorldBuilder:
     def build_pois(self):
 
         # ---- 冻结表优先：POI 的名字/位置永久稳定，存档不会对不上 ----
-        if os.path.exists(POI_FILE):
+        if os.path.exists(POI_FILE) and not REFREEZE:
             out = self._load_frozen_pois(POI_FILE)
             print("POI（冻结表）:", len(out))
             return out
+        if REFREEZE and os.path.exists(POI_FILE):
+            print("POI：TRPG_REFREEZE=1 → 忽略旧冻结表，重新生成")
 
+        buf = 1500.0 * SIZE_SCALE
         core_region = self.core_poly.difference(self.water_geom) if self.water_geom else self.core_poly
-        general_region = self.core_poly.buffer(1500).difference(self.water_geom) \
-            if self.water_geom else self.core_poly.buffer(1500)
-        counts = {"core": 900, "water": 350, "general": 650, "edge": 300}
+        general_region = (self.core_poly.buffer(buf).difference(self.water_geom)
+                          if self.water_geom else self.core_poly.buffer(buf))
+        # 目标 = 最终 custom 总数；扣除已存在的 custom（锚点/城门）与后续固定开销（神庙/泊船处）
+        fixed = sum(1 for o in self.objects if o.get("category") == "custom")
+        gen_target = max(1.0, POI_TARGET - fixed - 12.0)
+        # 按「分布」把目标拆到各 zone（**最终放置占比**，不是抽样次数）
+        zone_targets = {z: int(round(gen_target * p)) for z, p in _SPLIT.items()}
+        print("  POI 生成目标 %d（最终目标 %d − 固定 custom %d）| 分布 %s"
+              % (int(gen_target), int(POI_TARGET), fixed, _SPLIT))
+
         out = []
         used_names = set()
-        for zone, total in counts.items():
-            pool = ZONE_POOLS[zone]
-            weights = list(pool.values())
-            kinds = list(pool.keys())
-            for _ in range(total):
+        placed = {}               # kind -> 已放置数（执行 KIND_CAP）
+        grid = {}                 # (gx,gy) -> [Point]：最小间距的空间哈希（免 O(n²)）
+        cell = 35.0
+
+        def _too_close(pt):
+            gx, gy = int(pt.x // cell), int(pt.y // cell)
+            for ix in (gx - 1, gx, gx + 1):
+                for iy in (gy - 1, gy, gy + 1):
+                    for q in grid.get((ix, iy), ()):
+                        if dist_m(pt, q) < cell:
+                            return True
+            return False
+
+        capped = set()            # 已达上限的 kind（全局；从池里剔除，不浪费抽样）
+        for zone, total in zone_targets.items():
+            pool = POI_POOLS.get(zone) or ZONE_POOLS.get(zone) or {}
+            if not pool or total <= 0:
+                continue
+            placed_zone = 0
+            attempts_left = max(total * 30, 200)
+            eligible = dict(pool)
+            rebuild = True
+            while placed_zone < total and attempts_left > 0:
+                attempts_left -= 1
+                if rebuild:
+                    eligible = {k: w for k, w in pool.items() if k not in capped}
+                    rebuild = False
+                if not eligible:
+                    break
+                kinds = list(eligible.keys())
+                weights = list(eligible.values())
                 kind = self.rng.choices(kinds, weights=weights, k=1)[0]
                 pt = self._sample_zone(zone, core_region, general_region)
                 if pt is None:
                     continue
-                # 最小间距
-                if any(dist_m(pt, Point(o["_x"], o["_y"])) < 35 for o in out):
+                if _too_close(pt):
                     continue
+                grid.setdefault((int(pt.x // cell), int(pt.y // cell)), []).append(pt)
+                placed[kind] = placed.get(kind, 0) + 1
+                placed_zone += 1
+                cap = KIND_CAP.get(kind)
+                if cap is not None and placed[kind] >= cap:
+                    capped.add(kind)
+                    rebuild = True
                 name = self._make_name(kind, used_names)
-                gj = xy_geom_to_geojson(pt)
-                obj = {
+                out.append({
                     "id": self.new_id(),
                     "name": name,
                     "category": "custom",
-                    "geometry": gj,
+                    "geometry": xy_geom_to_geojson(pt),
                     "tags": {},
                     "ancient_kind": kind,
-                    "_x": pt.x, "_y": pt.y,
-                }
-                out.append(obj)
-        for o in out:
-            o.pop("_x", None)
-            o.pop("_y", None)
+                })
         print("POI:", len(out))
 
         # 首次生成后落盘冻结（之后不再随机）
@@ -1194,20 +1409,22 @@ class WorldBuilder:
         if zone == "general":
             for _ in range(60):
                 pt = self._rand_in(general_region)
-                if pt is not None and not self.core_poly.covers(pt):
+                if pt is not None and not _prepg(self.core_poly).covers(pt):
                     return pt
                 if pt is not None:
                     return pt
             return None
-        # edge：城外 2.5–20km
+        # edge：城外（从城半径外 0.8km 起，到 20km）
+        edge_min = max(2500.0, CITY_RADIUS_M + 800.0)
+        edge_max = max(edge_min + 1500.0, min(20000.0, CONTENT_RADIUS_M))
         for _ in range(60):
             ang = rng.uniform(0, math.tau)
-            r = rng.uniform(2500, 20000)
+            r = rng.uniform(edge_min, edge_max)
             pt = Point(self.center_xy[0] + r * math.cos(ang),
                        self.center_xy[1] + r * math.sin(ang))
-            if self.water_geom is not None and self.water_geom.covers(pt):
+            if self.water_geom is not None and _prepg(self.water_geom).covers(pt):
                 continue
-            if self.core_poly.covers(pt):
+            if _prepg(self.core_poly).covers(pt):
                 continue
             return pt
         return None
@@ -1219,16 +1436,17 @@ class WorldBuilder:
         for _ in range(80):
             pt = Point(self.rng.uniform(minx, maxx),
                        self.rng.uniform(miny, maxy))
-            if region.covers(pt):
+            if _prepg(region).covers(pt):
                 return pt
         return None
 
     def _sample_near_water(self):
         rng = self.rng
-        feats = [f for f in self.water_features
-                 if self.core_poly.buffer(800).intersects(f)]
-        if not feats:
-            feats = self.water_features
+        if getattr(self, "_near_water_feats", None) is None:
+            core_buf = self.core_poly.buffer(800)
+            self._near_water_feats = [f for f in self.water_features
+                                      if core_buf.intersects(f)]
+        feats = self._near_water_feats or self.water_features
         for _ in range(60):
             src = rng.choice(feats)
             if src.geom_type == "LineString" and src.length > 1:
@@ -1240,7 +1458,7 @@ class WorldBuilder:
             ang = rng.uniform(0, math.tau)
             off = rng.uniform(8, 40)
             q = Point(p.x + off * math.cos(ang), p.y + off * math.sin(ang))
-            if self.water_geom is not None and self.water_geom.covers(q):
+            if self.water_geom is not None and _prepg(self.water_geom).covers(q):
                 continue
             return q
         return None
@@ -1248,8 +1466,23 @@ class WorldBuilder:
     def _make_name(self, kind, used):
         if kind in PLAIN_KINDS:
             return kind
-        for _ in range(60):
+        # 1) 预生成两字前缀
+        for _ in range(80):
             name = self.rng.choice(PREFIX2) + kind
+            if name not in used:
+                used.add(name)
+                return name
+        # 2) 大字池随机两字（大城）
+        for _ in range(400):
+            name = (self.rng.choice(_NAME_CHARS) + self.rng.choice(_NAME_CHARS)
+                    + kind)
+            if name not in used:
+                used.add(name)
+                return name
+        # 3) 前缀 + 方位后缀
+        for _ in range(400):
+            name = (self.rng.choice(PREFIX2) + self.rng.choice(_NAME_SUFFIX)
+                    + kind)
             if name not in used:
                 used.add(name)
                 return name
@@ -1497,7 +1730,7 @@ class WorldBuilder:
         self.objects += self.build_roads()
         self.objects += self.build_gates()
         wards = self.build_wards()
-        if self.stage >= 2:
+        if self.stage >= 2 and GENERATE_HOUSES:
             self.objects += self.build_buildings(wards)
         # 坊对象要去掉内部字段
         for w in wards:
@@ -1505,7 +1738,8 @@ class WorldBuilder:
             self.objects.append(w)
         if self.stage >= 3:
             self.objects += self.build_pois()
-            self.objects += self.build_country()
+            if GENERATE_HOUSES:
+                self.objects += self.build_country()
             self.objects += self.build_compounds()
             temples = self.build_five_temples()   # 五行神庙（≤10 / 城）
             self.objects += temples
@@ -1534,7 +1768,8 @@ class WorldBuilder:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--stage", type=int, default=3, choices=[1, 2, 3])
+    parser.add_argument("--stage", type=int, default=3, choices=[1, 2, 3],
+                        help="1=地理+城墙+坊 / 2=+民居(默认关) / 3=完整")
     parser.add_argument("--seed", type=int, default=SEED)
     args = parser.parse_args()
     WorldBuilder(stage=args.stage, seed=args.seed).run()
