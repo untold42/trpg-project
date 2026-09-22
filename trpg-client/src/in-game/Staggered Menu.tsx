@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -20,6 +21,11 @@ export interface StatusMenuProps {
   accentColor?: string;
   /** 点击面板内容后是否自动关闭（菜单项按钮用） */
   closeOnContentClick?: boolean;
+  /** 受控开合：传了就用外部状态（配合 hideToggle，把触发按钮放到外部按钮栏里） */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** 不渲染自带的触发按钮 */
+  hideToggle?: boolean;
   /** 面板内容 */
   children?: ReactNode;
 }
@@ -34,9 +40,14 @@ export function StaggeredMenu({
   menuLabel = '菜单',
   accentColor = '#c0392b',
   closeOnContentClick = false,
+  open: openProp,
+  onOpenChange,
+  hideToggle = false,
   children,
 }: StatusMenuProps) {
-  const [open, setOpen] = useState(false);
+  const [openState, setOpenState] = useState(false);
+  const controlled = openProp !== undefined;
+  const open = controlled ? !!openProp : openState;
   const openRef = useRef(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const preLayersRef = useRef<HTMLDivElement | null>(null);
@@ -163,16 +174,27 @@ export function StaggeredMenu({
     });
   }, [position]);
 
-  const toggleMenu = useCallback(() => {
-    const target = !openRef.current;
+  // 开合统一走这里：受控时上报外部，非受控时自管
+  const setMenuOpen = useCallback((target: boolean) => {
     openRef.current = target;
-    setOpen(target);
-    if (target) {
-      playOpen();
-    } else {
-      playClose();
-    }
-  }, [playOpen, playClose]);
+    if (controlled) onOpenChange?.(target);
+    else setOpenState(target);
+  }, [controlled, onOpenChange]);
+
+  // 状态一变就播动画（受控 / 非受控同一条路径）；挂载首帧不播
+  const prevOpenRef = useRef(open);
+  useEffect(() => {
+    const wasOpen = prevOpenRef.current;
+    prevOpenRef.current = open;
+    openRef.current = open;
+    if (wasOpen === open) return;
+    if (open) playOpen();
+    else playClose();
+  }, [open, playOpen, playClose]);
+
+  const toggleMenu = useCallback(() => {
+    setMenuOpen(!openRef.current);
+  }, [setMenuOpen]);
 
   // 点击面板内容（菜单项）后自动关闭
   const handleContentClick = useCallback(() => {
@@ -194,15 +216,17 @@ export function StaggeredMenu({
         <div className="sm-prelayer sm-prelayer-2" />
       </div>
 
-      <button
-        className="sm-toggle"
-        onClick={toggleMenu}
-        aria-label={menuLabel}
-        aria-expanded={open}
-        type="button"
-      >
-        {menuLabel}
-      </button>
+      {!hideToggle && (
+        <button
+          className="sm-toggle"
+          onClick={toggleMenu}
+          aria-label={menuLabel}
+          aria-expanded={open}
+          type="button"
+        >
+          {menuLabel}
+        </button>
+      )}
 
       <aside ref={panelRef} className="staggered-menu-panel" aria-hidden={!open}>
         <div

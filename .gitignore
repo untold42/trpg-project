@@ -3,6 +3,11 @@ trpg-client/node_modules
 trpg-client/src/assets
 trpg-client/public/tiles
 
+# 背景 AI 重构：参考图素材包 + 已完成的包
+# 两者都是硬链接到旧背景图（每张 2~3MB），可一键重跑生成，绝不入库
+trpg-client/scripts/background-pipeline/packs/
+trpg-client/scripts/background-pipeline/已完成/
+
 .env
 
 trpg-map/draw_tiles/tiles

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Ziye_Jijunshu from "../assets/音乐/固定/子夜寄君书.mp3";
 import "../styles/menu.css";
-import bg from "../assets/背景/主页面.png";
+import bg from "../assets/背景_重构/主页面.png";
 import "../styles/Background.css";
 import GooseAnimation from "./GooseAnimation";
 import MoveLogo from "./Logo";

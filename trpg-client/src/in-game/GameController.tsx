@@ -40,16 +40,6 @@ function frameCenter(frame?: number[] | null): [number, number] | undefined {
     return [(frame[1] + frame[3]) / 2, (frame[0] + frame[2]) / 2];
 }
 
-// 游戏内步速（米/游戏秒）——真实速度 = 步速 × 时钟倍率，
-// 这样「游戏内移动速度」与时间保持一致（时间快 15 倍 → 标记也快 15 倍地跑）。
-//
-// 1.4 是真实步行速度，但在这个地图尺度下显得捷（太拖）；
-// 调到 2.2（快走），再配合 Shift 奔跑。
-const BASE_WALK_MPS = 2.2;
-
-// 按住 Shift 的速度倍数（跑）：2.6 × 2.2 ≈ 5.7 米/游戏秒，接近冲刺
-const RUN_MULT = 2.6;
-
 // ---- 「详细」设施背景：先把图加载好再开面板，避免先黑一下 / 先显旧背景 ----
 /** 预加载单张图（带超时兜底）；加载失败/超时返回 false。 */
 function preloadOne(url: string, timeoutMs = 4000): Promise<boolean> {
@@ -209,6 +199,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     const [showMap, setShowMap] = useState(false);//展示地图
     const [showGallery, setShowGallery] = useState(false);//展示势力画廊
     const [showData, setShowData] = useState(false); // 数据面板（金钱/背包/属性/状态）
+    const [showMenu, setShowMenu] = useState(false); // 状态菜单（左侧滑出面板）；触发按钮在底部按钮栏里
     const [showSkillTree, setShowSkillTree] = useState(false); // 技能树（银河 + 五星圆弧，零大模型）
     const [readingIndex, setReadingIndex] = useState<number | null>(null);
     const [playerState, setPlayerState] = useState<PlayerState | null>(null); // 玩家真实状态
@@ -434,6 +425,17 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         setCursor(p);
     }
 
+    // 叙事 → 探索：**玩家的自由，不问 GM**（纯前后端逻辑，不花一次 LLM 回合）。
+    // 后端 POST /explore 只回 mode + 通用 BGM 两个 UI 事件，不写 history / current.jsonl。
+    // （以前这里是 sendAction("进入探索，请求GM同意", "gm")，靠后端字符串匹配短路——
+    //   玩家在主持人输入框里打一句「怎么进入探索」会被误伤劫持，已废弃。）
+    async function 进入探索() {
+        try {
+            const res = await fetch(`${API}/explore`, { method: "POST" });
+            handleUiEvents((await res.json()) as UiEvent[]);
+        } catch { /* 后端没起：静默 */ }
+    }
+
     //与后端的接口，拿到LLM的数据
     // mode: "action"=角色行动（IC）｜"gm"=玩家对主持人的场外话（OOC）
     async function sendAction(content: string, mode: "action" | "say" | "gm" | "continue" | "observe", ke?: number, keepExplore = false) {
@@ -548,6 +550,26 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         fetchFactions().then(setFactions);
         if (initialMusic) playMusic(initialMusic);
     }, []);
+
+    // 进游戏时**重新选一次**背景乐（GET /music，小模型）：
+    // 不依赖存档 / 前情回顾——中途退出（未存档）再进来时没有回顾，也就没有 initialMusic，
+    // 以前这里就是纯静音。现在每次载入都按当前地点重新挑一首。
+    const [entryMusic, setEntryMusic] = useState("");
+    useEffect(() => {
+        (async () => {
+            try {
+                const d = await (await fetch(`${API}/music`)).json();
+                if (d?.曲) setEntryMusic(d.曲);
+            } catch { /* 后端没起：保持静音，不阻断进游戏 */ }
+        })();
+    }, []);
+
+    // 回顾期间用回顾选定的曲子（不抢）；回顾放完、或本来就没有回顾时，播刚选的那首。
+    // playMusic 同名不重启，所以万一选到同一首也不会重头放。
+    useEffect(() => {
+        if (recap && recap.length) return;
+        if (entryMusic) playMusic(entryMusic);
+    }, [recap, entryMusic]);
 
     // 进游戏时的初始背景：若前情回顾没给，就按**玩家当前地点**取一个（不用等第一轮叙事）。
     // 后端 GET /scene 给场景名，时分由它一并返回的时辰决定（白天/黄昏/黑夜）。
@@ -753,9 +775,16 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         const 天气状况 = (((playerState?.基本信息 ?? {}) as Record<string, unknown>)["天气"] as { 状况?: string } | undefined)?.状况 ?? "";
         // 移动：轻功→步速、奔跑倍率（参数由后端 移动.json 下发）
         const 轻功 = Number(基础.轻功 ?? 0) || 0;
-        const 移动 = playerState?.移动 ?? {};
-        const 步速 = (移动.基础步速 ?? BASE_WALK_MPS) * (1 + 轻功 * (移动.轻功每点步速 ?? 0.005));
-        const 奔跑倍率 = 移动.奔跑倍率 ?? RUN_MULT;
+        const 移动 = playerState?.移动;
+        const 基础步速 = Number(移动?.基础步速);
+        const 轻功步速系数 = Number(移动?.轻功每点步速);
+        const 配置奔跑倍率 = Number(移动?.奔跑倍率);
+        const 移动配置就绪 = Number.isFinite(基础步速) && 基础步速 > 0 &&
+            Number.isFinite(轻功步速系数) && 轻功步速系数 >= 0 &&
+            Number.isFinite(配置奔跑倍率) && 配置奔跑倍率 > 0;
+        // 未取得后端 `移动.json` 配置前暂缓移动，不在前端维护第二套策划数值。
+        const 步速 = 移动配置就绪 ? 基础步速 * (1 + 轻功 * 轻功步速系数) : 0;
+        const 奔跑倍率 = 移动配置就绪 ? 配置奔跑倍率 : 1;
 
         const 金钱文本 = 金钱 == null ? "—" : `${金钱} 文`;
         const 背包文本 = Object.keys(物品).length
@@ -831,36 +860,58 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                     />
                 )}
 
-                {/* 地图（总览图）——常用，从菜单里拿出来常驻。再点一次可关闭 */}
-                <button className="map-button" onClick={() => {
-                    if (!showMap) { setViewCity(playerCity); setSearchQ(""); setSearchRes([]); }
-                    setShowMap(!showMap);
-                }}>
-                    {showMap ? "关闭地图" : "地图"}
-                </button>
-
-                {gameMode === "narrative" && (
-                    <button className="explore-button" onClick={() => sendAction("进入探索，请求GM同意", "gm")}>
-                        探索
+                {/* 底部按钮条：这 8 个常用按钮底部居中横排 */}
+                <div className="bottom-bar">
+                    {/* 地图（总览图）——常用，从菜单里拿出来常驻。再点一次可关闭 */}
+                    <button className="map-button" onClick={() => {
+                        if (!showMap) { setViewCity(playerCity); setSearchQ(""); setSearchRes([]); }
+                        setShowMap(!showMap);
+                    }}>
+                        {showMap ? "关闭地图" : "地图"}
                     </button>
-                )}
 
-                <button className="chat-button" onClick={() => { setshowInputGM(!showInputGM); setShowInputAct(false); setShowInputSay(false); }}>
-                    主持人
-                </button>
+                    {gameMode === "narrative" && (
+                        <button className="explore-button" onClick={进入探索}>
+                            探索
+                        </button>
+                    )}
 
-                <button className="act-button" onClick={() => { setShowInputAct(!showInputAct); setshowInputGM(false); setShowInputSay(false); }}>
-                    行动
-                </button>
+                    <button className="chat-button" onClick={() => { setshowInputGM(!showInputGM); setShowInputAct(false); setShowInputSay(false); }}>
+                        主持人
+                    </button>
 
-                <button className="say-button" onClick={() => { setShowInputSay(!showInputSay); setShowInputAct(false); setshowInputGM(false); }}>
-                    说话
-                </button>
+                    <button className="act-button" onClick={() => { setShowInputAct(!showInputAct); setshowInputGM(false); setShowInputSay(false); }}>
+                        行动
+                    </button>
 
-                <button className="continue-button" onClick={() => setShowContinue(!showContinue)}>
-                    继续
-                </button>
+                    <button className="say-button" onClick={() => { setShowInputSay(!showInputSay); setShowInputAct(false); setshowInputGM(false); }}>
+                        说话
+                    </button>
 
+                    <button className="continue-button" onClick={() => setShowContinue(!showContinue)}>
+                        继续
+                    </button>
+
+                    <button className="history-button" onClick={async () => {
+                        if (!showHistory) {
+                            const h = await fetchHistory();
+                            if (h) setHistoryLines(h.lines);
+                        }
+                        setShowHistory(!showHistory);
+                    }}>
+                        历史记录
+                    </button>
+
+                    <button className="data-button" onClick={() => setShowData(!showData)}>
+                        数据
+                    </button>
+
+                    <button className="menu-button" onClick={() => setShowMenu(!showMenu)} aria-expanded={showMenu}>
+                        菜单
+                    </button>
+                </div>
+
+                {/* 推进刻数选项：绝不能放进 .bottom-bar，否则绝对定位的基准会变成那条按钮栏 */}
                 {showContinue && (
                     <div className="continue-panel">
                         {[0, 1, 2, 3, 4].map((k) => (
@@ -875,20 +926,6 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                         ))}
                     </div>
                 )}
-
-                <button className="history-button" onClick={async () => {
-                    if (!showHistory) {
-                        const h = await fetchHistory();
-                        if (h) setHistoryLines(h.lines);
-                    }
-                    setShowHistory(!showHistory);
-                }}>
-                    历史记录
-                </button>
-
-                <button className="data-button" onClick={() => setShowData(!showData)}>
-                    数据
-                </button>
 
                 {
                 showMap && mapsReady && (
@@ -1063,7 +1100,8 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                     </div>
                 )}
 
-                <StaggeredMenu position="left" menuLabel="菜单" accentColor="#c0392b" closeOnContentClick>
+                <StaggeredMenu position="left" menuLabel="菜单" accentColor="#c0392b" closeOnContentClick
+                    hideToggle open={showMenu} onOpenChange={setShowMenu}>
                     <button className="sm-menu-item" onClick={triggerSave}>存档游戏</button>
                     <button className="sm-menu-item" onClick={handleAbandon}>放弃本轮</button>
                     <button className="sm-menu-item" onClick={handleReject}>驳回上轮</button>

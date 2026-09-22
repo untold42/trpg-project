@@ -1,4 +1,4 @@
-import backgroundImages from "../assets/背景";
+import backgroundImages from "../assets/背景_重构";
 
 // 背景控制从大模型的 bg 指令转交给 UI 事件（kind:"bg"）。
 // 这里集中处理「地点 + 时辰 → 背景图」的映射，供 GameController 在收到 UI 事件时使用。
@@ -24,8 +24,10 @@ export function periodOfShichen(i: number): string {
   return convertTime(SHICHEN_NAMES[i] + "时");
 }
 
-/** 默认背景（尚未收到任何 bg 事件时） */
-export const 默认背景 = backgroundImages[`./主页面.png`] as string;
+/** 默认背景（尚未收到任何 bg 事件时）：主页面图；没放主页面就退回任意一张已有的图 */
+export const 默认背景 = (backgroundImages[`./主页面.png`] ??
+  Object.values(backgroundImages)[0] ??
+  "") as string;
 
 /**
  * 取背景图（回退链）：

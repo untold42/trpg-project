@@ -497,7 +497,7 @@ export type GameMapProps = {
 function GameMap({
   zoom = 16, playerOverride, onMove, extraFootprints, footprintVersion, focus,
   lockZoom = false,
-  wasd, posRef, speedMps = 20, runMult = 2.5, onPositionChange, onRun,
+  wasd, posRef, speedMps = 0, runMult = 1, onPositionChange, onRun,
   isNight = false, shichen = -1, onPlaceAction,
   mapId = MAP_ID, bounds, center, hidePlayer = false, flyTo = null,
 }: GameMapProps = {}) {
