@@ -12,9 +12,9 @@ skill_tree.py
 点亮 `learn(name)` 需同时满足：前置已点亮、熟练度/基础数值达标、技能点足够、未学过；
 满足后扣技能点，并**同步写入** `属性.json` 与 `招式表.json`。
 
-技能点获取（概率常量见下）：
-    - 修行/练习（设施养成，A 类点数）→ 1%
-    - 真实战斗结束 → 2%（模拟战不算）
+技能点获取以 `成长.json.技能点概率` 为唯一数值源（支持热改）：
+    - `设施`：修行/练习（设施养成，A 类点数）
+    - `战斗`：真实战斗结束（模拟战不算）
 """
 
 from __future__ import annotations
@@ -31,28 +31,28 @@ _SERVER = Path(__file__).resolve().parent.parent.parent
 _TREE_PATH = _SERVER / "技能树.json"
 _TABLE_PATH = _SERVER / "招式表.json"
 
-#: 技能点获取概率（默认值；实际以 `成长.json.技能点概率` 为准，热改）
-POINT_CHANCE_FACILITY = 0.01
-POINT_CHANCE_BATTLE = 0.02
+def _chance(key: str) -> float:
+    """从 `成长.json` 读取概率；缺失或非法时明确报错，不使用第二套数值。"""
+    from tools.核心 import growth
 
-
-def _chance(key: str, default: float) -> float:
+    value = (growth._config().get("技能点概率") or {}).get(key)
     try:
-        from tools.核心 import growth
-        v = (growth._config().get("技能点概率") or {}).get(key)
-        return float(v) if v is not None else default
-    except Exception:
-        return default
+        chance = float(value)
+    except (TypeError, ValueError) as e:
+        raise RuntimeError(f"成长.json.技能点概率.{key} 必须是 0~1 的数字") from e
+    if not 0 <= chance <= 1:
+        raise RuntimeError(f"成长.json.技能点概率.{key} 超出 0~1：{chance}")
+    return chance
 
 
 def chance_facility() -> float:
     """修行/练习（设施 A 类）的技能点概率。"""
-    return _chance("设施", POINT_CHANCE_FACILITY)
+    return _chance("设施")
 
 
 def chance_battle() -> float:
     """真实战斗结束的技能点概率。"""
-    return _chance("战斗", POINT_CHANCE_BATTLE)
+    return _chance("战斗")
 
 _lock = threading.RLock()
 _tree_cache: dict = {}

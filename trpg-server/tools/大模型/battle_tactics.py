@@ -17,13 +17,22 @@ battle_tactics.py
 from __future__ import annotations
 
 from tools.大模型 import battle as B
+from tools.核心 import battle_config
 
-#: 打分权重（可调）
-W_POS = 1.0     # 位置启发
-W_EVAL = 1.0    # 一回合前瞻的阵地差
-W_COST = 0.2    # 内力代价
-RETREAT_HP = 0.30   # 低于此血量比才考虑撤退
-NEAR_SCORE = 8.0    # 进入近战（距离≤1）加分
+# 战术评分数值只从 `战斗数值.json.战术AI` 读取。
+def _refresh_ai_config() -> None:
+    global _AI, _UNIT_VALUE, W_POS, W_EVAL, W_COST, RETREAT_HP, NEAR_SCORE, LOOKAHEAD_K
+    _AI = battle_config.section("战术AI", copy_data=False)
+    _UNIT_VALUE = _AI["单位价值"]
+    W_POS = float(_AI["位置权重"])
+    W_EVAL = float(_AI["前瞻权重"])
+    W_COST = float(_AI["内力代价权重"])
+    RETREAT_HP = float(_AI["撤退血线"])
+    NEAR_SCORE = float(_AI["首次进入近战加分"])
+    LOOKAHEAD_K = int(_AI["前瞻掷骰次数"])
+
+
+_refresh_ai_config()
 
 
 # ------------------------------------------------------------
@@ -142,12 +151,12 @@ def _positional(battle: "B.Battle", actor: dict, action: dict) -> float:
     a = (actor["格"][0], actor["格"][1])
     old_d = min(_cheb(a, e["格"]) for e in enemies)
     new_d = min(_cheb(cell, e["格"]) for e in enemies)
-    s = 2.0 * (old_d - new_d)                    # 每接近 1 格 +2
+    s = float(_AI["每接近一格加分"]) * (old_d - new_d)
     if new_d <= 1 < old_d:
         s += NEAR_SCORE                          # 首次进近战
-    s += 3.0 * _flank_count(battle, actor, cell, enemies)
+    s += float(_AI["夹击背袭每个加分"]) * _flank_count(battle, actor, cell, enemies)
     adj = sum(1 for e in enemies if _cheb(cell, e["格"]) <= 1)
-    s -= 1.5 * max(0, adj - 1)                   # 被多人围
+    s -= float(_AI["被围每人扣分"]) * max(0, adj - 1)
     return s
 
 
@@ -156,11 +165,14 @@ def _positional(battle: "B.Battle", actor: dict, action: dict) -> float:
 # ------------------------------------------------------------
 def _unit_value(c: dict) -> float:
     atk = c["属性"].get(c.get("兵器", "剑法"), 0)
-    增益 = sum(4 for b in c.get("buff", [])
+    增益 = sum(float(_UNIT_VALUE["单个增益加分"]) for b in c.get("buff", [])
                if b.get("名称") in ("护体", "士气", "洞察"))
-    减益 = sum(2 for b in c.get("buff", [])
+    减益 = sum(float(_UNIT_VALUE["单个减益扣分"]) for b in c.get("buff", [])
                if b.get("名称") in ("流血", "中毒", "破绽", "动摇", "致盲"))
-    return c["生命"] + 0.4 * atk + 0.1 * c["内力"] + (15 if c.get("招式") else 0) + 增益 - 减益
+    return (c["生命"] + float(_UNIT_VALUE["兵器系数"]) * atk
+            + float(_UNIT_VALUE["内力系数"]) * c["内力"]
+            + (float(_UNIT_VALUE["有招式加分"]) if c.get("招式") else 0)
+            + 增益 - 减益)
 
 
 def eval_position(battle: "B.Battle", side: str) -> float:
@@ -176,12 +188,12 @@ def eval_position(battle: "B.Battle", side: str) -> float:
 # L2+L3：打分
 # ------------------------------------------------------------
 #: 前瞻取 K 次不同掷骰的平均（消除单次命中/未命中的随机噪声）
-LOOKAHEAD_K = 5
 
 
 def _lookahead_delta(battle: "B.Battle", actor: dict, action: dict,
-                     k: int = LOOKAHEAD_K) -> float:
+                     k: int | None = None) -> float:
     """L3 前瞻：克隆战场跑 K 次该动作，取平均的「阵地分增量」。"""
+    k = LOOKAHEAD_K if k is None else k
     before = eval_position(battle, actor["阵营"])
     total = 0.0
     for i in range(k):
@@ -197,6 +209,8 @@ def _lookahead_delta(battle: "B.Battle", actor: dict, action: dict,
 
 def score_action(battle: "B.Battle", actor: dict, action: dict,
                  lookahead: bool = True) -> float:
+    B.refresh_config()
+    _refresh_ai_config()
     s = W_POS * _positional(battle, actor, action)
 
     动作 = action.get("动作")
@@ -205,10 +219,11 @@ def score_action(battle: "B.Battle", actor: dict, action: dict,
         s -= W_COST * int((sk or {}).get("内力", 0))
     elif 动作 == "撤退":
         ratio = actor["生命"] / max(1, actor["生命上限"])
-        s += 40.0 if ratio < RETREAT_HP else -60.0
+        s += (float(_AI["低血撤退加分"]) if ratio < RETREAT_HP
+              else -float(_AI["非低血撤退扣分"]))
         lookahead = False                # 撤退不做前瞻（离场会被误判为损失价值）
     elif 动作 == "交流":
-        s -= 2.0                         # 降权：能移动/攻击时就不喊话
+        s -= float(_AI["交流扣分"])
 
     if lookahead:
         s += W_EVAL * _lookahead_delta(battle, actor, action)
@@ -217,6 +232,8 @@ def score_action(battle: "B.Battle", actor: dict, action: dict,
 
 def rank_actions(battle: "B.Battle", actor: dict, lookahead: bool = True) -> list:
     """按分数从高到低返回 [(动作, 分数), ...]。"""
+    B.refresh_config()
+    _refresh_ai_config()
     cands = enumerate_actions(battle, actor)
     scored = [(a, score_action(battle, actor, a, lookahead)) for a in cands]
     scored.sort(key=lambda kv: kv[1], reverse=True)

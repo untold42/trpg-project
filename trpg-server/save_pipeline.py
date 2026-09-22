@@ -23,7 +23,8 @@ import threading
 import time
 from pathlib import Path
 
-from engine import parse_instructions, read_turns
+from engine import read_turns
+from tools.核心 import instructions
 from tools.核心 import world_threads
 from tools.大模型 import character_archive
 from tools.大模型.get_character import CHARACTER_DIR
@@ -161,7 +162,7 @@ def contacted_characters(turns: list[dict], char_memory: dict | None = None,
     archived = set(archived or ())
     found: set[str] = set(owners) | archived
     for turn in turns:
-        for it in parse_instructions(turn.get("assistant_raw")):
+        for it in instructions.items_of(turn):
             if isinstance(it, dict) and it.get("type") == "chat":
                 sp = str(it.get("speaker") or "").strip()
                 if sp:
@@ -224,7 +225,7 @@ def visited_buildings(turns: list[dict]) -> list[dict]:
 def _speakers(turns: list[dict]) -> set:
     out: set[str] = set()
     for t in turns:
-        for it in parse_instructions(t.get("assistant_raw")):
+        for it in instructions.items_of(t):
             if isinstance(it, dict) and it.get("type") == "chat":
                 sp = str(it.get("speaker") or "").strip()
                 if sp:
@@ -300,11 +301,9 @@ def build_transcript(turns: list[dict]) -> str:
             out.append(f"\n## {gtime}")
             cur_time = gtime
         out.append(_render_user(turn))
-        try:
-            items = json.loads(turn.get("assistant_raw") or "[]")
-        except json.JSONDecodeError:
-            items = []
-        for it in items if isinstance(items, list) else []:
+        # 同一份取法：优先落盘的 instructions，老存档回落到 parse(raw)。
+        # （这里以前是裸 json.loads，零容错——同一字段在同一个文件里两种读法。）
+        for it in instructions.items_of(turn):
             out.extend(_render_instruction(it))
         out.extend(_render_tools(turn.get("tool_calls")))
     return "# 存档 · 本局记录\n" + "\n".join(out).strip() + "\n"

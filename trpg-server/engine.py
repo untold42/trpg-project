@@ -46,6 +46,7 @@ from tools.核心 import map_query
 from tools.小模型 import expression_sim
 from tools.核心 import audit
 from tools.大模型.registry import SAVE_TOOLS, ALL_TOOLS, ALL_TOOL_NAMES, SAVE_TOOL_NAMES
+from tools.核心 import instructions
 
 # ------------------------------------------------------------
 # 路径
@@ -503,11 +504,12 @@ def read_turns(log_path) -> list[dict]:
 
 
 def parse_instructions(raw) -> list:
-    """解析 assistant_raw 里的指令数组（容错 JSON，见 parse_instruction_array）。
+    """（兼容入口）解析 assistant_raw 里的指令数组。
 
-    完全解析不出数组时，退一步把整段文本当作一条旁白（历史面板不至于漏掉这一轮）。
+    真正的实现与全部规则都在 `tools/核心/instructions.py`——那是**唯一入口**。
+    这里保留旧名字，是因为 `save_pipeline` 等模块还在用。
     """
-    return parse_instruction_array(raw) or salvage_narration(raw)
+    return instructions.parse(raw)
 
 
 def history_lines(turns: list[dict]) -> list[str]:
@@ -528,7 +530,7 @@ def history_lines(turns: list[dict]) -> list[str]:
             lines.append("场外：" + s.removeprefix(_GM_PREFIX))
         else:
             lines.append(_IC_PREFIX + s.removeprefix(_IC_PREFIX))
-        for it in parse_instructions(turn.get("assistant_raw")):
+        for it in instructions.items_of(turn):
             if not isinstance(it, dict):
                 continue
             if it.get("type") == "chat":
@@ -624,10 +626,9 @@ class GameSession:
                 continue  # 跳过写了一半的坏行
             if turn.get("user"):
                 self.history.append({"role": "user", "content": turn["user"]})
-            if turn.get("assistant_raw"):
-                self.history.append(
-                    {"role": "assistant", "content": normalized_assistant(turn["assistant_raw"])}
-                )
+            text = instructions.to_text(instructions.items_of(turn))
+            if text:
+                self.history.append({"role": "assistant", "content": text})
 
     def append_turn(self, turn: dict):
         """追加一轮到 current.jsonl（原子性由单行写入保证）。"""
@@ -684,7 +685,7 @@ class GameSession:
     def history_view(self) -> dict:
         """当前本局的历史：面板文本行 + 最后一轮的指令（用于续玩）。"""
         turns = read_turns(self.log_path)
-        tail = parse_instructions(turns[-1].get("assistant_raw")) if turns else []
+        tail = instructions.items_of(turns[-1]) if turns else []
         return {"active": bool(turns), "lines": history_lines(turns), "tail": tail}
 
     # ---- 上下文组装 ----
@@ -757,137 +758,11 @@ class GameSession:
         return msgs
 
 # ------------------------------------------------------------
-# JSON 容错解析（大模型偶发输出非法 JSON，尤其是 content 里未转义的英文双引号）
+# 解析与消息组装
 # ------------------------------------------------------------
-def _strip_code_fence(s: str) -> str:
-    """去掉 ```json ... ``` 围栏。"""
-    s = (s or "").strip()
-    if s.startswith("```"):
-        s = s.split("\n", 1)[1] if "\n" in s else ""
-        if s.rstrip().endswith("```"):
-            s = s.rstrip()[:-3]
-    return s.strip()
-
-
-def _escape_inner_quotes(s: str) -> str:
-    """把 JSON 字符串值里**未转义的内层双引号**转义。
-
-    模型写对白时常直接写 `"..."`（英文引号），把 JSON 字符串提前截断。
-    规则：字符串里的 `"`，只有当它后面（跳空白）是 `, : } ]` 或行尾时，才算字符串结束；
-    否则视为内层引号 → 转义为 `\"`。已转义的 `\"` 原样保留。
-    """
-    out, in_str, i, n = [], False, 0, len(s)
-    while i < n:
-        ch = s[i]
-        if not in_str:
-            out.append(ch)
-            if ch == '"':
-                in_str = True
-            i += 1
-            continue
-        if ch == "\\":                     # 已转义：原样带走
-            out.append(ch)
-            if i + 1 < n:
-                out.append(s[i + 1]); i += 2
-            else:
-                i += 1
-            continue
-        if ch == '"':
-            j = i + 1
-            while j < n and s[j] in " \t\r\n":
-                j += 1
-            if j >= n or s[j] in ",:}]":   # 后面是分隔符/结尾 → 字符串结束
-                out.append(ch); in_str = False
-            else:                            # 内层引号 → 转义
-                out.append('\\"')
-            i += 1
-            continue
-        out.append(ch); i += 1
-    return "".join(out)
-
-
-def _coerce_instructions(data):
-    """把解析出的 JSON 变成指令数组：数组原样；单个 `chat`/`narration` 对象包成数组。"""
-    if isinstance(data, list):
-        return data
-    if isinstance(data, dict) and data.get("type") in ("chat", "narration"):
-        return [data]
-    return None
-
-
-def _try_json_array(s: str):
-    try:
-        data = json.loads(s)
-    except (json.JSONDecodeError, TypeError):
-        return None
-    return _coerce_instructions(data)
-
-
-def parse_instruction_array(raw: str):
-    """容错解析指令数组，失败返回 None。
-
-    容忍大模型常见的 JSON 毛病：``` 围栏、前后废话、字符串里未转义的英文双引号。
-    注意：本函数定义在 `parse_instructions` 之后，但调用时模块已加载完成，可正常引用。
-    """
-    if not raw:
-        return None
-    s = _strip_code_fence(raw)
-    data = _try_json_array(s)
-    if data is not None:
-        return data
-    # 修复：转义字符串值里未转义的内层双引号
-    data = _try_json_array(_escape_inner_quotes(s))
-    if data is not None:
-        return data
-    # 再退一步：截取最外层 [...]（去掉前后废话）再试一次；没有数组时试最外层 {...}
-    a, b = s.find("["), s.rfind("]")
-    if a == -1 or b <= a:
-        a, b = s.find("{"), s.rfind("}")
-    if a != -1 and b > a:
-        seg = s[a:b + 1]
-        for cand in (seg, _escape_inner_quotes(seg)):
-            data = _try_json_array(cand)
-            if data is not None:
-                return data
-    return None
-
-
-def _looks_like_json(s: str) -> bool:
-    """文本像不像「正在尝试输出 JSON」——用来决定失败时能不能当散文兑底。"""
-    t = _strip_code_fence(s or "").strip()
-    return t.startswith("[") or t.startswith("{") or '"type"' in t
-
-
 def salvage_narration(raw: str) -> list:
-    """最后的兜底：把模型整段散文当作一条 `narration` 用掉。
-
-    仅当 `parse_instruction_array` 完全失败、且文本**不像在尝试 JSON** 时使用。
-    大模型在一次工具调用之后偶尔会不按 JSON 输出、直接把旁白写出来（实测：
-    `advance_time` 之后）。此时散文往往就是可用旁白，不该拿“格式异常”占位把它丢掉。
-    反之，若文本已经是「一截坏 JSON」（以 `[`/`{`/`"type"` 开头），不能当旁白嗂给玩家。
-    """
-    txt = _strip_code_fence(raw or "").strip()
-    if not txt or _looks_like_json(txt):
-        return []
-    return [{"type": "narration", "content": txt}]
-
-
-def normalized_assistant(raw: str) -> str:
-    """喂回模型的 assistant 文本：能解析就回写**规范 JSON**。
-
-    避免把模型自己的非法输出（未转义引号等）原样再喂回去，恶性循环。
-    连数组都解析不出时，把散文包成规范 narration 再喂回（引导它下一轮回到 JSON）。
-    日志仍保留原始 `assistant_raw` 便于排查。
-    """
-    ev = parse_instruction_array(raw)
-    if not isinstance(ev, list):
-        ev = salvage_narration(raw)
-    if isinstance(ev, list) and ev:
-        try:
-            return json.dumps(ev, ensure_ascii=False)
-        except (TypeError, ValueError):
-            return raw
-    return raw
+    """（兼容入口）散文兜底：整段当一条 narration。规则见 `instructions.py`。"""
+    return instructions.salvage_narration(raw)
 
 
 # ------------------------------------------------------------
@@ -1162,13 +1037,14 @@ class TurnRunner:
         if _to_explore(ui_events):
             scene_ui = [*scene_ui, *self._explore_music_events()]
 
-        session.history.append({"role": "assistant", "content": normalized_assistant(raw)})
+        session.history.append({"role": "assistant", "content": instructions.to_text(events) or raw})
         session.append_turn({
             "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
             "time": current_game_time(),
             "mode": mode,
             "user": user_input,
             "assistant_raw": raw,
+            "instructions": events,   # 最终渲染出去的指令（规范化 + 天气改写 + 补表情后）
             "tool_calls": tool_records,
             "ui_events": ui_events,
             "scene_ui": scene_ui,
@@ -1525,5 +1401,9 @@ class TurnRunner:
 
     @staticmethod
     def _parse(raw: str):
-        """尝试解析指令数组，失败返回 None（容错见 parse_instruction_array）。"""
-        return parse_instruction_array(raw)
+        """只走 JSON 路径；解不出返回 None（用于决定「要不要重发一次修正请求」）。
+
+        实现与全部规则见 `tools/核心/instructions.py`：那里会补齐 `type`、
+        丢掉空台词与空内容，保证流到前端的一定是渲染得出来的指令。
+        """
+        return instructions.try_parse(raw)

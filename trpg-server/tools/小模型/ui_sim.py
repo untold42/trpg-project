@@ -10,7 +10,7 @@ ui_sim.py
     - 产出统一 UI 事件（`tools/ui_events.ui_event`），由引擎旁路送到前端。
 
 小模型只做**从固定枚举里选一个**（离散、无幻觉面）：
-    场景 ∈ 前端 `assets/背景/` 下的场景目录 + 「无」
+    场景 ∈ 前端 `assets/背景_重构/` 下**已经有图**的场景目录 + 「无」
     音乐 ∈ `音乐表.md`「叙事」节里的曲目 + 「无」；战斗曲在同文件的「战斗」节，叙事候选看不到
 「无」= 保持当前不变。
 
@@ -28,7 +28,7 @@ from tools.核心.state_manager import state
 from tools.核心.ui_events import bg_event, music_event
 
 _ROOT = Path(__file__).resolve().parent.parent.parent.parent
-_SCENE_DIR = _ROOT / "trpg-client" / "src" / "assets" / "背景"
+_SCENE_DIR = _ROOT / "trpg-client" / "src" / "assets" / "背景_重构"
 _MUSIC_DIR = _ROOT / "trpg-client" / "src" / "assets" / "音乐"
 _MUSIC_DYNAMIC_DIR = _MUSIC_DIR / "动态"   # AI 选曲在 动态/；固定/ 是界面专用，不进候选
 _MUSIC_MANIFEST = _ROOT / "trpg-world" / "音乐表.md"   # 一份两节：叙事 + 战斗
@@ -43,12 +43,6 @@ NONE = "无"
 #: 没有更贴合曲目时的默认底色曲（需在叙事清单里且 mp3 存在）
 DEFAULT_TRACK = "山中好岁月"
 
-# 前端资源目录读不到时的兜底场景
-_FALLBACK_SCENES = [
-    "城市大街", "街区", "大街", "客栈一楼大厅", "客房", "茶肆", "脚店",
-    "荒郊野岭", "山路", "庭院", "卧室", "森林", "江河", "码头",
-]
-
 SYSTEM = (
     "你是武侠世界（南宋）的「场景 / 音乐」标注器，只输出 JSON。"
     "读一段叙事，判断**玩家此刻身处的环境**最适合的背景场景与背景音乐。"
@@ -60,13 +54,24 @@ SYSTEM = (
 )
 
 
+def _period_files() -> tuple[str, ...]:
+    """一个场景目录里算「有图」的时段文件名。"""
+    return tuple(f"{p}.png" for p in ("白天", "黑夜", "黄昏"))
+
+
 def scene_keys() -> list[str]:
-    """可选场景：扫前端 `assets/背景/` 的子目录（单一真相源=美术资源）。"""
-    if _SCENE_DIR.is_dir():
-        names = sorted(d.name for d in _SCENE_DIR.iterdir() if d.is_dir())
-        if names:
-            return names
-    return list(_FALLBACK_SCENES)
+    """可选场景：扫 `assets/背景_重构/` 的子目录（单一真相源=美术资源）。
+
+    只收**确实有图**的目录：还没出图的 kind 不进候选，
+    否则小模型会选到一个前端拿不到图的场景（只能退回主页面）。
+    一张图都没有时返回 []——不发 bg 事件，前端保持主页面。
+    """
+    if not _SCENE_DIR.is_dir():
+        return []
+    return sorted(
+        d.name for d in _SCENE_DIR.iterdir()
+        if d.is_dir() and any((d / f).is_file() for f in _period_files())
+    )
 
 
 def music_tracks() -> list[str]:
@@ -149,10 +154,11 @@ def scene_kind_map() -> dict:
     return out
 
 
-#: 明显的「城外 / 荒野 / 乡村」场景——玩家在城内时一律排除（防「人在城里被切到乡村」）
+#: 明显的「城外 / 荒野」场景（按 kind 命名）——玩家在城内时一律排除
+#: 防「人在城里被切到山里」（新素材一 kind 一图，这里只列非城市场所）
 _WILD_SCENES = {
-    "乡村", "田野", "森林", "山野", "山路", "山顶", "荒郊野岭", "雪山", "小岛",
-    "寨子", "前线战场", "杏花林",
+    "山", "林", "湖", "水域", "洲", "义冢", "坟地",
+    "盐场", "矿冶", "窑场", "造船场", "榷场",
 }
 
 
@@ -208,37 +214,39 @@ def _kind_of(location: str) -> str:
 
 
 def _scenes_for_kind(kind: str, indoor: bool = False) -> list[str]:
-    """按**已解析的地点类型**给背景候选（纯查表 + 城内安全网；不查库、不调模型）。"""
-    all_scenes = scene_keys()
+    """按**已解析的地点类型**给背景候选（纯查表 + 城内安全网；不查库、不调模型）。
+
+    每个 kind 在 `场景表.md` 里有一条**优先级链**（自己的同名场景排第一，后面是同类的兜底），
+    这里取链里第一个**已经有图**的，作为唯一候选；
+    该类一张图都没有、或地点类型查不到时，才退回 `室内` / `室外` 兜底组
+    （那一组是并列候选，由叙事判断屋里/屋外来选）。
+    """
+    all_scenes = set(scene_keys())
     mapping = scene_kind_map()
     if kind and mapping.get(kind):
-        allowed = [s for s in all_scenes if s in mapping[kind]]
-        # 城内安全网也要管「已映射」的类型：
-        # 否则官道的映射里有「田野」，人在城里会被切到田里
-        if _player_inside_city() is True:
-            inside = [s for s in allowed if s not in _WILD_SCENES]
-            if inside:
-                allowed = inside
-        if allowed:
-            return allowed[:5]
+        # 链是**优先级顺序**，只取第一个有图的；
+        # 不能把整条链当并列候选，否则人在青楼可能被切成画舫。
+        for s in mapping[kind]:
+            if s in all_scenes and not (_player_inside_city() is True and s in _WILD_SCENES):
+                return [s]
     group = mapping.get("室内" if indoor else "室外")
     if group:
-        allowed = [s for s in all_scenes if s in group]
+        allowed = [s for s in group if s in all_scenes]
         if allowed:
             return allowed[:6]
     if _player_inside_city() is True:
-        urban = [s for s in all_scenes if s not in _WILD_SCENES]
+        urban = [s for s in scene_keys() if s not in _WILD_SCENES]
         if urban:
             return urban
-    return all_scenes
+    return scene_keys()
 
 
 def scene_candidates(location: str = None, indoor: bool = False) -> list[str]:
-    """本地点允许的背景场景集合（**每个类型只给 2~4 个**，候选越少越不乱选）。
+    """本地点允许的背景场景集合。
 
-    - 地点类型已映射（`场景表.md`）→ 只在该类内选；
-    - 未映射 → 用 `室内` / `室外` **小兜底组**（按叙事判断），而不是放开全部 48 个；
-    - 城内安全网：排除荒野 / 乡村。
+    - 地点类型能查到、且该类链上有图 → **只有一个候选**（链里第一个有图的）；
+    - 否则用 `室内` / `室外` 兜底组（并列候选，按叙事判断屋里/屋外选）；
+    - 城内安全网：排除城外 / 荒野类场景。
     """
     return _scenes_for_kind(_kind_of(location), indoor)
 
@@ -251,12 +259,12 @@ def scenes_for_kind(kind: str, indoor: bool = False) -> list[str]:
 def scene_for(kind: str, place: str = "", indoor: bool = False) -> str:
     """**确定性**选一个背景场景（不调模型）。
 
-    kind 有映射：在候选里按 `place`（地点名）做**稳定散列**取一个——
-    同一地点每次相同，不同地点可能不同；没映射就退回兜底组第一个。
+    在候选里按 `place`（地点名）做**稳定散列**取一个——同一地点每次相同，
+    不同地点可能不同；没有可用场景时返回 ""（调用方沿用当前背景）。
     """
     cands = scenes_for_kind(kind, indoor)
     if not cands:
-        return "城市大街"
+        return ""
     seed = (place or kind or "").encode("utf-8")
     idx = int(hashlib.md5(seed).hexdigest(), 16) % len(cands)
     return cands[idx]
@@ -380,6 +388,51 @@ _EXPLORE_SYSTEM = (
     "从给定通用曲里挑**一首**适合赶路 / 逛街 / 探索的（偏中性、清闲、行进感），只输出 JSON。"
     "只能选给定清单里的一首；拿不准就选「" + DEFAULT_TRACK + "」。禁止思考、禁止解释。\n/no_think"
 )
+
+
+_ENTRY_SYSTEM = (
+    "你是武侠游戏（南宋）的配乐师。玩家刚进游戏（开局 / 续玩），你按**他此刻所在的地点**"
+    "挑一首背景乐：偏中性、有空间感，能长期循环不吵。只输出 JSON。"
+    "若清单里某首标了【本地点专属】，优先选它。只能选给定清单里的一首；拿不准就选「"
+    + DEFAULT_TRACK + "」。禁止思考、禁止解释。\n/no_think"
+)
+
+
+def pick_entry_track(location: str = None, present=None) -> str:
+    """**进游戏 / 载入时**重新选一次背景乐（小模型）。
+
+    与 `explore_track` 的区别：那个只从「通用曲」里挑（走回大地图用），
+    这个连「本地点专属曲」一起给候选，用于每次载入游戏都要有曲子的场景。
+    地点恰好只绑一首 → 硬选它，不劳模型。失败退回确定性兜底。
+    """
+    bound = location_bound_tracks(location) if location else []
+    if len(bound) == 1:
+        return bound[0]
+    tracks = narrative_tracks(location, present) or general_tracks()
+    if not tracks:
+        return ""
+    if len(tracks) == 1:
+        return tracks[0]
+    desc = music_descriptions()
+    lines = "\n".join(
+        f"- {t}：{desc.get(t, '')}" + ("【本地点专属】" if t in bound else "")
+        for t in tracks
+    )
+    user = (
+        f"可选音乐：\n{lines}\n"
+        f"当前地点：{location or '未知'}\n"
+        f"（带【本地点专属】的是当前地点的主题曲，有的话优先选它。）"
+    )
+    schema = {
+        "type": "object",
+        "properties": {"音乐": {"type": "string", "enum": tracks}},
+        "required": ["音乐"],
+    }
+    r = small_model.ask_json(_ENTRY_SYSTEM, user, schema)
+    track = r.get("音乐") if isinstance(r, dict) else None
+    if track not in tracks:
+        track = DEFAULT_TRACK if DEFAULT_TRACK in tracks else tracks[0]
+    return track
 
 
 def default_explore_track(current: str = "") -> str:

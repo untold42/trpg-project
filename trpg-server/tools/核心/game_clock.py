@@ -54,7 +54,7 @@ EPOCH = datetime.date(1220, 1, 1)
 CLOCK_FILE = "时钟"
 
 #: 默认速率：游戏秒 / 真实秒（1 真实分钟 = 1 刻 = 900 游戏秒）
-DEFAULT_RATE = 15.0
+DEFAULT_RATE = 10.0
 #: 战斗：1 回合 = 1 游戏分钟
 DEFAULT_BATTLE_SECONDS_PER_ROUND = 60
 

@@ -5,7 +5,7 @@ battle.py
 战斗数值核心（**纯代码，不调用任何 LLM**）。设计见 `trpg-world/战斗系统.md`。
 
 职责：
-  - 网格（10×6，切比雪夫距离）+ 站位 / 移动 / 射程
+  - 可配置网格（切比雪夫距离）+ 站位 / 移动 / 射程
   - 参战者构建（玩家读 `状态.json` / `属性.json` / `招式表.json`；NPC 由「梯度」推导）
   - 动作结算：移动 / 舞剑 / 防守 / 技能（五行）/ 交流 / 撤退
   - 命中 / 伤害 / 五行克制 / 位置（背袭·夹击）
@@ -27,6 +27,7 @@ import random
 import re
 from pathlib import Path
 
+from tools.核心 import battle_config
 from tools.核心.state_manager import state
 
 # ------------------------------------------------------------
@@ -34,82 +35,66 @@ from tools.核心.state_manager import state
 # ------------------------------------------------------------
 _SKILL_TABLE_PATH = Path(__file__).resolve().parent.parent.parent / "招式表.json"
 
-GRID_W, GRID_H = 10, 6
-ALLIES_START_X = (0, 1)     # 友方起始列（左）
-ENEMIES_START_X = (8, 9)    # 敌方起始列（右）
+# 战斗全局数值只从 `trpg-server/战斗数值.json` 读取。
+def refresh_config() -> None:
+    """热读战斗配置；公开战斗入口会调用它，无需重启后端。"""
+    global _CFG, _BOARD, _NPC_FORMULA, _MOVE_CFG, _HIT_CFG, _WUXING_CFG
+    global _ROUND_CFG, _DEFEND_CFG, _PIERCE_CFG, _CHARGE_CFG, _TALK_CFG
+    global _RETREAT_CFG, _DAMAGE_CFG, GRID_W, GRID_H, ALLIES_START_X, ENEMIES_START_X
+    global TIER_COEF, BUFF_DEFS, KE_ADV, KE_DIS, POS_BACK, POS_FLANK, WEAPON_KINDS, BLEED_MAX
+
+    _CFG = battle_config.load(copy_data=False)
+    _BOARD = _CFG["棋盘"]
+    _NPC_FORMULA = _CFG["NPC推导"]
+    _MOVE_CFG = _CFG["移动力"]
+    _HIT_CFG = _CFG["命中"]
+    _WUXING_CFG = _CFG["五行"]
+    _ROUND_CFG = _CFG["回合"]
+    _DEFEND_CFG = _CFG["防守"]
+    _PIERCE_CFG = _CFG["穿甲"]
+    _CHARGE_CFG = _CFG["蓄力"]
+    _TALK_CFG = _CFG["交流"]
+    _RETREAT_CFG = _CFG["撤退"]
+    _DAMAGE_CFG = _CFG["伤害"]
+
+    GRID_W, GRID_H = int(_BOARD["宽"]), int(_BOARD["高"])
+    ALLIES_START_X = tuple(int(x) for x in _BOARD["友方起始列"])
+    ENEMIES_START_X = tuple(int(x) for x in _BOARD["敌方起始列"])
+    TIER_COEF = {str(k): float(v) for k, v in _CFG["梯度系数"].items()}
+    BUFF_DEFS = _CFG["Buff"]
+    KE_ADV = float(_WUXING_CFG["优势倍率"])
+    KE_DIS = float(_WUXING_CFG["劣势倍率"])
+    POS_BACK = _CFG["位置"]["背袭"]
+    POS_FLANK = _CFG["位置"]["夹击"]
+    WEAPON_KINDS = _CFG["武器类型"]
+    BLEED_MAX = int(_CFG["流血叠层上限"])
+
+
+refresh_config()
 
 #: 地形类型 → 是否阻挡移动（河流“凹陷”但可涉水通过）
 TERRAIN_BLOCKING = {"房屋", "墙"}
 TERRAIN_TYPES = ("房屋", "河流", "墙", "树")
-
 SIDES = ("友方", "敌方")
-
-#: 五行相克：键克值
 WUXING_KE = {"水": "火", "火": "金", "金": "木", "木": "土", "土": "水"}
-
-#: 梯度 → 战力系数（T2 = 1.0）
-TIER_COEF = {
-    "T0": 2.00, "T1": 1.40, "T2": 1.00, "T3": 0.80,
-    "T4": 0.60, "T5": 0.40, "T6": 0.25, "T7": 0.15,
-}
-
-#: 动作枚举
 ACTIONS = ["移动", "舞剑", "防守", "技能", "交流", "撤退"]
-
-#: AI 侧「移动」枚举（相对位移）
 MOVE_ENUM = ["原地", "前进1", "后退1", "侧移1", "斜移1"]
 
-#: 命中档位 → 伤害系数
-def _hit_tier(最终: int, crit: int = 90):
-    if 最终 < 20:
-        return None, 0.0           # 未命中
-    if 最终 < 60:
-        return "命中", 0.8
+
+def _hit_tier(最终: int, crit: int | None = None):
+    """按 `战斗数值.json.命中` 返回命中档位与伤害倍率。"""
+    crit = int(_HIT_CFG["会心线"] if crit is None else crit)
+    if 最终 < int(_HIT_CFG["未命中线"]):
+        return None, 0.0
+    if 最终 < int(_HIT_CFG["标准命中线"]):
+        return "命中", float(_HIT_CFG["擦中伤害倍率"])
     if 最终 < crit:
-        return "命中", 1.0
-    return "会心", 1.5
+        return "命中", float(_HIT_CFG["普通伤害倍率"])
+    return "会心", float(_HIT_CFG["会心伤害倍率"])
 
-#: Buff 定义。效果键：
-#:   命中(int, 加到命中判定) / 伤害(float, 攻方输出倍率增量) / 受伤(float, 守方承伤倍率增量)
-#:   减伤(float, 0.3=减伤30%) / 每回合生命(int, DoT×层数) / 会心阈值(int)
-#:   跳过回合(bool) / 内力回复(bool) / 技能伤害(float) / 治疗(float)
-BUFF_DEFS = {
-    "流血":   {"类型": "减益", "可叠层": True,  "持续": 3, "每回合生命": -3, "伤害": -0.10},
-    "中毒":   {"类型": "减益", "可叠层": True,  "持续": 3, "每回合生命": -2, "治疗": 0.5},
-    "内伤":   {"类型": "减益", "可叠层": False, "持续": 0, "内力回复": False, "技能伤害": -0.20},
-    "破绽":   {"类型": "减益", "可叠层": False, "持续": 2, "受伤": 0.20},
-    "眩晕":   {"类型": "减益", "可叠层": True,  "持续": 1, "跳过回合": True},
-    "护体":   {"类型": "增益", "可叠层": False, "持续": 3, "减伤": 0.30},
-    "士气":   {"类型": "增益", "可叠层": False, "持续": 2, "命中": 10, "伤害": 0.10},
-    "动摇":   {"类型": "减益", "可叠层": False, "持续": 2, "命中": -10, "伤害": -0.10},
-    "致盲":   {"类型": "减益", "可叠层": False, "持续": 2, "命中": -25},
-    "洞察":   {"类型": "增益", "可叠层": False, "持续": 2, "命中": 30, "会心阈值": -15},
-    # 特殊：蓄力为水行层数（永久，直到被伤害招式消耗）；穿甲为一次性（不入此表）
-    "蓄力":   {"类型": "增益", "可叠层": True,  "持续": -1},
-}
-
-#: 五行系数
-KE_ADV, KE_DIS = 1.3, 0.8
-
-#: 位置系数
-POS_BACK = {"命中": 15, "伤害": 1.30}   # 背袭
-POS_FLANK = {"命中": 8, "伤害": 1.15}   # 夹击
-
-#: 武器类型 → 伤害系数 / 命中附加 / 会心附加
-#:   利器（剑/刀/暗器）：伤害高，命中即「流血」
-#:   钝器（棍/锤/鞭）：伤害中，会心致「眩晕」
-#:   徒手（拳掌）：伤害低，无附加
-WEAPON_KINDS = {
-    "利器": {"伤害": 1.25, "命中效果": "流血", "会心效果": None},
-    "钝器": {"伤害": 1.00, "命中效果": None,   "会心效果": "眩晕"},
-    "徒手": {"伤害": 0.90, "命中效果": None,   "会心效果": None},
-}
 
 #: 由「兵器」属性推导武器类型（未显式给「武器类型」时）
 _WEAPON_BY_STAT = {"剑法": "利器", "暗器": "利器", "拳掌": "徒手"}
-
-#: 流血最多叠到几层（利器每命中一次叠一层）
-BLEED_MAX = 3
 
 
 def weapon_kind(c: dict) -> str:
@@ -175,8 +160,8 @@ def _cell(c):
 
 
 def move_range(combatant) -> int:
-    """移动力 = 1 + floor(轻功/30)。"""
-    return 1 + int(combatant["属性"].get("轻功", 0)) // 30
+    """按配置中的基础值与轻功档位计算每回合移动力。"""
+    return int(_MOVE_CFG["基础"]) + int(combatant["属性"].get("轻功", 0)) // int(_MOVE_CFG["每档轻功"])
 
 
 # ------------------------------------------------------------
@@ -185,11 +170,15 @@ def move_range(combatant) -> int:
 def _tier_coef(tier: str) -> float:
     """梯度 → 战力系数。容忍「T6·三流」这类带说明的写法（只取前导 T 码）。"""
     m = re.search(r"T[0-7]", tier or "")
-    return TIER_COEF.get(m.group(0), 1.0) if m else 1.0
+    default = TIER_COEF.get("T2")
+    if default is None:
+        raise RuntimeError("战斗数值.json.梯度系数 缺少 T2")
+    return TIER_COEF.get(m.group(0), default) if m else default
 
 
 def player_combatant(x: int = None, y: int = None) -> dict:
     """从 状态/属性/招式表 构建玩家的参战者（梁峰）。"""
+    refresh_config()
     st = state.load("状态", {}) or {}
     ab = state.load("属性", {}) or {}
     basic = ab.get("基础属性", {}) or {}
@@ -247,13 +236,18 @@ def npc_combatant(名字: str, 阵营: str, 梯度: str = "T5", 兵器: str = "�
                   五行: str = "", x: int = None, y: int = None,
                   生命: int = None, 招式: list = None, 武器类型: str = None) -> dict:
     """由「梯度」推导一个 NPC 参战者（可显式覆盖生命/兵器等）。"""
+    refresh_config()
     k = _tier_coef(梯度)
-    hp = int(生命 if 生命 is not None else round(60 * k + 25))
+    def derived(key: str) -> int:
+        rule = _NPC_FORMULA[key]
+        return round(float(rule["系数"]) * k + float(rule["基础"]))
+
+    hp = int(生命 if 生命 is not None else derived("生命"))
     stats = {
-        "剑法": round(70 * k + 20) if 兵器 == "剑法" else round(30 * k + 10),
-        "拳掌": round(70 * k + 20) if 兵器 == "拳掌" else round(30 * k + 10),
-        "暗器": round(70 * k + 20) if 兵器 == "暗器" else round(20 * k + 5),
-        "轻功": round(50 * k + 15),
+        "剑法": derived("主兵器") if 兵器 == "剑法" else derived("副剑拳"),
+        "拳掌": derived("主兵器") if 兵器 == "拳掌" else derived("副剑拳"),
+        "暗器": derived("主兵器") if 兵器 == "暗器" else derived("副暗器"),
+        "轻功": derived("轻功"),
     }
     if 阵营 == "友方":
         dx = ALLIES_START_X
@@ -265,7 +259,7 @@ def npc_combatant(名字: str, 阵营: str, 梯度: str = "T5", 兵器: str = "�
                y if y is not None else GRID_H // 2],
         "朝向": "右" if 阵营 == "友方" else "左",
         "生命": hp, "生命上限": hp,
-        "内力": round(70 * k + 30), "内力上限": round(70 * k + 30),
+        "内力": derived("内力"), "内力上限": derived("内力"),
         "属性": stats, "兵器": 兵器, "武器类型": 武器类型, "五行": 五行, "梯度": 梯度,
         "招式": list(招式 or []), "buff": [],
         "已行动": False, "防守": False, "跳过回合": False,
@@ -297,7 +291,7 @@ def apply_buff(c: dict, name: str, 层数: int = 1, 回合: int = None) -> bool:
     d = BUFF_DEFS.get(name)
     if not d:
         return False
-    dur = d.get("持续", 2) if 回合 is None else 回合
+    dur = d["持续"] if 回合 is None else 回合
     for b in c.get("buff", []):
         if b.get("名称") == name:
             if d.get("可叠层"):
@@ -350,6 +344,7 @@ class Battle:
     """一场 n vs n 战斗的完整状态与结算。"""
 
     def __init__(self, combatants: list, rng: random.Random = None, terrain: dict = None):
+        refresh_config()
         self.cs: list[dict] = combatants
         self.terrain: dict = dict(terrain or {})   # {(x,y): 地形类型}
         self.round = 0
@@ -444,6 +439,7 @@ class Battle:
 
     def begin_round(self):
         """回合开始：定先手、DoT、内力回复、重置本回合标记（含眩晕判定）。"""
+        refresh_config()
         self.round += 1
         self.decide_first_side()
         for c in self.alive():
@@ -458,7 +454,7 @@ class Battle:
                 continue
             # 内力回复（内伤：不回复）
             if not _has_buff(c, "内伤"):
-                regen = round(c["内力上限"] * 0.05)
+                regen = round(c["内力上限"] * float(_ROUND_CFG["内力回复比例"]))
                 c["内力"] = min(c["内力上限"], c["内力"] + regen)
         self._check_end()
 
@@ -476,6 +472,7 @@ class Battle:
     # ---- 行动 ----
     def perform(self, actor_name: str, action: dict, thought_mod: int = 0) -> list[dict]:
         """结算一个角色的一个动作，返回本次新增的日志条目。"""
+        refresh_config()
         actor = self.get(actor_name)
         start = len(self.log)
         if actor is None or not actor.get("存活") or actor.get("已撤离"):
@@ -561,10 +558,11 @@ class Battle:
 
     def _do_defend(self, actor, action, tmod):
         actor["防守"] = True
-        gain = 10 if not _has_buff(actor, "内伤") else 0
+        gain = int(_DEFEND_CFG["回复内力"]) if not _has_buff(actor, "内伤") else 0
         actor["内力"] = min(actor["内力上限"], actor["内力"] + gain)
+        reduction_pct = round(float(_DEFEND_CFG["减伤"]) * 100)
         self.append_log({"类型": "防守", "行动者": actor["名字"],
-                         "文本": f"{actor['名字']} 凝神防守（本回合减伤 40%，回复 {gain} 内力）。"})
+                         "文本": f"{actor['名字']} 凝神防守（本回合减伤 {reduction_pct}%，回复 {gain} 内力）。"})
 
     def _do_skill(self, actor, action, tmod):
         name = action.get("招式", "")
@@ -591,7 +589,7 @@ class Battle:
             if not d:
                 continue
             if eff == "蓄力":
-                if self._stack(actor, "蓄力") < 3:
+                if self._stack(actor, "蓄力") < int(_CHARGE_CFG["叠层上限"]):
                     apply_buff(actor, "蓄力", 1, -1)  # 永久层数，直到被水行伤害招式消耗
                 self.append_log({"类型": "效果", "行动者": actor["名字"],
                                  "文本": f"{actor['名字']} 蓄力 +1（共 {self._stack(actor,'蓄力')} 层）。"})
@@ -695,8 +693,9 @@ class Battle:
         target = self.get(action.get("目标", ""))
         if target is None:
             return self._fallback_defend(actor, "交流目标不存在")
-        dur = 2 + (1 if tmod >= 10 else (-1 if tmod <= -10 else 0))
-        dur = max(1, dur)
+        threshold = int(_TALK_CFG["思路修正阈值"])
+        dur = int(_TALK_CFG["基础持续回合"]) + (1 if tmod >= threshold else (-1 if tmod <= -threshold else 0))
+        dur = max(int(_TALK_CFG["最短持续回合"]), dur)
         if target["阵营"] == actor["阵营"]:
             apply_buff(target, "士气", 回合=dur)
             if action.get("约定"):
@@ -710,9 +709,10 @@ class Battle:
 
     def _do_retreat(self, actor, action, tmod):
         roll = self.rng.randint(1, 100)
-        mod = min(15, int(actor["属性"].get("轻功", 0)) // 10)
+        mod = min(int(_RETREAT_CFG["轻功加成上限"]),
+                  int(actor["属性"].get("轻功", 0)) // int(_RETREAT_CFG["轻功除数"]))
         最终 = roll + mod + (tmod or 0)
-        if 最终 >= 60:
+        if 最终 >= int(_RETREAT_CFG["成功线"]):
             actor["已撤离"] = True
             self.append_log({"类型": "撤退", "行动者": actor["名字"],
                              "文本": f"{actor['名字']} 施展轻功脱出战圈（掷 {roll}+{mod}）。"})
@@ -731,11 +731,13 @@ class Battle:
         攻值 = int(actor["属性"].get(兵器, 0))
         # 命中
         净 = 攻值 - int(target["属性"].get("轻功", 0))
-        命中修正 = max(-25, min(25, round(净 / 5)))
+        命中修正 = max(int(_HIT_CFG["属性修正下限"]),
+                   min(int(_HIT_CFG["属性修正上限"]),
+                       round(净 / float(_HIT_CFG["属性差除数"]))))
         攻buff命中 = _buff_mod(actor, "命中")
         pos = _position_mod(actor, target, self)
         最终 = self.rng.randint(1, 100) + 命中修正 + int(攻buff命中) + pos["命中"]
-        crit = 90 + int(_buff_mod(actor, "会心阈值"))   # 洞察等降低会心门槛
+        crit = int(_HIT_CFG["会心线"]) + int(_buff_mod(actor, "会心阈值"))
         档位, dmg_k = _hit_tier(最终, crit)
         if 档位 is None:
             self.append_log({"类型": "攻击", "行动者": actor["名字"], "目标": target["名字"],
@@ -761,7 +763,7 @@ class Battle:
         兵器 = actor.get("兵器", "剑法")
         攻值 = int(actor["属性"].get(兵器, 0))
         威力 = int(skill.get("威力", 0))
-        base = 威力 * (攻值 / 100.0) * _tier_coef(actor.get("梯度"))
+        base = 威力 * (攻值 / float(_DAMAGE_CFG["兵器属性基准"])) * _tier_coef(actor.get("梯度"))
         base *= WEAPON_KINDS[weapon_kind(actor)]["伤害"]   # 利器 > 钝器 > 徒手
         # 五行克制
         ke = 1.0
@@ -773,26 +775,26 @@ class Battle:
                 ke = KE_DIS
         # 五行熟练度 → 伤害系数（每点 +1%；普通攻击 a5="无" → 0）
         prof = int((actor.get("五行熟练度") or {}).get(a5, 0) or 0)
-        base *= (1 + prof * 0.01)
+        base *= (1 + prof * float(_WUXING_CFG["熟练度每点增伤"]))
         base *= ke * pos["伤害"] * dmg_k
         # 蓄力（水行伤害招式消耗全部层数，每层 +33%）
         stack = self._stack(actor, "蓄力")
         if stack and a5 == "水":
-            base *= (1 + 0.33 * stack)
+            base *= (1 + float(_CHARGE_CFG["每层增伤"]) * stack)
             self._consume_stack(actor, "蓄力")
         # AI 修正（思路）→ 伤害倍率；buff 伤害
-        base *= (1 + (tmod or 0) / 100.0)
+        base *= (1 + (tmod or 0) / float(_DAMAGE_CFG["思路修正基准"]))
         base *= (1 + _buff_mod(actor, "伤害"))
         if a5 and a5 != "无":
             base *= (1 + _buff_mod(actor, "技能伤害"))
         # 守方承伤
         base *= (1 + _buff_mod(target, "受伤"))
-        减伤 = _buff_mod(target, "减伤") + (0.40 if target.get("防守") else 0.0)
+        减伤 = _buff_mod(target, "减伤") + (float(_DEFEND_CFG["减伤"]) if target.get("防守") else 0.0)
         if "穿甲" in (skill.get("效果") or []):
-            减伤 *= 0.5
-        减伤 = min(0.80, max(0.0, 减伤))
+            减伤 *= float(_PIERCE_CFG["减伤保留倍率"])
+        减伤 = min(float(_DEFEND_CFG["总减伤上限"]), max(0.0, 减伤))
         base *= (1 - 减伤)
-        return max(1, int(base))
+        return max(int(_DAMAGE_CFG["最低伤害"]), int(base))
 
     def _attack_text(self, actor, target, skill, 档位, dmg, pos, 五行) -> str:
         s = f"{actor['名字']} 以「{skill.get('名称','攻击')}」攻向 {target['名字']}——{档位}"
@@ -885,6 +887,7 @@ class Battle:
         return {n: get_skill(n) for n in (p.get("招式") or []) if get_skill(n)}
 
     def state(self) -> dict:
+        refresh_config()
         return {
             "回合": self.round,
             "先手方": self.first_side,

@@ -19,41 +19,59 @@ from pathlib import Path
 from tools.核心.state_manager import state
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "移动.json"
+_REQUIRED = ("基础步速", "轻功每点步速", "奔跑倍率", "奔跑耗精力每米")
 
-_DEFAULTS = {
-    "基础步速": 2.2,          # 米 / 游戏秒（轻功 0 时）
-    "轻功每点步速": 0.005,     # 每 1 点轻功增加的基础步速比例
-    "奔跑倍率": 2.6,          # 按住 Shift
-    "奔跑耗精力每米": 0.006,   # 「超出步行」的每米扣精力
-}
+_cache: tuple[int, dict] | None = None
 
-_cache: tuple[float, dict] | None = None
+
+def _validate(raw) -> dict:
+    """校验并提取移动配置；策划数值只允许来自 `移动.json`。"""
+    if not isinstance(raw, dict):
+        raise ValueError("根节点必须是对象")
+    missing = [key for key in _REQUIRED if key not in raw]
+    if missing:
+        raise ValueError(f"缺少字段：{'、'.join(missing)}")
+
+    cfg = {}
+    for key in _REQUIRED:
+        value = raw[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"{key} 必须是数字")
+        cfg[key] = float(value)
+
+    if cfg["基础步速"] <= 0:
+        raise ValueError("基础步速必须大于 0")
+    if cfg["轻功每点步速"] < 0:
+        raise ValueError("轻功每点步速不能小于 0")
+    if cfg["奔跑倍率"] <= 0:
+        raise ValueError("奔跑倍率必须大于 0")
+    if cfg["奔跑耗精力每米"] < 0:
+        raise ValueError("奔跑耗精力每米不能小于 0")
+    return cfg
 
 
 def config() -> dict:
-    """读 `移动.json`（热改免重启）；失败用默认值。"""
+    """读取并校验 `移动.json`（唯一数值源，热改免重启）。
+
+    配置缺失或损坏时不再退回另一套硬编码数值，以免策划修改悄悄失效。
+    """
     global _cache
     try:
-        mtime = CONFIG_PATH.stat().st_mtime
-    except OSError:
-        return dict(_DEFAULTS)
-    if _cache and _cache[0] == mtime:
-        return _cache[1]
-    try:
+        mtime = CONFIG_PATH.stat().st_mtime_ns
+        if _cache and _cache[0] == mtime:
+            return dict(_cache[1])
         raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return dict(_DEFAULTS)
-    if not isinstance(raw, dict):
-        return dict(_DEFAULTS)
-    cfg = {k: raw.get(k, v) for k, v in _DEFAULTS.items()}
+        cfg = _validate(raw)
+    except (OSError, json.JSONDecodeError, ValueError) as e:
+        raise RuntimeError(f"移动配置无效：{CONFIG_PATH}：{e}") from e
     _cache = (mtime, cfg)
-    return cfg
+    return dict(cfg)
 
 
 def run_cost(extra_meters: float) -> int:
     """奔跑「超出步行」的 extra_meters 米 → 应扣精力（四舍五入，≥0）。"""
     try:
-        rate = float(config().get("奔跑耗精力每米", _DEFAULTS["奔跑耗精力每米"]))
+        rate = float(config()["奔跑耗精力每米"])
         meters = float(extra_meters or 0)
     except (TypeError, ValueError):
         return 0

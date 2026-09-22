@@ -22,6 +22,7 @@ time_weather.py
     - **要设到某时刻** → `update_time(date=… / shichen=… / ke=…)`
 """
 
+from tools.核心 import weather_system
 from tools.核心.state_manager import state
 # 常量从这里再导出，保持既有 `from tools.核心.time_weather import SHICHEN/KE_CN` 可用
 from tools.核心.game_clock import (
@@ -111,5 +112,6 @@ def update_weather(condition=None, temperature=None, wind=None, description=None
     if description is not None:
         w["描述"] = description
 
+    weather_system.sync_effect(w)
     state.save("基本信息", data)
     return {"success": True, "天气": w}

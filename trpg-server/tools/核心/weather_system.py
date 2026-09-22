@@ -4,9 +4,10 @@ weather_system.py
 =================
 天气系统（**纯代码，LLM 不参与**）。
 
-    分区：按玩家**经纬度**落在哪个盒子（见 WEATHER_ZONES），不再靠地名模糊匹配。
+    分区：按玩家**经纬度**和 `天气.json.分区` 判定，不再靠地名模糊匹配。
     数据：天气数据/{分区}.json（每区 366 天，1220 闰年，索引 0=1月1日）。
-    写回：游戏数据/基本信息.json 的「天气」字段，含代码算好的「影响」。
+    规则：`天气.json.影响` 是唯一来源，代码生成结构化「影响」与派生「影响文本」。
+    写回：游戏数据/基本信息.json 的「天气」字段。
 
 对外：
     get_weather(date=None, lon=None, lat=None)  —— 查表并写回 基本信息.天气
@@ -19,92 +20,82 @@ import json
 import os
 import random
 
+from tools.核心 import weather_config
 from tools.核心.state_manager import state
 
 _HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEATHER_DIR = os.path.join(os.path.dirname(_HERE), "天气数据")
 
-#: 气象分区：**按经纬度**判定，顺序=优先级，第一个命中的生效。
-#:   北部 = 淮河以北（高纬）
-#:   西部 = 剑阁以西 / 四川盆地（低经）
-#:   东部 = 江淮 + 江南沿海（高经、非高纬）
-#:   南部 = 兜底（荆湖、江南内陆等）
-#: 加新城市**不用改这里**——坐标自动落区。
-WEATHER_ZONES = [
-    {"name": "北部城市", "lat_min": 32.8},
-    {"name": "西部城市", "lon_max": 110.5},
-    {"name": "东部城市", "lon_min": 118.5, "lat_max": 33.0},
-    {"name": "南部城市"},
-]
-
-#: 坐标缺失时的**兜底**（旧的地名关键词匹配，只用于容错，正常不走这条路）
-ZONE_KEYWORDS = {
-    "北部城市": ["开封", "大名", "太原", "蒙古", "河北", "山东", "中原", "淮河", "燕京"],
-    "南部城市": ["临安", "岳阳", "江南", "岭南", "荆湖", "杭州", "长沙", "洞庭", "建康"],
-    "西部城市": ["成都", "利州", "四川", "蜀", "眉山", "青城", "峨眉"],
-    "东部城市": ["扬州", "明州", "泉州", "福州", "沿海", "苏州", "镇江", "楚州"],
+_EMPTY_EFFECT = {
+    "判定修正": {},
+    "效果倍率": {},
+    "效果禁用": [],
+    "禁止行动": [],
+    "强制行动": [],
+    "建议行动": [],
+    "环境标签": [],
 }
 
-#: 极端天气具体类型（d100 加权）
-EXTREME_TABLE = {
-    "北部城市": [("暴雪", 40), ("沙暴", 20), ("冰雹", 40)],
-    "南部城市": [("台风", 40), ("暴雨", 40), ("雷暴", 20)],
-    "西部城市": [("暴雨", 50), ("冰雹", 20), ("山雾封路", 30)],
-    "东部城市": [("台风", 50), ("暴雨", 30), ("海雾", 20)],
-}
 
-EXTREME_DETAIL = {
-    "暴雪": ("暴雪漫天", "大风"),
-    "沙暴": ("沙尘蔽日", "狂风"),
-    "冰雹": ("冰雹砸落", "大风"),
-    "台风": ("台风过境", "狂风"),
-    "暴雨": ("暴雨倾盆", "大风"),
-    "雷暴": ("雷声滚滚", "大风"),
-    "海雾": ("海雾锁港", "轻风"),
-    "山雾封路": ("山雾封路", "轻风"),
-}
+def effect_for(condition: str) -> dict:
+    """返回稳定结构的天气规则影响；判定修正可直接加到 d100。"""
+    configured = weather_config.load(copy_data=False)["影响"].get(condition, {})
+    return {
+        key: dict(configured.get(key, {})) if isinstance(default, dict)
+        else list(configured.get(key, []))
+        for key, default in _EMPTY_EFFECT.items()
+    }
 
-#: 天气的**规则影响**——由代码算好、写进 基本信息.天气.影响，供 GM 直接引用。
-#: （总纲第 5 条：硬事实由代码裁决。GM 不再需要看天气规则表。）
-EFFECTS = {
-    "晴": "",
-    "多云": "",
-    "阴": "视野略暗",
-    "风": "轻功判定 +5 难度；火系效果减半",
-    "小雨": "地面湿滑，轻功判定 +3 难度",
-    "雨": "轻功判定 +5 难度；火系效果减半；视野受限",
-    "大雨": "轻功判定 +10 难度；火系无效；视野严重受限；声音传递困难",
-    "雪": "轻功判定 +5 难度；地面痕迹可见；寒冷相关判定",
-    "暴雪": "禁止出行；强制避雨",
-    "台风": "禁止出行；强制避雨；停航",
-    "暴雨": "轻功判定 +10 难度；火系无效；视野严重受限",
-    "沙暴": "禁止出行；视野严重受限",
-    "冰雹": "户外危险，尽量避雨",
-    "雷暴": "户外危险，尽量避雨",
-    "海雾": "视野严重受限；停航",
-    "山雾封路": "山路封阻",
-}
+
+def effect_text(effect: dict) -> str:
+    """由结构化规则生成供人阅读的说明，不反向解析文本。"""
+    parts = []
+    for name, modifier in effect.get("判定修正", {}).items():
+        if modifier < 0:
+            parts.append(f"{name}判定 +{-modifier:g} 难度")
+        else:
+            parts.append(f"{name}判定 {modifier:+g} 修正")
+    for name, multiplier in effect.get("效果倍率", {}).items():
+        parts.append(f"{name}效果减半" if multiplier == 0.5 else f"{name}效果 ×{multiplier:g}")
+    parts.extend(f"{name}无效" for name in effect.get("效果禁用", []))
+
+    action_text = {"出行": "禁止出行", "航行": "停航", "山路通行": "山路封阻"}
+    parts.extend(action_text.get(name, f"禁止{name}") for name in effect.get("禁止行动", []))
+    parts.extend(f"强制{name}" for name in effect.get("强制行动", []))
+    parts.extend(effect.get("环境标签", []))
+    parts.extend(f"尽量{name}" for name in effect.get("建议行动", []))
+    return "；".join(parts)
+
+
+def sync_effect(weather: dict) -> bool:
+    """按状况刷新结构化影响和派生文本；有变化返回 True。"""
+    effect = effect_for(str(weather.get("状况", "")))
+    text = effect_text(effect)
+    changed = weather.get("影响") != effect or weather.get("影响文本") != text
+    weather["影响"] = effect
+    weather["影响文本"] = text
+    return changed
 
 
 def _zone_of(lon=None, lat=None, region=""):
     """经纬度 → 气象分区。坐标缺失时退回地名关键词（仅兜底）。"""
+    cfg = weather_config.load(copy_data=False)
     if isinstance(lon, (int, float)) and isinstance(lat, (int, float)):
-        for z in WEATHER_ZONES:
-            if lat < z.get("lat_min", -90):
+        for zone in cfg["分区"]:
+            if lat < zone.get("纬度下限", -90):
                 continue
-            if lat >= z.get("lat_max", 90):
+            if lat >= zone.get("纬度上限", 90):
                 continue
-            if lon < z.get("lon_min", -180):
+            if lon < zone.get("经度下限", -180):
                 continue
-            if lon >= z.get("lon_max", 180):
+            if lon >= zone.get("经度上限", 180):
                 continue
-            return z["name"]
+            return zone["名称"]
     region = region or ""
-    for zone, kws in ZONE_KEYWORDS.items():
-        for kw in kws:
-            if kw in region:
-                return zone
-    return "东部城市"
+    for zone, keywords in cfg["分区关键词"].items():
+        if any(keyword in region for keyword in keywords):
+            return zone
+    return cfg["默认分区"]
 
 
 def _day_of_year(date_str):
@@ -178,13 +169,14 @@ def _desc_of(condition):
 
 def _roll_extreme(zone):
     """极端天气掷 d100 定具体类型。"""
+    choices = weather_config.load(copy_data=False)["极端天气权重"][zone]
     roll = random.randint(1, 100)
     acc = 0
-    for name, weight in EXTREME_TABLE[zone]:
+    for name, weight in choices.items():
         acc += weight
         if roll <= acc:
             return name
-    return EXTREME_TABLE[zone][0][0]
+    raise RuntimeError(f"天气配置无效：{zone} 的极端天气权重未覆盖 d100")
 
 
 def get_weather(date=None, lon=None, lat=None):
@@ -212,7 +204,8 @@ def get_weather(date=None, lon=None, lat=None):
 
     if condition == "极端":
         condition = _roll_extreme(zone)
-        desc, wind = EXTREME_DETAIL.get(condition, ("极端天气", "狂风"))
+        detail = weather_config.load(copy_data=False)["极端天气详情"][condition]
+        desc, wind = detail["描述"], detail["风力"]
     else:
         desc, wind = _desc_of(condition), _wind_of(condition)
 
@@ -225,8 +218,8 @@ def get_weather(date=None, lon=None, lat=None):
         "温度": temperature,
         "风力": wind,
         "描述": desc,
-        "影响": EFFECTS.get(condition, ""),
     }
+    sync_effect(weather)
     base["天气"] = weather
     state.save("基本信息", base)
 
@@ -245,8 +238,14 @@ def ensure_today():
         date = (base.get("时间", {}) or {}).get("日期")
         if not date:
             return
-        if (base.get("天气", {}) or {}).get("日期") == date:
+        weather = base.get("天气", {}) or {}
+        if weather.get("日期") == date:
+            if sync_effect(weather):
+                base["天气"] = weather
+                state.save("基本信息", base)
             return
         get_weather(date=date)
-    except Exception as e:      # noqa: BLE001 —— 天气失败不该影响主流程
+    except RuntimeError:
+        raise  # 配置缺失/非法必须明确暴露，不能继续使用旧文本或旧数值
+    except Exception as e:      # noqa: BLE001 —— 单次天气数据读取失败不阻断主流程
         print(f"[weather] ensure_today 失败：{e}")

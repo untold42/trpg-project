@@ -174,7 +174,7 @@ def search_route():
 def get_scene_route():
     """当前地点建议的背景场景（进游戏时给初值用，不用等第一轮叙事）。
 
-    返回 {地点, 类型, 时辰, 场景, 候选}；场景名与前端 assets/背景/ 目录同名。
+    返回 {地点, 类型, 时辰, 场景, 候选}；场景名与前端 assets/背景_重构/ 目录同名。
     """
     from tools.小模型.ui_sim import _kind_of, scene_candidates
 
@@ -363,6 +363,23 @@ def battle_abort_route():
     return jsonify({"success": True})
 
 
+@app.route("/music", methods=["GET"])
+def get_music_route():
+    """进游戏时**重新选一次**背景乐（小模型）。
+
+    前端每次载入游戏都调：不依赖存档 / 前情回顾，保证开局、续玩都有曲子。
+    返回 {曲}；失败或挑不出就返回空串，前端保持现状（不报错）。
+    """
+    from tools.小模型.ui_sim import pick_entry_track
+
+    basic = state.load("基本信息", {}) or {}
+    loc = ((basic.get("位置", {}) or {}).get("地点")) or ""
+    try:
+        return jsonify({"曲": pick_entry_track(loc)})
+    except Exception as e:
+        return jsonify({"曲": "", "error": str(e)})
+
+
 @app.route("/recap", methods=["GET"])
 def get_recap():
     """前情回顾（进入游戏前的加载）：浓缩上一轮存档为 ≤10 段 narration + 选最后一幕 bg/音乐。"""
@@ -420,10 +437,10 @@ def save():
 
 @app.route("/explore", methods=["POST"])
 def enter_explore_route():
-    """玩家自主从叙事切回探索（纯前后端逻辑，不经 GM）。
+    """玩家自主从叙事切回探索（**纯前后端逻辑，不经 GM、不调大模型**）。
 
-    前端「探索」按钮的新入口；旧前端仍可走 /action（mode=gm，内含「进入探索」），
-    后端会短路到同一逻辑。返回统一 UI 事件流（mode:explore + 通用 BGM）。
+    何时回大地图是玩家的自由，不需要主持人同意，也不该花一次 LLM 回合。
+    返回统一 UI 事件流（mode:explore + 通用 BGM），不写 history / current.jsonl。
     """
     return jsonify(runner.enter_explore())
 
@@ -465,10 +482,9 @@ def action():
     if mode not in ("action", "say", "gm", "continue", "observe"):
         mode = "action"
 
-    # 叙事 → 探索：玩家的自主决定（**纯前后端逻辑**）——不发给 GM、不调大模型，立即切回地图。
-    # 前端「探索」按钮仍走 /action（mode=gm），这里短路处理；新入口见 POST /explore。
-    if mode == "gm" and "进入探索" in raw:
-        return jsonify(runner.enter_explore())
+    # 叙事 → 探索已改走专用入口 `POST /explore`（玩家自主决定，不经 GM）。
+    # 以前这里对 `mode=gm` 且输入含「进入探索」做字符串短路，已废弃：
+    # 那个匹配不看上下文，玩家在主持人输入框里问一句「怎么进入探索」会被误伤切回地图。
 
     # 探索模式：前端带上光标坐标 → 更新玩家位置，并把「从哪到哪」作为系统提醒注入本轮
     from_explore = bool(data.get("坐标"))

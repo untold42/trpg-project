@@ -840,7 +840,7 @@ _ENTRIES = [
             "type": "function",
             "function": {
                 "name": "update_weather",
-                "description": "手动覆盖游戏天气（**仅特殊剧情需要**，如法术改天、极端事件）。常规天气由系统自动给、随状态注入。只传需要修改的字段，不传的保持原样。",
+                "description": "手动覆盖游戏天气（**仅特殊剧情需要**，如法术改天、极端事件）。常规天气由系统自动给、随状态注入。只传需要修改的字段；修改状况后，结构化影响会按天气.json 自动重算。",
                 "parameters": {
                     "type": "object",
                     "properties": {

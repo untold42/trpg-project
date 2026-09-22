@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from tools.大模型.registry import ALL_TOOLS
+import context_dump
 
 load_dotenv()
 
@@ -72,10 +73,13 @@ client = OpenAI(
 
 
 def send_messages(history, tools=None):
+    payload_tools = _plain_tools(tools) if tools else _ALL_TOOLS_PLAIN
+    # 把**真实发出去**的 messages / tools 原样留一份（TRPG_DUMP_CONTEXT=1 时；见 context_dump.py）
+    context_dump.dump(history, payload_tools, "deepseek-v4-flash")
     response = client.chat.completions.create(
         model="deepseek-v4-flash",
         messages=history,
-        tools=_plain_tools(tools) if tools else _ALL_TOOLS_PLAIN,
+        tools=payload_tools,
     )
     return response.choices[0].message
 

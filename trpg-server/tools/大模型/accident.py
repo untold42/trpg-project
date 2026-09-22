@@ -17,8 +17,5 @@ def turn_accident() -> bool:
 
 
 def accident():
-    tmp = random.randint(1, 100)
-    if tmp >= 97:
-        return True
-    else:
-        return False
+    """以 3% 概率触发行动失败（d100 掷出 98–100）。"""
+    return random.randint(1, 100) >= 98

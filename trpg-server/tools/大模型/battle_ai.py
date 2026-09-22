@@ -23,17 +23,25 @@ import json
 
 from tools.大模型 import battle_settings
 from tools.小模型 import small_model
+from tools.核心 import battle_config
 
 # ------------------------------------------------------------
-# 评价 → 修正值（唯一真相源）
+# 评价 → 修正值（唯一真相源：`战斗数值.json.思路评价`）
 # ------------------------------------------------------------
-SCORE = {"精妙": 10, "得当": 5, "平平": 0, "失当": -5, "失误": -10}
+SCORE = {str(k): int(v) for k, v in battle_config.section("思路评价", copy_data=False).items()}
 DEFAULT_SCORE = "平平"
 
 
+def _refresh_scores() -> dict[str, int]:
+    global SCORE
+    SCORE = {str(k): int(v) for k, v in battle_config.section("思路评价", copy_data=False).items()}
+    return SCORE
+
+
 def score_of(评价: str) -> int:
-    """评价 → 修正值；非法评价按「平平」= 0。"""
-    return SCORE.get((评价 or "").strip(), SCORE[DEFAULT_SCORE])
+    """评价 → 修正值；非法评价按配置中的「平平」处理。"""
+    scores = _refresh_scores()
+    return scores.get((评价 or "").strip(), scores[DEFAULT_SCORE])
 
 
 # ------------------------------------------------------------
@@ -111,9 +119,10 @@ def judge_thought(context: str, action: str, target: str = "", thought: str = ""
     - 思路为空 → 不调用任何模型，直接「平平 0」（不惩罚不写思路）。
     - 模型可切：设置「思路判定模型」= 小模型（默认）/ 大模型。
     """
+    scores = _refresh_scores()
     thought = (thought or "").strip()
     if not thought:
-        return {"评价": DEFAULT_SCORE, "修正": 0, "理由": "（未写思路）", "模型": ""}
+        return {"评价": DEFAULT_SCORE, "修正": scores[DEFAULT_SCORE], "理由": "（未写思路）", "模型": ""}
 
     模型 = battle_settings.get_thought_model()
     if 模型 == "大模型":
@@ -122,11 +131,11 @@ def judge_thought(context: str, action: str, target: str = "", thought: str = ""
         raw = _judge_small(context, action, target, thought)
 
     评价 = str(raw.get("评价") or raw.get("评分") or "").strip()
-    if 评价 not in SCORE:  # 越界 / 失败 → 降级
+    if 评价 not in scores:  # 越界 / 失败 → 降级
         评价 = DEFAULT_SCORE
     return {
         "评价": 评价,
-        "修正": SCORE[评价],
+        "修正": scores[评价],
         "理由": str(raw.get("理由", ""))[:40],
         "模型": 模型,
     }
@@ -138,19 +147,22 @@ def judge_thought(context: str, action: str, target: str = "", thought: str = ""
 SIDE_ACTIONS = ["移动", "舞剑", "防守", "技能", "交流", "撤退"]
 SIDE_MOVES = ["原地", "前进1", "后退1", "侧移1", "斜移1"]
 
-_SIDE_SYSTEM = (
-    "你是武侠战斗的「阵营 AI」。根据战局，为**每一个**该阵营角色决定本回合行动。\n"
-    "只输出 JSON（对象，含 `行动` 数组），每个角色一条，顺序与人名一致。\n"
-    "决策原则（务必遵守）：\n"
-    "1. **「目标」必须填敌方角色的名字**——绝不能填自己、也绝不能填队友（填错会被系统判为无效）。\n"
-    "2. 与敌方**相邻（距离1）**时，「舞剑」攻击（目标填那个敌人的名字）。\n"
-    "3. 距离 > 1 时用「移动」靠近敌人：选「前进1」或「斜移1」（朝敌人所在的 X 方向）；"
-    "**不要移动到已被占用的格**。\n"
-    "4. 能远程攻击（技能射程够）时可直接「技能」打敌人。\n"
-    "5. 残血（HP < 1/3）可「防守」或「撤退」。\n"
-    "约束：动作只能从那六个里选；目标必须是给定名单里的名字；移动只能选给定项；思路不超过 12 字。\n"
-    "禁止思考、禁止叙述。\n/no_think"
-)
+
+def _side_system() -> str:
+    retreat_hp = float(battle_config.section("战术AI", copy_data=False)["撤退血线"])
+    return (
+        "你是武侠战斗的「阵营 AI」。根据战局，为**每一个**该阵营角色决定本回合行动。\n"
+        "只输出 JSON（对象，含 `行动` 数组），每个角色一条，顺序与人名一致。\n"
+        "决策原则（务必遵守）：\n"
+        "1. **「目标」必须填敌方角色的名字**——绝不能填自己、也绝不能填队友（填错会被系统判为无效）。\n"
+        "2. 与敌方**相邻（距离1）**时，「舞剑」攻击（目标填那个敌人的名字）。\n"
+        "3. 距离 > 1 时用「移动」靠近敌人：选「前进1」或「斜移1」（朝敌人所在的 X 方向）；"
+        "**不要移动到已被占用的格**。\n"
+        "4. 能远程攻击（技能射程够）时可直接「技能」打敌人。\n"
+        f"5. 残血（HP < {retreat_hp:.0%}）可「防守」或「撤退」。\n"
+        "约束：动作只能从那六个里选；目标必须是给定名单里的名字；移动只能选给定项；思路不超过 12 字。\n"
+        "禁止思考、禁止叙述。\n/no_think"
+    )
 
 
 def _side_schema(members: list, targets: list) -> dict:
@@ -204,7 +216,7 @@ def decide_side(side: str, snapshot: str, members: list, targets: list,
         f"请给出你方每个成员本回合的行动。"
     )
     r = small_model.ask_json(
-        _SIDE_SYSTEM, user, _side_schema(names, targets),
+        _side_system(), user, _side_schema(names, targets),
         max_tokens=min(max_tokens, 120 * max(1, len(names)) + 120),
     )
     if not isinstance(r, dict):
