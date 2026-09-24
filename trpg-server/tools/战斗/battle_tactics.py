@@ -16,7 +16,7 @@ battle_tactics.py
 
 from __future__ import annotations
 
-from tools.大模型 import battle as B
+from tools.战斗 import battle as B
 from tools.核心 import battle_config
 
 # 战术评分数值只从 `战斗数值.json.战术AI` 读取。

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """战斗数值配置读取器。
 
-`trpg-server/战斗数值.json` 是战斗全局数值的唯一策划源。
+`trpg-server/配置/战斗数值.json` 是战斗全局数值的唯一策划源。
 本模块不提供另一套默认值；配置缺失或损坏时直接报错，避免静默使用旧数值。
 """
 from __future__ import annotations
@@ -10,7 +10,7 @@ import json
 from copy import deepcopy
 from pathlib import Path
 
-CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "战斗数值.json"
+CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "配置" / "战斗数值.json"
 _cache: tuple[int, dict] | None = None
 
 _REQUIRED_SECTIONS = (

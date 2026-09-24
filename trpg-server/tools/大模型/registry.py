@@ -46,7 +46,7 @@ from tools.大模型.time_weather import advance_time, update_time, update_weath
 from tools.核心.time_flow import rest as sleep_time
 from tools.大模型.modes import resume_exploration
 from tools.大模型.event_dice import daily_event_dice, travel_event_dice
-from tools.大模型.battle_session import start_battle
+from tools.战斗.battle_session import start_battle
 
 _ENTRIES = [
     (
@@ -416,8 +416,9 @@ _ENTRIES = [
                 "name": "update_character_archive",
                 "description": (
                     "【仅存档蒸馏时使用】更新某 NPC 的动态档案（近记忆·热）：追加里程碑 / 情感记忆，"
-                    "覆写当前情绪状态与信息边界。先查静态档案：已有→只更新动态（静态不覆盖）；"
-                    "没有→用 `static` 字段建静态并建动态。本局有实质互动的 NPC 都要为其调用一次。"
+                    "覆写当前情绪状态与信息边界；并按本局表现结算**好感度增量**（§9）。先查静态档案："
+                    "已有→只更新动态（静态不覆盖）；没有→用 `static` 字段建静态并建动态。"
+                    "本局有实质互动的 NPC 都要为其调用一次。"
                 ),
                 "parameters": {
                     "type": "object",
@@ -455,6 +456,12 @@ _ENTRIES = [
                         "known": {"type": "array", "items": {"type": "string"}, "description": "§12 已知"},
                         "unknown": {"type": "array", "items": {"type": "string"}, "description": "§12 不知"},
                         "info_attitude": {"type": "string", "description": "§12 对未知部分的态度"},
+                        "好感度变化": {
+                            "type": "integer",
+                            "description": "好感度**增量**（本局结算，±10 以内；正=升温、负=降温）。"
+                                           "只给变化量，不要给绝对值——当前值与档位由系统读取/裁决。"
+                                           "参考该角色的立场/底线/偏好/反感（静态 §8.5），宁可不记也不误动。",
+                        },
                     },
                     "required": ["name"],
                 },
@@ -997,11 +1004,11 @@ if os.environ.get("TRPG_EVENT_DICE") != "1":
 if os.environ.get("TRPG_RESUME_TOOL") != "1":
     _DISABLED |= {"resume_exploration"}
 
-#: 游戏中（正常回合）用
+#! 游戏中（正常回合）用
 ALL_TOOLS = [schema for name, schema, _fn in _ENTRIES
              if name not in _SAVE_ONLY and name not in _DISABLED]
 
-#: 存档蒸馏回合只发这些工具（其余与蒸馏无关；全发会把 prompt 撑大、拖慢甚至超时）
+#! 存档蒸馏回合只发这些工具（其余与蒸馏无关；全发会把 prompt 撑大、拖慢甚至超时）
 _SAVE_NAMES = {
     "DB_add_and_update_tool", "DB_query_tool", "DB_query_tool_in_saving",
     "update_character_archive", "update_place_note", "update_place_structure",

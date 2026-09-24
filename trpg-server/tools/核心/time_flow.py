@@ -11,7 +11,7 @@ time_flow.py
     - 先 `pump()` 结算清醒时段 → 推进时钟 → 精力按**恢复**结算；
     - **饥饿仍按睡过的时辰照扣**（睡觉也会饿），结果一并返回 `饥饿` / `饥饿下降`。
 
-调参：`trpg-server/时间影响.json`（缺失/损坏用代码默认；改文件即时生效）。
+调参：`trpg-server/配置/时间影响.json`（缺失/损坏用代码默认；改文件即时生效）。
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from tools.核心.game_clock import clock, SHICHEN, SECONDS_PER_SHICHEN
 from tools.核心.state_manager import state
 from tools.核心 import derived, hunger
 
-CONFIG_FILE = Path(__file__).resolve().parent.parent.parent / "时间影响.json"
+CONFIG_FILE = Path(__file__).resolve().parent.parent.parent / "配置" / "时间影响.json"
 
 DEFAULTS = {
     "每时辰精力": {"昼": 3, "夜": 9},
@@ -162,6 +162,14 @@ def pump() -> dict:
         hunger.drain(ev["shichen_indices"])   # 饥饿随时间缓慢下降
     if ev["days"] > 0:
         _on_new_day(ev["date"])
+    # 任务 DDL：到期 → 异步叫一次旁路大模型给结局
+    try:
+        from tools.核心 import quest as _quest
+        from tools.大模型 import quest_arbiter as _arb
+        for t in _quest.due():
+            _arb.arbitrate_expiry_async(t)
+    except Exception as e:      # DDL 失败不影响时间结算
+        print(f"[quest] DDL 检查失败：{type(e).__name__}: {e}")
     return ev
 
 

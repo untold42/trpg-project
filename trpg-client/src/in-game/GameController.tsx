@@ -18,6 +18,7 @@ import { API } from "../api";
 import { useEsc } from "../escStack";
 import FacilityPanel, { type FacilityDetail } from "./FacilityPanel";
 import SkillTree from "./SkillTree";
+import ScenePicker from "./ScenePicker";
 
 // 地图条目（GET /maps）：frame = [min_lon, min_lat, max_lon, max_lat]
 type MapEntry = { id: string; name: string; frame: number[] | null };
@@ -201,6 +202,10 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     const [showData, setShowData] = useState(false); // 数据面板（金钱/背包/属性/状态）
     const [showMenu, setShowMenu] = useState(false); // 状态菜单（左侧滑出面板）；触发按钮在底部按钮栏里
     const [showSkillTree, setShowSkillTree] = useState(false); // 技能树（银河 + 五星圆弧，零大模型）
+    // 场景选择器（预览 / 手动选景）：URL ?scenes=1 可直接打开
+    const [showScenePicker, setShowScenePicker] = useState(
+        () => new URLSearchParams(window.location.search).get("scenes") === "1"
+    );
     const [readingIndex, setReadingIndex] = useState<number | null>(null);
     const [playerState, setPlayerState] = useState<PlayerState | null>(null); // 玩家真实状态
     const [background, setBackground] = useState<string>(
@@ -726,6 +731,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     useEsc(() => setShowMap(false), showMap);
     useEsc(() => setShowGallery(false), showGallery);
     useEsc(() => setShowData(false), showData);
+    useEsc(() => setShowScenePicker(false), showScenePicker);
     useEsc(() => setShowInputSay(false), showInputSay);
     useEsc(() => setShowContinue(false), showContinue);
     useEsc(() => setRecallInfo(null), recallInfo !== null);
@@ -766,7 +772,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
             : null;
         // 时钟暂停条件：打字（输入框）/ 看历史·地图·数据·势力·详情 / 等 LLM 回复
         const clockPaused =
-            sending || showHistory || showMap || showData || showGallery || showSkillTree ||
+            sending || showHistory || showMap || showData || showGallery || showSkillTree || showScenePicker ||
             readingIndex !== null || showInputGM || showInputAct || showInputSay;
         const 状态 = playerState?.状态 ?? {};        const 基础 = playerState?.属性?.基础属性 ?? {};
         const 物品 = playerState?.背包?.物品 ?? {};
@@ -998,6 +1004,15 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
 
                 {showSkillTree && <SkillTree onClose={() => setShowSkillTree(false)} />}
 
+                {showScenePicker && (
+                    <ScenePicker
+                        current={bgPosition}
+                        period={period}
+                        onPick={(s) => setBgPosition(s)}
+                        onClose={() => setShowScenePicker(false)}
+                    />
+                )}
+
                 {
                 readingIndex !== null && (
                     <div className="gallery-reader">
@@ -1107,6 +1122,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                     <button className="sm-menu-item" onClick={handleReject}>驳回上轮</button>
                     <button className="sm-menu-item" onClick={() => setShowGallery(true)}>势力</button>
                     <button className="sm-menu-item" onClick={() => setShowSkillTree(true)}>技能树</button>
+                    <button className="sm-menu-item" onClick={() => setShowScenePicker(true)}>场景选择</button>
                     <button className="sm-menu-item" onClick={onBackMenu}>返回主菜单</button>
                 </StaggeredMenu>
 

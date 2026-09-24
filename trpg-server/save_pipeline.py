@@ -265,7 +265,8 @@ def save_hints(turns: list[dict]) -> str:
     """存档蒸馏的**附加任务**（代码统计，附在规则后面）。"""
     buildings = visited_buildings(turns)
     unnamed = unnamed_characters(turns)[:20]
-    if not buildings and not unnamed:
+    contacted = contacted_characters(turns)[:20]
+    if not buildings and not unnamed and not contacted:
         return ""
     parts = ["===== 本局存档附加任务（代码统计，务必处理）====="]
     if buildings:
@@ -285,6 +286,13 @@ def save_hints(turns: list[dict]) -> str:
             "若 TA 目前只有职业 / 身份代称（如「掌柜」「老妇」「挑炭人」），请**另起一个符合南宋的姓名**，"
             "并在 `static` 里注明其**原称谓**（若判断是同一人的不同称呼，合并命名）：\n"
             + "\n".join(f"- {n}" for n in unnamed)
+        )
+    if contacted:
+        parts.append(
+            "三、以下人物本局有过互动——为**每人**调用一次 `update_character_archive`，"
+            "除情绪 / 记忆外，**务必给 `好感度变化`**（±10 以内；只看她本局对梁峰的整体观感，"
+            "宁可不记也不误动）：\n"
+            + "\n".join(f"- {n}" for n in contacted)
         )
     return "\n\n".join(parts)
 

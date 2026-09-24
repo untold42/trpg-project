@@ -30,9 +30,9 @@ from __future__ import annotations
 import os
 import random
 
-from tools.大模型 import battle as B
-from tools.大模型 import battle_ai
-from tools.大模型 import battle_tactics
+from tools.战斗 import battle as B
+from tools.战斗 import battle_ai
+from tools.战斗 import battle_tactics
 
 #: NPC 决策走哪套：`code`（默认，战术层 Utility+前瞻）/ `model`（小模型）
 USE_MODEL = os.environ.get("TRPG_BATTLE_AI", "code") == "model"

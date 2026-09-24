@@ -33,9 +33,9 @@ from tools.核心.state_manager import state
 # ------------------------------------------------------------
 # 路径 / 常量
 # ------------------------------------------------------------
-_SKILL_TABLE_PATH = Path(__file__).resolve().parent.parent.parent / "招式表.json"
+_SKILL_TABLE_PATH = Path(__file__).resolve().parent.parent.parent / "配置" / "招式表.json"
 
-# 战斗全局数值只从 `trpg-server/战斗数值.json` 读取。
+# 战斗全局数值只从 `trpg-server/配置/战斗数值.json` 读取。
 def refresh_config() -> None:
     """热读战斗配置；公开战斗入口会调用它，无需重启后端。"""
     global _CFG, _BOARD, _NPC_FORMULA, _MOVE_CFG, _HIT_CFG, _WUXING_CFG
@@ -106,7 +106,7 @@ def weapon_kind(c: dict) -> str:
 
 
 def _skill_table() -> dict:
-    """读 `trpg-server/招式表.json`（玩家当前可用招式，带缓存）。失败返回空结构。"""
+    """读 `trpg-server/配置/招式表.json`（玩家当前可用招式，带缓存）。失败返回空结构。"""
     cached = getattr(_skill_table, "_cache", None)
     try:
         mtime = _SKILL_TABLE_PATH.stat().st_mtime

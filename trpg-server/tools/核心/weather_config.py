@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""`trpg-server/天气.json` 的热读与严格校验。"""
+"""`trpg-server/配置/天气.json` 的热读与严格校验。"""
 from __future__ import annotations
 
 import json
 from copy import deepcopy
 from pathlib import Path
 
-CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "天气.json"
+CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "配置" / "天气.json"
 _cache: tuple[int, dict] | None = None
 
 _REQUIRED = ("分区", "分区关键词", "默认分区", "极端天气权重", "极端天气详情", "影响")

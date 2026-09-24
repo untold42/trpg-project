@@ -8,7 +8,7 @@ movement.py
     - **奔跑 → 精力**：只对奔跑「**超出步行的那部分距离**」扣精力（`drain_run`），
       不双重计费（时间流逝本身已在扣精力）。
 
-参数热改：改 `trpg-server/移动.json` 免重启。
+参数热改：改 `trpg-server/配置/移动.json` 免重启。
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from pathlib import Path
 
 from tools.核心.state_manager import state
 
-CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "移动.json"
+CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "配置" / "移动.json"
 _REQUIRED = ("基础步速", "轻功每点步速", "奔跑倍率", "奔跑耗精力每米")
 
 _cache: tuple[int, dict] | None = None

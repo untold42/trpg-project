@@ -21,7 +21,10 @@ async function bootMapSync(): Promise<void> {
     clearTimeout(t);
     const d = await r.json();
     if (d?.current) {
-      window.location.replace(`?map=${d.current}`);
+      // 保留 URL 上已有的参数（如 ?scenes=1），只补 map
+      const q = new URLSearchParams(window.location.search);
+      q.set('map', d.current);
+      window.location.replace(`?${q.toString()}`);
       return; // 页面即将重载，不再渲染
     }
   } catch {

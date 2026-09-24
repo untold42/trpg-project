@@ -30,12 +30,13 @@ kind 清单（协议）：
     battle    data: {...}                            开战斗（战棋）
     mode      data: {mode: "explore"|"narrative"}     切换游戏模式（探索 / 叙事）
     minigame  data: {game, sessionId, ...}           开小游戏（可阻塞叙事，预留）
+    quest     data: {动作: "新增"|"推进"|"完成"|"过期", 任务: {...}, ...}  任务栏刷新
 """
 
 UI_EVENTS_KEY = "_ui_events"
 
 #: 已定义的 UI 事件 kind（新增 kind 请同时改前端 types/gametype.ts）
-KINDS = ("bg", "music", "battle", "mode", "minigame")
+KINDS = ("bg", "music", "battle", "mode", "minigame", "quest")
 
 
 def ui_event(kind: str, **data) -> dict:

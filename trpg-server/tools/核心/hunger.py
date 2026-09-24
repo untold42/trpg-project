@@ -11,7 +11,7 @@ hunger.py
 - `饥饿`（数值）是**真相源**；`饥饿挡位`（字符串）是投影，由 `sync()` 回写 `状态.json`。
 - 随时间扣减：`time_flow.pump()` / `sleep` 里按跨过的时辰调 `drain()`。
 - 进食：工具 `modify_hunger`（正数增加）。
-- 每时辰扣多少：以 `trpg-server/时间影响.json` 的 `每时辰饥饿` 为准（当前为 5；改文件即时生效）。
+- 每时辰扣多少：以 `trpg-server/配置/时间影响.json` 的 `每时辰饥饿` 为准（当前为 5；改文件即时生效）。
 """
 
 from __future__ import annotations

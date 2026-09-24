@@ -27,7 +27,7 @@ from pathlib import Path
 #: 每次调用现读，而不是 import 时定死——这样 `load_dotenv()` 之后才生效的 `.env` 也能用。
 _FLAG = "TRPG_DUMP_CONTEXT"
 
-DIR = Path(__file__).resolve().parent / "sessions" / "context_dump"
+DIR = Path(__file__).resolve().parent.parent.parent / "sessions" / "context_dump"
 
 _lock = threading.Lock()
 _seq = 0

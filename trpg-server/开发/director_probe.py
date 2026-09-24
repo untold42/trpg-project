@@ -16,9 +16,9 @@ director_probe.py
 
 运行（需 `.env` 里有 `GLM_API_KEY`；GLM 慢，一次 40–200s，429 常见会重试）：
     cd trpg-server
-    python director_probe.py            # 跑 A + B
-    python director_probe.py --only a
-    python director_probe.py --no-outline   # 对照：不喂大纲（临时把 OUTLINE_PATH 指向空）
+    python 开发/director_probe.py            # 跑 A + B
+    python 开发/director_probe.py --only a
+    python 开发/director_probe.py --no-outline   # 对照：不喂大纲（临时把 OUTLINE_PATH 指向空）
 
 退出码：0=跑完；2=GLM 不可用（缺 key / 全部失败）。
 """
@@ -31,14 +31,14 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 try:  # Windows 控制台默认 GBK，会把中文打成乱码
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
     pass
 
-from tools import director  # noqa: E402
+from tools.导演 import director  # noqa: E402
 
 REPORT = Path(__file__).resolve().parent / "director_probe_out.md"
 

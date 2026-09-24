@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from tools.大模型.registry import ALL_TOOLS
-import context_dump
+from tools.核心 import context_dump
 
 load_dotenv()
 

@@ -8,9 +8,9 @@ import unittest
 from pathlib import Path
 
 from tools.核心 import battle_config
-from tools.大模型 import battle
-from tools.大模型 import battle_ai
-from tools.大模型 import battle_tactics
+from tools.战斗 import battle
+from tools.战斗 import battle_ai
+from tools.战斗 import battle_tactics
 
 
 class BattleConfigTest(unittest.TestCase):

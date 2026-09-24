@@ -2,7 +2,7 @@
 """导出项目内分散的玩法数值为 Excel 盘点表。
 
 当前阶段是“汇总/审计”：Excel 不是运行时真相源，修改 Excel 不会自动回写代码或 JSON。
-运行：在项目根或 trpg-server 下执行 `python 导出策划数值表.py`。
+运行：在 trpg-server 下执行 `python 开发/导出策划数值表.py`。
 输出：trpg-world/策划数值总表.xlsx
 """
 from __future__ import annotations
@@ -16,7 +16,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 SERVER = ROOT / "trpg-server"
 WORLD = ROOT / "trpg-world"
 CLIENT = ROOT / "trpg-client"
@@ -150,19 +150,19 @@ def main():
 
     # 文件索引
     index_rows = [
-        ["养成", "成长曲线/时长/战斗成长/技能点", "成长曲线、修行时长、战斗成长", "配置真相源", "热读", "trpg-server/成长.json"],
-        ["设施", "设施耗时/收益/buff", "设施数值", "配置真相源", "热读", "trpg-server/facilities.json"],
-        ["技能", "技能树节点/门槛/花费/招式数值", "技能树", "预制真相源", "重启/接口重读", "trpg-server/技能树.json"],
-        ["技能", "玩家已学招式运行表", "招式运行表", "运行投影", "运行时改写", "trpg-server/招式表.json"],
-        ["战斗", "核心/梯度/Buff/武器/位置/NPC推导/战术AI/思路评分", "战斗核心、Buff、NPC梯度、战术AI", "配置真相源", "热读", "trpg-server/战斗数值.json"],
-        ["战斗", "战斗公式与结算逻辑", "—", "代码逻辑（不保存策划系数）", "需重启", "trpg-server/tools/大模型/battle*.py"],
-        ["时间", "精力/睡眠/饥饿消耗", "时间与生存", "配置真相源", "热读", "trpg-server/时间影响.json"],
+        ["养成", "成长曲线/时长/战斗成长/技能点", "成长曲线、修行时长、战斗成长", "配置真相源", "热读", "trpg-server/配置/成长.json"],
+        ["设施", "设施耗时/收益/buff", "设施数值", "配置真相源", "热读", "trpg-server/配置/facilities.json"],
+        ["技能", "技能树节点/门槛/花费/招式数值", "技能树", "预制真相源", "重启/接口重读", "trpg-server/配置/技能树.json"],
+        ["技能", "玩家已学招式运行表", "招式运行表", "运行投影", "运行时改写", "trpg-server/配置/招式表.json"],
+        ["战斗", "核心/梯度/Buff/武器/位置/NPC推导/战术AI/思路评分", "战斗核心、Buff、NPC梯度、战术AI", "配置真相源", "热读", "trpg-server/配置/战斗数值.json"],
+        ["战斗", "战斗公式与结算逻辑", "—", "代码逻辑（不保存策划系数）", "需重启", "trpg-server/tools/战斗/battle*.py"],
+        ["时间", "精力/睡眠/饥饿消耗", "时间与生存", "配置真相源", "热读", "trpg-server/配置/时间影响.json"],
         ["时间", "刻/时辰/时钟倍率/战斗回合时长", "时间与生存", "代码默认", "需重启", "trpg-server/tools/核心/game_clock.py"],
         ["生存", "饥饿挡位阈值", "时间与生存", "代码常量", "需重启", "trpg-server/tools/核心/hunger.py"],
-        ["移动", "基础步速/轻功/奔跑", "移动与地形", "配置真相源", "热读", "trpg-server/移动.json"],
+        ["移动", "基础步速/轻功/奔跑", "移动与地形", "配置真相源", "热读", "trpg-server/配置/移动.json"],
         ["移动", "地形与道路倍率", "移动与地形", "生成配置", "重导 walkable", "trpg-map/draw_tiles/export_walkable.py"],
         ["移动", "桥/码头放行半径", "移动与地形", "前端代码常量", "前端重载", "trpg-client/src/in-game/walkable.ts"],
-        ["天气", "分区/极端天气权重/结构化规则影响", "天气", "配置真相源", "热读", "trpg-server/天气.json"],
+        ["天气", "分区/极端天气权重/结构化规则影响", "天气", "配置真相源", "热读", "trpg-server/配置/天气.json"],
         ["世界推演", "每日顺利度权重", "世界推演与概率", "代码常量", "需重启", "trpg-server/tools/小模型/world_sim.py"],
         ["判定", "可能性骰档位与修正建议", "世界推演与概率", "规则文档", "热读", "trpg-world/主持人/可能性骰.md"],
         ["判定", "回合意外概率", "世界推演与概率", "代码逻辑", "需重启", "trpg-server/tools/大模型/accident.py"],
@@ -176,7 +176,7 @@ def main():
               "这里列出本次盘点发现的主要数值来源。")
 
     # 养成
-    growth_path = SERVER / "成长.json"
+    growth_path = SERVER / "配置" / "成长.json"
     growth = load_json(growth_path)
     curve_rows = []
     for kind, points in growth.get("曲线", {}).items():
@@ -197,7 +197,7 @@ def main():
     add_table(wb, "战斗成长", ["项目", "数值", "来源"], battle_growth_rows)
 
     # 设施
-    fac_path = SERVER / "facilities.json"
+    fac_path = SERVER / "配置" / "facilities.json"
     facilities = load_json(fac_path)
     fac_rows = []
     for key, entry in facilities.items():
@@ -215,7 +215,7 @@ def main():
                                "成长目标", "基准点数", "Buff倍率", "持续天数", "说明", "来源"], fac_rows)
 
     # 技能树
-    tree_path = SERVER / "技能树.json"
+    tree_path = SERVER / "配置" / "技能树.json"
     tree = load_json(tree_path)
     skill_rows = []
     for name, node in (tree.get("节点") or {}).items():
@@ -231,7 +231,7 @@ def main():
                              "射程", "范围", "威力", "连击", "效果", "描述", "来源"], skill_rows,
               f"当前共 {len(skill_rows)} 个节点；此表是预制技能数值的主要编辑对象。")
 
-    moves_path = SERVER / "招式表.json"
+    moves_path = SERVER / "配置" / "招式表.json"
     moves = load_json(moves_path)
     move_rows = []
     normal = moves.get("普通攻击") or {}
@@ -247,7 +247,7 @@ def main():
               "这是玩家已学技能的运行投影，会被技能树系统写入；不建议把它当唯一策划源。")
 
     # 战斗核心（唯一数值源：战斗数值.json）
-    battle_cfg_path = SERVER / "战斗数值.json"
+    battle_cfg_path = SERVER / "配置" / "战斗数值.json"
     battle_cfg = load_json(battle_cfg_path)
     board = battle_cfg["棋盘"]
     hit = battle_cfg["命中"]
@@ -326,7 +326,7 @@ def main():
     add_table(wb, "战术AI", ["项目", "数值", "来源"], tactics_rows)
 
     # 时间、生存
-    time_path = SERVER / "时间影响.json"
+    time_path = SERVER / "配置" / "时间影响.json"
     tcfg = load_json(time_path)
     clock_path = SERVER / "tools/核心/game_clock.py"
     cc = py_constants(clock_path)
@@ -348,7 +348,7 @@ def main():
     add_table(wb, "时间与生存", ["项目", "数值", "单位", "来源"], time_rows)
 
     # 移动与地形
-    movement_path = SERVER / "移动.json"
+    movement_path = SERVER / "配置" / "移动.json"
     movement = load_json(movement_path)
     move_cfg_rows = [[k, v, "", source(movement_path, key=k)] for k, v in movement.items() if k != "说明"]
     terrain_path = MAP / "draw_tiles/export_walkable.py"
@@ -367,7 +367,7 @@ def main():
     add_table(wb, "移动与地形", ["项目", "数值", "条件/单位", "来源"], move_cfg_rows)
 
     # 天气（唯一数值源：天气.json；影响为结构化规则）
-    weather_path = SERVER / "天气.json"
+    weather_path = SERVER / "配置" / "天气.json"
     weather_cfg = load_json(weather_path)
     weather_rows = []
     for zone, choices in weather_cfg["极端天气权重"].items():
@@ -430,7 +430,7 @@ def main():
         ["已修", "技能点概率文档", "战斗系统.md 已改为只引用成长.json，不再抄写会过期的当前值。", "trpg-world/战斗系统.md:250", source(growth_path, key="技能点概率"), "保持配置为唯一数值源。"],
         ["已修", "饥饿消耗后备值", "正常运行以时间影响.json为准；hunger.py 注释与容错后备值已统一为当前每时辰5。", source(hunger_path, 14), source(time_path, key="每时辰饥饿"), "后续调整只需修改时间影响.json。"],
         ["已修", "移动参数单一真相源", "策划数值只保留在移动.json；后端严格校验，前端未取得配置时速度为0并暂缓移动。", source(movement_path), "trpg-server/tools/核心/movement.py；trpg-client/src/in-game/GameController.tsx", "后续调整只需修改移动.json。"],
-        ["已修", "战斗数值单一真相源", "梯度、Buff、命中、武器、位置、NPC推导、战术权重与思路评分已迁入战斗数值.json。", source(battle_cfg_path), "trpg-server/tools/大模型/battle*.py", "后续调整只需修改战斗数值.json。"],
+        ["已修", "战斗数值单一真相源", "梯度、Buff、命中、武器、位置、NPC推导、战术权重与思路评分已迁入战斗数值.json。", source(battle_cfg_path), "trpg-server/tools/战斗/battle*.py", "后续调整只需修改战斗数值.json。"],
         ["已修", "天气影响已结构化", "判定修正、效果倍率/禁用、行动门禁和环境标签均由天气.json 提供；文本只作派生展示。", source(weather_path), "trpg-server/tools/核心/weather_system.py", "后续系统直接读取 基本信息.天气.影响。"],
         ["已修", "技能节点数量文档统一", f"技能树实际 {len(skill_rows)} 个节点；README、TODO 与交接现统一为该数量，并声明以技能树.json实际统计为准。", source(tree_path), "README.md；TODO.md；交接.md", "后续导表继续自动统计节点数。"],
         ["低", "招式表是运行投影", "技能树点亮后会写招式表；直接同时修改两处可能漂移。", source(tree_path), source(moves_path), "明确技能树为预制源、招式表为存档投影。"],

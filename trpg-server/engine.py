@@ -39,6 +39,7 @@ from tools.核心 import weather_system
 from tools.核心.ui_events import UI_EVENTS_KEY, music_event, bg_event, mode_event
 from tools.核心 import world_threads
 from tools.核心 import macro_timeline
+from tools.核心 import quest
 from tools.导演 import director
 from tools.小模型 import world_worker
 from tools.小模型 import ui_sim
@@ -94,7 +95,7 @@ def state_dict() -> dict:
     snapshot = state.snapshot()
     if "世界线程" in snapshot:
         snapshot["世界线程"] = world_threads.threads_view()
-    for _skip in ("足迹", "时钟", "属性", *_STABLE_STATE_KEYS):
+    for _skip in ("足迹", "时钟", "属性", "任务", *_STABLE_STATE_KEYS):
         snapshot.pop(_skip, None)
     # 宏观时间线：只读剧本 + 时间窗（近 N 月已发生 / 未来 N 月预兆），不落档
     snapshot["宏观时间线"] = macro_timeline.view(world_threads.current_date())
@@ -127,14 +128,21 @@ def snapshot_state() -> str:
 
 
 def stable_state_text() -> str:
-    """基本不变的块（导演简报 / 地图设置 / 难度设置）——放**前缀**，利于缓存命中。"""
+    """基本不变的块（导演简报 / 地图设置 / 难度设置）——放**前缀**，利于缓存命中。
+
+    导演简报**只注入 `内容`**：状态 / 模型 / 生成于 / 说明 / 错误 等元数据不进 GM 上下文。
+    """
     snap = state.snapshot()
     out = {}
     for k in _STABLE_STATE_KEYS:
         v = snap.get(k)
         if v is None:
             continue
-        if k == "导演简报" and not (isinstance(v, dict) and str(v.get("内容", "")).strip()):
+        if k == "导演简报":
+            content = str(v.get("内容", "")).strip() if isinstance(v, dict) else ""
+            if not content:
+                continue
+            out[k] = {"内容": content}
             continue
         out[k] = v
     return render_state(out) if out else ""
@@ -217,6 +225,42 @@ def nearby_places_text(radius_km: float = 0.6, limit: int = 12) -> str:
         dist = f"{d}米" if isinstance(d, int) else ""
         lines.append(f"- {p['name']}（{p['kind']}，{p.get('方位', '')}{dist}）")
     return "\n".join(lines)
+
+
+# ------------------------------------------------------------
+# 保活：近几轮开口的 NPC，其档案常驻注入
+# ------------------------------------------------------------
+def _speakers_of(events) -> set:
+    """一轮事件里的 chat 发言人（保活集只认这个）。"""
+    return {str(e.get("speaker")).strip()
+            for e in (events or [])
+            if isinstance(e, dict) and e.get("type") == "chat" and e.get("speaker")}
+
+
+def keepalive_block(names) -> str:
+    """把保活名单里每人的**整份档案**（静态 + 动态，含 §9 好感度）拼成注入块。
+
+    读不到 / 未入档的人静默跳过。任一取档失败不影响本轮。
+    """
+    if not names:
+        return ""
+    from tools.大模型.get_character import get_character
+    blocks = []
+    for n in names:
+        try:
+            r = get_character(n)
+        except Exception:
+            continue
+        if not isinstance(r, dict) or not r.get("success"):
+            continue
+        static = str(r.get("static") or "").strip()
+        dynamic = str(r.get("dynamic") or "").strip()
+        blocks.append(f"【{n}】\n{static}\n\n— 动态近记忆 —\n{dynamic}")
+    if not blocks:
+        return ""
+    return ("===== 在场人物档案（近几轮开口者 · 保活）=====\n"
+            "以下是近几轮说过话的人物档案（含与梁峰的关系与好感度）；请据此把 TA 演得前后一致。\n\n"
+            + "\n\n---\n\n".join(blocks))
 
 
 def load_previous_story() -> str:
@@ -566,11 +610,16 @@ class GameSession:
         self.last_bg = None       # 上次发给前端的背景 (position, time)，用于去重
         self.last_bg_location = None  # 上次换背景时的地点（场景状态机用）
         self.last_music = None    # 上次发给前端的音乐 track
+        #: 保活集：近几轮开口的 NPC（只认 chat speaker）。deque 长度 = 保活窗口
+        self.recent_speakers: deque = deque(maxlen=3)
         self._lock = threading.RLock()
         self._restore()
         # 新一局开张：异步生成一次《导演简报》（每局一次；失败保留上一版）
         if not self.history:
             director.refresh_async(self.previous_story)
+        else:
+            # 续玩：清掉上次崩溃残留的「生成中」（内容还在就收尾，丢了就重跑）
+            director.recover_stuck(self.previous_story)
         # 本局尚未开始且没有快照 → 记录「本局开局状态」（放弃本轮时回滚用）
         if not self.history and not self._snapshot_path().exists():
             self._take_snapshot()
@@ -629,6 +678,10 @@ class GameSession:
             text = instructions.to_text(instructions.items_of(turn))
             if text:
                 self.history.append({"role": "assistant", "content": text})
+        # 保活集：从最近 3 轮的 chat 发言人重建（重启续玩不丢在场感）
+        self.recent_speakers.clear()
+        for turn in read_turns(self.log_path)[-3:]:
+            self.recent_speakers.append(_speakers_of(instructions.items_of(turn)))
 
     def append_turn(self, turn: dict):
         """追加一轮到 current.jsonl（原子性由单行写入保证）。"""
@@ -655,6 +708,7 @@ class GameSession:
             if self.log_path.exists():
                 self.log_path.unlink()
             self.previous_story = load_previous_story()
+            self.recent_speakers.clear()
             director.refresh_async(self.previous_story)   # 新一局：重生成导演简报
             self._take_snapshot()
 
@@ -677,9 +731,24 @@ class GameSession:
             if self.log_path.exists():
                 self.log_path.unlink()
             self.previous_story = load_previous_story()
+            self.recent_speakers.clear()
             director.refresh_async(self.previous_story)   # 新一局：重生成导演简报
             self._take_snapshot()  # 新本局从回滚后的状态开始
             return restored
+
+    # ---- 保活 ----
+    def _keepalive_names(self) -> list:
+        """近几轮开口者（最近发言的排前面，去重）。"""
+        names, seen = [], set()
+        for sp in reversed(self.recent_speakers):
+            for n in sorted(sp):
+                if n and n not in seen:
+                    seen.add(n)
+                    names.append(n)
+        return names
+
+    def _keepalive_block(self) -> str:
+        return keepalive_block(self._keepalive_names())
 
     # ---- 历史视图（供前端 GET /history）----
     def history_view(self) -> dict:
@@ -738,6 +807,27 @@ class GameSession:
             "role": "system",
             "content": "===== 当前状态 =====\n" + render_state(cur_state),
         })
+        # 任务：给 GM 的可见投影（不含失败后果/弧等隐藏字段）
+        gv = quest.gm_view()
+        if gv:
+            msgs.append({
+                "role": "system",
+                "content": ("===== 当前任务（玩家在追的；叙事保持一致，勿泄漏幕后设定）=====\n"
+                            + json.dumps(gv, ensure_ascii=False, indent=1)),
+            })
+        # 任务过期：世界已自行推进，请 GM 据此叙事（注入一次）
+        notes = quest.pending_notes()
+        if notes:
+            msgs.append({
+                "role": "system",
+                "content": "===== 任务过期（世界已推进，请据此叙述）=====\n"
+                           + "\n".join(txt for _, txt in notes),
+            })
+            quest.mark_told([i for i, _ in notes])
+        # 保活：近几轮开口 NPC 的整份档案（静态+动态+好感度）常驻注入
+        ka = self._keepalive_block()
+        if ka:
+            msgs.append({"role": "system", "content": ka})
         # 「地名必须真实」——附玩家附近实名地点，供主持人取用真名（禁止生造）
         nearby = nearby_places_text()
         if nearby:
@@ -877,6 +967,7 @@ class TurnRunner:
             "last_music": self.session.last_music,
             "pending_notes": list(self.session.pending_notes),
             "pending_time_note": self.session.pending_time_note,
+            "recent_speakers": list(self.session.recent_speakers),
             "accident": accident_on,
             "input": user_input,
             "mode": mode,
@@ -924,6 +1015,7 @@ class TurnRunner:
             self.session.last_music = s["last_music"]
             self.session.pending_notes = list(s["pending_notes"])
             self.session.pending_time_note = s["pending_time_note"]
+            self.session.recent_speakers = deque(s.get("recent_speakers") or [], maxlen=3)
             # 4) 每轮标志：意外沿用，设施 / 时间清零
             try:
                 from tools.大模型 import accident as _accident
@@ -1037,6 +1129,7 @@ class TurnRunner:
         if _to_explore(ui_events):
             scene_ui = [*scene_ui, *self._explore_music_events()]
 
+        session.recent_speakers.append(_speakers_of(events))
         session.history.append({"role": "assistant", "content": instructions.to_text(events) or raw})
         session.append_turn({
             "ts": time.strftime("%Y-%m-%d %H:%M:%S"),

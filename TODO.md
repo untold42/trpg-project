@@ -85,7 +85,7 @@
 - ~~建筑内部结构（`place_structures`）~~ → 已完成；`update_place_structure` 存档专用；存档附加任务自动确定本局进过的建筑。
 - ~~方位注入（八方位 / 城区方位）~~ → 已完成（`map_query.bearing_name` / `city_context.城区方位` / `update_location.移动方位`）。
 - ~~前端去 `data/` + 势力后端化~~ → 已完成（`trpg-world/势力介绍.json` + `GET /factions`）。
-- ~~难度设置 + 归隐退出~~ → 已完成（`tools/大模型/difficulty_settings.py` + `GET`/`POST /settings`）。
+- ~~难度设置 + 归隐退出~~ → 已完成（`tools/服务/difficulty_settings.py` + `GET`/`POST /settings`）。
 - ~~数据目录迁移 / 日志重命名~~ → `游戏数据`/`天气数据`/`归档存档` 移到 `trpg-server/`，日志统一 `current.jsonl`。
 - ~~连续时钟 v0.2~~ → 已完成：`tools/核心/game_clock.py`（单一「游戏秒」+ 三态 + 惰性求值 + 南宋全年号/干支）、
   `tools/核心/time_flow.py`、`tools/核心/derived.py`、前端古钟 HUD；`/clock` 路由；`时间影响.json` 调参。
@@ -136,14 +136,14 @@
 ## 三、内容层（⑥）
 
 - [ ] 现有 55 份静态档案逐步对齐模板（`档案模板/静态模板.md` §1–§8；动态内容迁往 `活跃/<名>.md`）。
-- [x] `GET /factions` 投影 ✅（2026-09-13）：`trpg-world/势力介绍.json`（已剔除剧透，人工维护）；后端 `tools/大模型/factions.py`；前端画廊改 fetch。
+- [x] `GET /factions` 投影 ✅（2026-09-13）：`trpg-world/势力介绍.json`（已剔除剧透，人工维护）；后端 `tools/服务/factions.py`；前端画廊改 fetch。
 
 ---
 
 ## 四、战斗系统 — 路线 B：深化为「真战棋」（v0.2+，已定方向）
 
 > 定位：TRPG 主干 + 战棋战斗模块；战斗往「真战棋」深化。
-> 战斗全局策划数值已统一迁入 `trpg-server/战斗数值.json`；Python 只保留公式与结算逻辑。
+> 战斗全局策划数值已统一迁入 `trpg-server/配置/战斗数值.json`；Python 只保留公式与结算逻辑。
 
 - [ ] 地形 / 障碍：墙、桌椅、水、高低差、掩体、困难地形（影响移动/射程/视线/命中）——已初步有 `blocked()`/河/房/树，待扩展。
 - [ ] 寻路 + 移动预览：障碍连成可寻路图（Dijkstra/A*）；前端高亮可达格与路径。
@@ -184,7 +184,7 @@
       `属性.json` 为真相源，`状态.json` 的上限由 `sync()` 对齐。
       睡眠恢复量 = 內力 ÷ 睡眠回满时辰，养成提高內力后自动变强。
 - [x] 养成写入接口 ✅（2026-09-19）：`tools/核心/growth.py` 管道（`gain` / `add_buff`；点数 ×buff ×曲线 → `属性.json`，buff 存 `加成.json`）；工具 `use_facility` + 接口 `GET /facility`（选项 + 背景映射，不调模型）；设施表 `facilities.json`；成长曲线 `成长.json`；战斗成长 `battle_session._grant_battle_growth`；五行跨 `招式表.解锁` 阈值自动解锁（`derived.sync()` 已接）。注：不做独立 `train_skill`——成长只由「设施 / 战斗」产生（用户定）。
-- [x] 技能树 + 技能点 ✅（2026-09-19）：招式表搬 server 并清空（运行表）；`trpg-server/技能树.json` 正典（全部可学招式 + 前置/要求/花费）；`工具 核心/skill_tree.py`（`learn`/`view`/`roll_point`）；技能点概率以 `成长.json` 为唯一数值源（初版设施 1% / 战斗 2%）；点亮同步写 `属性.json` + `招式表.json`；熟练度改作伤害系数（每点 +1%）；`growth._unlock_moves` 自动解锁已删；接口 `GET /skilltree` / `POST /skilltree/learn`。待：无（前端 UI 已做）。
+- [x] 技能树 + 技能点 ✅（2026-09-19）：招式表搬 server 并清空（运行表）；`trpg-server/配置/技能树.json` 正典（全部可学招式 + 前置/要求/花费）；`工具 核心/skill_tree.py`（`learn`/`view`/`roll_point`）；技能点概率以 `成长.json` 为唯一数值源（初版设施 1% / 战斗 2%）；点亮同步写 `属性.json` + `招式表.json`；熟练度改作伤害系数（每点 +1%）；`growth._unlock_moves` 自动解锁已删；接口 `GET /skilltree` / `POST /skilltree/learn`。待：无（前端 UI 已做）。
 - [ ] 事件图打磨：34 张 `public/eventicons/*.png`（`icongen/gen_event_icons.py` 生成）；提升辨识度。
 - [x] 技能树前端 ✅（2026-09-19）：`in-game/SkillTree.tsx` + `styles/SkillTree.css`——菜单「技能树」→ 银河（`Galaxy.tsx`，不监听鼠标）→ 五神圆弧（SVG 五扇区 + 手绘剪影）→ 班级树（白链条 + 三态）；点节点出详情卡 + 点亮。零大模型。
 - [x] 轻功 → 移动速度 ✅（基础版）：`移动.json` 的 `轻功每点步速` → `GET /state` 下发 → 前端步速 = 基础步速 ×（1 + 轻功×系数）。
@@ -304,8 +304,8 @@
 - [ ] 瓦片文字标注（需中文字体）；城墙史实微调。
 - [ ] 旧「代称」档案/数据迁移：既有用职业代称建档的 NPC（如「元熙布行掌柜」「怀茂青楼老妇」「怀顺茶坊老板」「桂安酒肆妇人」「灶房汉子」「挑炭人」）
       按新策略改成正式姓名，并同步 `角色静态/动态档案`、`世界线程.json` 人物线程、`char_memory.owner`、`gm_memory`、`current.jsonl`（可写一次性迁移脚本）。
-      ⚠️ 注：这批正是 test 产物，已随测试档删除（见 `trpg-server/删档.md`）；本项仅作今后同类迁移的预案。
-- [ ] 自动删档：把 `trpg-server/删档.md` 的清单/规则写成脚本（一键丢弃本档、保留正典与跨档内容）。
+      ⚠️ 注：这批正是 test 产物，已随测试档删除（见 `trpg-server/文档/删档.md`）；本项仅作今后同类迁移的预案。
+- [ ] 自动删档：把 `trpg-server/文档/删档.md` 的清单/规则写成脚本（一键丢弃本档、保留正典与跨档内容）。
 - [ ] 导演增强：① 用代码侧线索台账对简报做 diff（防它自查时“悄悄漏”）；
       ② 主线选择会飘（同输入两次可能不同）→ 固定择线规则或跑两次取交集；
       ③ 输出常超 500 字 → 加更硬的截断。

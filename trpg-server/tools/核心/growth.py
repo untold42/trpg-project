@@ -43,8 +43,8 @@ WUXING = ("火", "金", "木", "土", "水")
 #: 五行熟练度上限（战斗：<30 不可催动，见 战斗系统.md §5.3）
 WUXING_MAX = 100
 
-# 成长曲线配置（trpg-server/成长.json）——热改免重启
-CONFIG_FILE = Path(__file__).resolve().parent.parent.parent / "成长.json"
+# 成长曲线配置（trpg-server/配置/成长.json）——热改免重启
+CONFIG_FILE = Path(__file__).resolve().parent.parent.parent / "配置" / "成长.json"
 _config_cache: dict = {}
 
 

@@ -1,0 +1,321 @@
+/* ============================================================
+   场景选择器（前端）
+   全屏浮层 → 顶部工具条 + 左侧场景网格 + 右侧大预览
+   数据源：assets/背景_重构/<场景>/{白天,黄昏,黑夜}.png
+   ============================================================ */
+
+.scene-picker-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 900;
+    background: rgba(10, 7, 4, 0.88);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Source Han Serif TC", "Songti SC", "Noto Serif SC", serif;
+    color: #f0e6cf;
+}
+
+.scene-picker {
+    width: min(1400px, 94vw);
+    height: min(880px, 92vh);
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(180deg, #1c140d 0%, #14100b 100%);
+    border: 1px solid #6b5636;
+    border-radius: 10px;
+    box-shadow: 0 24px 70px -20px rgba(0, 0, 0, 0.9);
+    overflow: hidden;
+}
+
+/* ---------- 顶部工具条 ---------- */
+.sp-head {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 20px;
+    border-bottom: 1px solid #4a3b25;
+    background: rgba(0, 0, 0, 0.25);
+    flex: none;
+}
+
+.sp-title {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: #e9d7a8;
+    white-space: nowrap;
+}
+
+.sp-count {
+    margin-left: 10px;
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 1px;
+    color: #9c8a68;
+}
+
+.sp-periods {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.sp-period {
+    padding: 5px 14px;
+    font-family: inherit;
+    font-size: 14px;
+    letter-spacing: 1px;
+    color: #cbb98f;
+    background: transparent;
+    border: 1px solid #5c4a2e;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.sp-period:hover {
+    border-color: #a98a4e;
+    color: #f0e2bd;
+}
+
+.sp-period.active {
+    background: #7a1f1f;
+    border-color: #d8b45a;
+    color: #f7ecd0;
+}
+
+.sp-search {
+    width: 180px;
+    padding: 6px 12px;
+    font-family: inherit;
+    font-size: 14px;
+    color: #f0e6cf;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid #5c4a2e;
+    border-radius: 4px;
+    outline: none;
+}
+
+.sp-search::placeholder {
+    color: #8a7a5c;
+}
+
+.sp-search:focus {
+    border-color: #a98a4e;
+}
+
+.sp-close {
+    padding: 6px 18px;
+    font-family: inherit;
+    font-size: 15px;
+    letter-spacing: 2px;
+    color: #f5efe0;
+    background: #7a1f1f;
+    border: 1px solid #c9b68a;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.sp-close:hover {
+    background: #942727;
+}
+
+/* ---------- 主体 ---------- */
+.sp-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+}
+
+.scene-grid {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    padding: 16px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    grid-auto-rows: max-content;
+    gap: 12px;
+    align-content: start;
+}
+
+.scene-grid::-webkit-scrollbar {
+    width: 10px;
+}
+
+.scene-grid::-webkit-scrollbar-thumb {
+    background: #4a3b25;
+    border-radius: 5px;
+}
+
+.scene-card {
+    position: relative;
+    padding: 0;
+    border: 1px solid #4a3b25;
+    border-radius: 6px;
+    background: #0d0a07;
+    overflow: hidden;
+    cursor: pointer;
+    aspect-ratio: 16 / 9;
+    transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+
+.scene-card img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.25s ease, filter 0.15s;
+    filter: brightness(0.92);
+}
+
+.scene-card:hover {
+    border-color: #a98a4e;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px -10px rgba(0, 0, 0, 0.9);
+}
+
+.scene-card:hover img {
+    transform: scale(1.05);
+    filter: brightness(1.02);
+}
+
+.scene-card.selected {
+    border-color: #d8b45a;
+    box-shadow: 0 0 0 1px #d8b45a inset;
+}
+
+.scene-card.current {
+    border-color: #7fb36b;
+}
+
+.scene-card-name {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 16px 8px 5px;
+    font-size: 15px;
+    letter-spacing: 1px;
+    text-align: left;
+    color: #f4ead2;
+    background: linear-gradient(0deg, rgba(0, 0, 0, 0.82), rgba(0, 0, 0, 0));
+    text-shadow: 0 1px 3px #000;
+}
+
+.scene-card-badge {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    padding: 1px 7px;
+    font-size: 12px;
+    color: #0d1a0a;
+    background: #8fc777;
+    border-radius: 3px;
+}
+
+.scene-card-fallback {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    padding: 1px 6px;
+    font-size: 11px;
+    color: #d8c9a3;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid #5c4a2e;
+    border-radius: 3px;
+}
+
+.scene-grid-empty {
+    grid-column: 1 / -1;
+    padding: 40px;
+    text-align: center;
+    color: #9c8a68;
+    font-size: 15px;
+}
+
+/* ---------- 右侧大预览 ---------- */
+.scene-preview {
+    flex: none;
+    width: 40%;
+    max-width: 560px;
+    min-width: 320px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    border-left: 1px solid #4a3b25;
+    background: rgba(0, 0, 0, 0.22);
+}
+
+.scene-preview-frame {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border: 1px solid #6b5636;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #000;
+}
+
+.scene-preview-frame img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.scene-preview-name {
+    font-size: 24px;
+    letter-spacing: 4px;
+    color: #e9d7a8;
+}
+
+.scene-preview-periods {
+    display: flex;
+    gap: 8px;
+}
+
+.sp-chip {
+    padding: 2px 10px;
+    font-size: 13px;
+    color: #7d6f55;
+    border: 1px solid #4a3b25;
+    border-radius: 3px;
+}
+
+.sp-chip.on {
+    color: #e9d7a8;
+    border-color: #a98a4e;
+    background: rgba(169, 138, 78, 0.15);
+}
+
+.scene-apply {
+    margin-top: auto;
+    padding: 11px 0;
+    font-family: inherit;
+    font-size: 17px;
+    letter-spacing: 3px;
+    color: #fff4dc;
+    background: #7a1f1f;
+    border: 1px solid #d8b45a;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+}
+
+.scene-apply:hover {
+    background: #9a2a2a;
+}
+
+.scene-apply:active {
+    transform: scale(0.99);
+}
+
+@media (max-width: 900px) {
+    .scene-preview {
+        display: none;
+    }
+}

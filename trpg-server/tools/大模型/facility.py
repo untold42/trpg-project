@@ -8,7 +8,7 @@ facility.py
     facility_detail(facility)               —— 给前端「详细」界面取选项（GET /facility）
     trigger_hit(text)                        —— 给时间门禁用（命中设施触发词 → 放行时间工具）
 
-内容表：`trpg-server/facilities.json`（按地图 kind 做键，mtime 缓存，热改免重启）。
+内容表：`trpg-server/配置/facilities.json`（按地图 kind 做键，mtime 缓存，热改免重启）。
 效果两类（见 growth.py）：
     点数 → 过管道（×生效加成）→ 直接写 属性.json；
     buff → 写 游戏数据/加成.json（不碰属性，跨日取消）。
@@ -25,8 +25,8 @@ from tools.核心.state_manager import state
 #: 每日养成记录（一天一个属性只能练一次）
 _DAILY_FILE = "养成记录"
 
-# trpg-server/facilities.json
-TABLE_PATH = Path(__file__).resolve().parent.parent.parent / "facilities.json"
+# trpg-server/配置/facilities.json
+TABLE_PATH = Path(__file__).resolve().parent.parent.parent / "配置" / "facilities.json"
 _cache: dict = {}
 
 #: 本轮是否已经由设施活动推进过时间（每轮 main./action 开始时 reset_turn 重置）。

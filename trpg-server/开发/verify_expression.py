@@ -18,10 +18,10 @@ verify_expression.py
 
 运行（需 LM Studio 已加载 qwen/qwen3-4b-2507）：
     cd trpg-server
-    python verify_expression.py              # 单条 + 批量 都测
-    python verify_expression.py --mode single
-    python verify_expression.py --mode batch
-    python verify_expression.py --timeout 8 --repeats 2
+    python 开发/verify_expression.py              # 单条 + 批量 都测
+    python 开发/verify_expression.py --mode single
+    python 开发/verify_expression.py --mode batch
+    python 开发/verify_expression.py --timeout 8 --repeats 2
 
 退出码：0=跑完；2=小模型不可用（LM Studio 没起 / 模型没加载）。
 """
@@ -34,8 +34,8 @@ import sys
 import time
 from pathlib import Path
 
-# 允许 `python verify_expression.py` 直接跑（把自己所在目录加入 import 路径）
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+# 允许 `python 开发/verify_expression.py` 直接跑（把 trpg-server 加入 import 路径）
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")   # Windows 控制台默认 GBK，中文会乱码
@@ -43,7 +43,7 @@ except Exception:
     pass
 
 from tools.小模型.character_expressions import CHARACTER_EXPRESSIONS  # noqa: E402
-from tools import small_model  # noqa: E402
+from tools.小模型 import small_model  # noqa: E402
 
 # ------------------------------------------------------------
 # 生产候选提示词（与未来 expression_sim 保持一致）

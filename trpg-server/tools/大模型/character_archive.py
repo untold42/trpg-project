@@ -26,6 +26,10 @@ from tools.核心.world_threads import ACTIVE_DIR, INACTIVE_DIR, STATIC_DIR
 #: §10 情感记忆每个角色保留的最大行数（超出淘汰最旧）
 NEAR_MEMORY_LIMIT = 20
 
+#: 好感度范围与**每局结算上限**（存档蒸馏里模型给 delta，代码裁决）
+AFFINITY_MIN, AFFINITY_MAX = -100, 100
+AFFINITY_DELTA_CAP = 10
+
 
 # ------------------------------------------------------------
 # 模板脚手架
@@ -34,6 +38,8 @@ def _dynamic_scaffold(name: str) -> str:
     return f"""# {name}（活跃）
 
 ## 9. 与梁峰关系
+
+- **好感度**：0（陌路）
 
 ### 里程碑
 
@@ -138,6 +144,14 @@ def _ensure_static(name: str, fields: dict | None = None) -> Path:
     ]
     lines += ["", "## 7. 日常习惯", "", g("日常习惯", "习惯") or "（待补）"]
     lines += ["", "## 8. 关系网", "", g("关系网") or "（待补）"]
+    lines += [
+        "", "## 8.5 立场", "",
+        f"- **所属**：{g('所属') or '（待补）'}",
+        f"- **主张**：{g('主张') or '（待补）'}",
+        f"- **底线**：{g('底线') or '（待补）'}",
+        f"- **偏好**：{g('偏好') or '（待补）'}",
+        f"- **反感**：{g('反感') or '（待补）'}",
+    ]
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
     return path
 
@@ -215,6 +229,77 @@ def _set_subsection(body: str, title: str, new_text: str) -> str:
 
 
 # ------------------------------------------------------------
+# 好感度（数值真相在动态档案 §9；档位与 clamp 由代码裁决）
+# ------------------------------------------------------------
+_AFFINITY_RE = re.compile(r"(?m)^-\s*\*\*好感度\*\*：\s*(-?\d+)")
+
+
+def affinity_band(v: int) -> str:
+    """好感度 → 档位（唯一映射）。"""
+    v = max(AFFINITY_MIN, min(AFFINITY_MAX, int(v)))
+    if v >= 80:
+        return "生死之交"
+    if v >= 60:
+        return "挚友"
+    if v >= 40:
+        return "相熟"
+    if v >= 20:
+        return "相识"
+    if v > -20:
+        return "陌路"
+    if v > -40:
+        return "嫌隙"
+    if v > -60:
+        return "敌视"
+    return "仇敌"
+
+
+def affinity_line(v: int) -> str:
+    """§9 里那一行的**唯一格式**（模型不自由发挥）。"""
+    v = max(AFFINITY_MIN, min(AFFINITY_MAX, int(v)))
+    return f"- **好感度**：{v}（{affinity_band(v)}）"
+
+
+def _read_affinity_from_body(body: str) -> int:
+    m = _AFFINITY_RE.search(body or "")
+    if not m:
+        return 0
+    try:
+        return max(AFFINITY_MIN, min(AFFINITY_MAX, int(m.group(1))))
+    except ValueError:
+        return 0
+
+
+def _set_affinity_in_body(body: str, v: int) -> str:
+    line = affinity_line(v)
+    if _AFFINITY_RE.search(body or ""):
+        return _AFFINITY_RE.sub(line, body, count=1)
+    stripped = (body or "").lstrip("\n")
+    lead = (body or "")[: len(body or "") - len(stripped)]
+    return lead + line + "\n\n" + stripped
+
+
+def read_affinity(name: str) -> dict:
+    """读某 NPC 的好感度 + 档位。无档案 / 无该行 → 0 / 陌路（found=False）。"""
+    name = (name or "").strip()
+    if not name:
+        return {"name": "", "好感度": 0, "档位": affinity_band(0), "found": False}
+    for d in (ACTIVE_DIR, INACTIVE_DIR):
+        p = d / f"{name}.md"
+        if not p.is_file():
+            continue
+        try:
+            text = p.read_text(encoding="utf-8")
+        except OSError:
+            break
+        parts = _split(text)
+        i9 = _find(parts, "## 9.")
+        v = _read_affinity_from_body(parts[i9][1]) if i9 >= 0 else 0
+        return {"name": name, "好感度": v, "档位": affinity_band(v), "found": True}
+    return {"name": name, "好感度": 0, "档位": affinity_band(0), "found": False}
+
+
+# ------------------------------------------------------------
 # 写入
 # ------------------------------------------------------------
 def update_character_archive(
@@ -231,6 +316,7 @@ def update_character_archive(
     known: list | None = None,
     unknown: list | None = None,
     info_attitude: str | None = None,
+    好感度变化: int | None = None,
 ) -> dict:
     """更新某 NPC 的动态档案（存档蒸馏专用）。所有字段可选，按需更新。
 
@@ -244,7 +330,8 @@ def update_character_archive(
     - `feeling`：`{time, event, feeling}` → §10 情感记忆追加一行（触发 LRU）；
     - `recent` / `attitude`：覆写 §9 的「最近互动」/「态度」；
     - `emotion`：`{主要情绪, 强度, 触发源, 距今}` + `behaviors` / `want` / `volatility` → 覆写 §11；
-    - `known` / `unknown` / `info_attitude` → 覆写 §12。
+    - `known` / `unknown` / `info_attitude` → 覆写 §12；
+    - `好感度变化`：好感度**增量**（±10 上限，代码裁决）→ 读当前值、clamp(-100~100)、写回 §9。
     """
     name = (name or "").strip()
     if not name:
@@ -256,11 +343,21 @@ def update_character_archive(
     static_path = _ensure_static(name, static) if new_character else static_file
     path = _ensure_dynamic(name)
     parts = _split(path.read_text(encoding="utf-8"))
+    result_affinity = None
 
     # §9
     i9 = _find(parts, "## 9.")
     if i9 >= 0:
         h, body = parts[i9]
+        if 好感度变化 is not None:
+            try:
+                delta = int(好感度变化)
+            except (TypeError, ValueError):
+                delta = 0
+            delta = max(-AFFINITY_DELTA_CAP, min(AFFINITY_DELTA_CAP, delta))
+            new_v = max(AFFINITY_MIN, min(AFFINITY_MAX, _read_affinity_from_body(body) + delta))
+            body = _set_affinity_in_body(body, new_v)
+            result_affinity = new_v
         if milestone and (milestone.get("event") or milestone.get("time")):
             row = f"| {milestone.get('time', '')} | {milestone.get('event', '')} |"
             body = _table_append(body, row)
@@ -320,7 +417,7 @@ def update_character_archive(
     evicted = _evict_overflow(name, path)
     return {"success": True, "name": name, "path": str(path),
             "static": str(static_path), "new_character": new_character,
-            "evicted": evicted}
+            "evicted": evicted, "好感度": result_affinity}
 
 
 # ------------------------------------------------------------

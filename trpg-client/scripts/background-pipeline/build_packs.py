@@ -152,16 +152,29 @@ def build_prompt(
     lines.append(f"【场景】{kind}")
     if scene.get("原型"):
         lines.append(f"【场景原型】{scene['原型']}")
-    if scene.get("画面核心"):
-        lines.append(f"【画面核心】{scene['画面核心']}")
+    core = config.get("kind_core_overrides", {}).get(kind) or scene.get("画面核心")
+    if core:
+        lines.append(f"【画面核心】{core}")
+    focus = config.get("kind_scene_focus", {}).get(kind)
+    if focus:
+        lines.append("【场景建筑与陈设重点】")
+        lines.append(focus)
     lines.append(f"【类别】{meta.get('group', '')}")
     if meta.get("note"):
         lines.append(f"【历史功能】{meta['note']}")
     lines.append(f"【位置】{zone}")
     lines.append(f"【时段】{period}")
+    if meta.get("窄景"):
+        lines.append("")
+        lines.append("【构图 · 局部窄景（必须遵守）】")
+        lines.append("- 近景 / 中近景：只取该空间的一角，视角收窄，不要大全景、不要多进纵深。")
+        lines.append("- 元素从简：画面只保留 2~3 件核心物件，其余留白，不要堆满家具陈设。")
+        lines.append("- 可用门框、窗棂、纱帐、梁柱作前景遮挡，强化「站在门内 / 角落」的视角。")
     lines.append("")
     lines.append("【画面要求】")
     for item in config["固定要求"]:
+        if meta.get("窄景") and "中远景" in item:
+            item = item.replace("横向中远景", "横向中近景（视角收窄）")
         lines.append(f"- {item}")
     lines.append("")
     lines.append("【美术风格】")
@@ -302,13 +315,21 @@ def load_priority(config: dict) -> dict[str, int]:
     return out
 
 
+def rank_of(priority: dict, kinds: dict, manifest: dict, kind: str) -> int:
+    """kind 的批次：`extra_kinds` 里显式 `priority` 优先，否则按场景原型查 P0/P1 名单。"""
+    p = kinds.get(kind, {}).get("priority")
+    if isinstance(p, int):
+        return p
+    return priority.get(manifest.get(kind, {}).get("原型", ""), 2)
+
+
 def ordered_kinds(
     config: dict, kinds: dict[str, dict[str, str]], manifest: dict[str, dict[str, str]]
 ) -> list[tuple[int, str]]:
-    """按 P0 → P1 → P2 排序，同批内保持 song_kinds.py 的声明顺序。"""
+    """按 P0 → P1 → P2 排序，同批内保持声明顺序。"""
     priority = load_priority(config)
     indexed = list(enumerate(kinds))
-    indexed.sort(key=lambda item: (priority.get(manifest.get(item[1], {}).get("原型", ""), 2), item[0]))
+    indexed.sort(key=lambda item: (rank_of(priority, kinds, manifest, item[1]), item[0]))
     return [(rank, kind) for rank, (_, kind) in enumerate(indexed)]
 
 
@@ -395,7 +416,7 @@ def write_checklist(
     body: list[str] = []
     current_rank: int | None = None
     for number, (kind, period, refs) in enumerate(items, 1):
-        rank = priority.get(manifest.get(kind, {}).get("原型", ""), 2)
+        rank = rank_of(priority, kinds, manifest, kind)
         if rank != current_rank:
             current_rank = rank
             if body:
@@ -424,6 +445,18 @@ def main() -> int:
     config = load_config(args.config.resolve())
     kinds = load_kinds(repo_path(config["source_kinds"]))
     manifest = load_scene_manifest(repo_path(config["scene_manifest"]))
+    # `config.extra_kinds`：地图直接生成、但不在 song_kinds.py 里的结构/地形 kind
+    # （坊 / 官道 / 城墙 / 村 / 镇 / 殿 / 楼 / 廊 / 院墙 / 宫门 / 果园）。
+    # 不塞进 song_kinds.py（那是 POI 布点表），只作流水线的补充来源。
+    extra = config.get("extra_kinds") or {}
+    for kind, info in extra.items():
+        kinds.setdefault(kind, {k: info[k] for k in ("group", "icon", "zone", "note", "窄景", "priority") if k in info})
+        if kind not in manifest and (info.get("原型") or info.get("画面核心")):
+            manifest[kind] = {
+                "原型": info.get("原型", ""),
+                "画面核心": info.get("画面核心", ""),
+                "章节": info.get("章节", "扩展"),
+            }
     packs_root = repo_path(config["packs_root"])
     packs_root.mkdir(parents=True, exist_ok=True)
 

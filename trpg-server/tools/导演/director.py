@@ -14,6 +14,7 @@ director.py
 
 设计：
     - 触发：`engine.GameSession` 开局（__init__/reset/abandon）异步生成一次；一局顶多 7 个游戏日，常驻即可。
+            续玩时若发现上次崩溃残留的「生成中」→ `recover_stuck()` 收尾 / 重跑。
     - 输入：**《故事大纲》**（system，`trpg-world/故事大纲.md`，热读）
             + 上一局逐字存档（`游戏数据/游戏存档.md`）——**不给现成的「悬着」清单**，让它自己找。
             首局无前情时，退而用当前状态/开局设定当材料（否则永远不跑）。
@@ -173,6 +174,7 @@ USER_TMPL = """\
 
 _lock = threading.Lock()
 _running = False
+_pending: str | None = None   # 运行中又被请求的最新材料：跑完接着跑它，保证「最后一次赢」
 _error = ""
 _outline_cache: tuple[float, str] | None = None
 
@@ -233,6 +235,11 @@ def brief() -> dict:
 
 
 def _save(status: str, content: str = "", error: str = ""):
+    """落盘简报。**只有给了新内容才覆盖**：生成中 / 失败都保留上一版。
+
+    旧实现 `content or (prev.get("内容") if status == "失败" else "")` 在「生成中」时
+    会把内容清空，之后失败再「保留上一版」拿到的已是空串——失败必然丢简报。
+    """
     prev = brief()
     state.save(STATE_KEY, {
         "状态": status,
@@ -240,7 +247,7 @@ def _save(status: str, content: str = "", error: str = ""):
         "生成于": time.strftime("%Y-%m-%d %H:%M:%S"),
         "说明": NOTE,
         "大纲字数": len(outline_text()),
-        "内容": content or (prev.get("内容", "") if status == "失败" else ""),
+        "内容": content or prev.get("内容", ""),
         **({"错误": error} if error else {}),
     })
 
@@ -282,7 +289,7 @@ def generate(material: str, extra_hint: str = "") -> str | None:
 
 
 def _work(material: str):
-    global _running, _error
+    global _running, _error, _pending
     try:
         _save("生成中")
         txt = generate(material)
@@ -310,12 +317,49 @@ def _work(material: str):
         _save("失败", error=_error[:200])
     finally:
         with _lock:
-            _running = False
+            nxt, _pending = _pending, None
+            _running = bool(nxt)      # 有待跑材料就继续占着，避免中间状态被别的请求抢跑
+        if nxt:
+            print("[director] 检测到新的开局材料，接着生成")
+            _start(nxt)
+
+
+def is_running() -> bool:
+    """当前是否有一次生成在跑（进程内，非按局）。"""
+    return _running
+
+
+def recover_stuck(material: str = "") -> bool:
+    """启动 / 续玩时兜底：上次生成被中断（状态=「生成中」但已无活线程）。
+
+    - 内容还在（`_save` 已保留上一版）→ 只把状态收尾为 ok；
+    - 内容也丢了 → 用同一材料重新异步生成一次。
+    返回是否做了恢复动作。
+    """
+    if not ENABLED or _running:
+        return False
+    b = brief()
+    if str(b.get("状态", "")) != "生成中":
+        return False
+    if str(b.get("内容", "")).strip():
+        _save("ok")                      # 内容尚在：只补状态
+        return True
+    print("[director] 检测到上次生成被中断，重新生成简报")
+    refresh_async(material)               # 内容已失：重跑
+    return True
+
+
+def _start(material: str) -> None:
+    threading.Thread(target=_work, args=(material,), daemon=True, name="director").start()
 
 
 def refresh_async(material: str):
-    """开局异步生成一次（每局一次）。已在生成中则跳过；失败保留上一版。"""
-    global _running
+    """开局异步生成一次（每局一次）。失败保留上一版。
+
+    若已有一次生成在跑（例如开局后马上存档 / 放弃），**不丢弃本次请求**，而是记为最新待跑；
+    当前线程结束后立刻用最新材料再生成一次——保证「最后一次请求赢」，不会停在旧局的简报上。
+    """
+    global _running, _pending
     if not ENABLED:
         return
     # 首局无前情 → 用当前状态兜底（否则导演永远不跑，开场也就永远没有钩子）
@@ -323,7 +367,9 @@ def refresh_async(material: str):
     if not material.strip():
         return
     with _lock:
+        _pending = material          # 不管在不在跑，先记下“最新要什么”
         if _running:
-            return
+            return                   # 有人在跑：它结束后会接着跑这份
         _running = True
-    threading.Thread(target=_work, args=(material,), daemon=True, name="director").start()
+        _pending = None
+    _start(material)

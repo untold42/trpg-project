@@ -103,7 +103,7 @@
 | `trpg-map/数据/README.md` | 地图数据血缘与命名约定 |
 | `trpg-world/` | 世界观正典（主持人规则 / 势力 / 角色 / 世界推演 / 存档流程 / 战斗系统） |
 | `trpg-client/scripts/background-pipeline/README.md` | 背景图 AI 重构素材包流程 |
-| `trpg-server/导出策划数值表.py` | 一键导出 `trpg-world/策划数值总表.xlsx` |
+| `trpg-server/开发/导出策划数值表.py` | 一键导出 `trpg-world/策划数值总表.xlsx` |
 
 ### 本文件的来历
 

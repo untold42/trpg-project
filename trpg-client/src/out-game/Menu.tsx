@@ -10,6 +10,7 @@ import BattleScene, { type BattleState } from "../in-game/battle";
 import { MAP_ID, rememberMap } from "../in-game/mapId";
 import { useEsc } from "../escStack";
 import { API } from "../api";
+import ScenePicker from "../in-game/ScenePicker";
 
 // 模拟战斗可选名单条目
 type Roster = { 名字: string; 梯度: string };
@@ -162,6 +163,20 @@ function Menu({ onStartGame }: MenuProps) {
         fetch(`${API}/battle/abort`, { method: "POST" }).catch(() => { });
     }
 
+    // ---- 场景预览：浏览 assets/背景_重构 下全部场景（纯看，不改游戏状态）----
+    // `?scenes=1` 可直接打开；挂载后把该参数从 URL 摘掉，避免进游戏后又弹一次。
+    const [showScenes, setShowScenes] = useState(
+        () => new URLSearchParams(window.location.search).get("scenes") === "1"
+    );
+    useEffect(() => {
+        const q = new URLSearchParams(window.location.search);
+        if (q.get("scenes") !== "1") return;
+        q.delete("scenes");
+        const rest = q.toString();
+        window.history.replaceState(null, "", window.location.pathname + (rest ? `?${rest}` : ""));
+    }, []);
+    useEsc(() => setShowScenes(false), showScenes);
+
     // ---- 归隐山林：直接退出 ----
     const [quit, setQuit] = useState(false);
     function 归隐山林() {
@@ -240,6 +255,18 @@ function Menu({ onStartGame }: MenuProps) {
                                     </div>
                                 </div>
 
+                                <div className="setting-row">
+                                    <span className="setting-label">场景</span>
+                                    <div className="setting-options">
+                                        <button
+                                            className="setting-option"
+                                            onClick={() => setShowScenes(true)}
+                                        >
+                                            浏览全部场景
+                                        </button>
+                                    </div>
+                                </div>
+
                                 <div className="setting-row sim-row">
                                     <span className="setting-label">模拟战斗</span>
                                     <div className="sim-wrap">
@@ -303,6 +330,7 @@ function Menu({ onStartGame }: MenuProps) {
                 </div>
             )}
 
+            {showScenes && <ScenePicker onClose={() => setShowScenes(false)} />}
             {simState && <BattleScene initial={simState} onExit={退出模拟} />}
         </>
     );

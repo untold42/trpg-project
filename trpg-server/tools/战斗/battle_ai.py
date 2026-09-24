@@ -21,7 +21,7 @@ battle_ai.py
 
 import json
 
-from tools.大模型 import battle_settings
+from tools.战斗 import battle_settings
 from tools.小模型 import small_model
 from tools.核心 import battle_config
 

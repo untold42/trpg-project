@@ -18,8 +18,8 @@ import re
 import threading
 from pathlib import Path
 
-from tools.大模型 import battle as B
-from tools.大模型 import battle_runner as R
+from tools.战斗 import battle as B
+from tools.战斗 import battle_runner as R
 from tools.小模型 import ui_sim
 from tools.核心.state_manager import state as game_state
 from tools.核心.ui_events import UI_EVENTS_KEY, ui_event

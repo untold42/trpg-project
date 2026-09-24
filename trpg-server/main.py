@@ -9,21 +9,24 @@ from tools.大模型 import accident as accident_mod
 from tools.核心.state_manager import state
 from tools.核心.game_clock import clock
 from tools.核心 import time_flow
-from tools.大模型.factions import list_factions
-from tools.大模型.recap import build_recap
-from tools.大模型.place_recall import recall_place
-from tools.大模型.difficulty_settings import get_settings, set_difficulty
+from tools.服务.factions import list_factions
+from tools.服务.recap import build_recap
+from tools.服务.place_recall import recall_place
+from tools.服务.difficulty_settings import get_settings, set_difficulty
 from tools.大模型.facility import facility_detail
 from tools.大模型 import facility as facility_mod
 from tools.大模型 import time_weather as time_weather_mod
 from tools.大模型 import turn_context as turn_context_mod
 from tools.核心.map_settings import get_settings as get_map_settings, set_map
 from tools.核心 import movement
+from tools.核心 import quest
+from tools.大模型 import quest_arbiter
+from tools.小模型 import quest_sim
 
 # 工具注册表（schema + 实现的单一真相源）
 from tools.大模型.registry import TOOLS_MAP
-from tools.大模型 import battle_session
-from tools.大模型.battle_settings import THOUGHT_MODEL_OPTIONS, get_thought_model, set_thought_model
+from tools.战斗 import battle_session
+from tools.战斗.battle_settings import THOUGHT_MODEL_OPTIONS, get_thought_model, set_thought_model
 
 # 引擎（回合运行 + 会话 + 过程日志）
 from engine import GameSession, TurnRunner, continue_cue, observe_cue, OBSERVE_NOTE, OOC_NOTE, is_time_action
@@ -39,6 +42,12 @@ CORS(app)
 # 规则层全量注入（热更新：改 trpg-world/主持人/*.md 即时生效）；状态每次调用现拼
 session = GameSession(rules_dir="../trpg-world/主持人")
 runner = TurnRunner(session, send_messages, TOOLS_MAP)
+
+# 任务种子：开局并入任务栏（按 id 幂等）
+try:
+    quest.ensure_seeded()
+except Exception as _e:   # 种子失败不影响启动
+    print(f"[quest] 种子并入失败：{type(_e).__name__}: {_e}")
 
 # chroma 记忆库由 tools/mem_store.py 懒加载（首次读写记忆时才连）
 
@@ -84,6 +93,7 @@ def get_player_state():
     """玩家真实状态（金钱 / 状态 / 背包 / 属性 / 基本信息）。前端菜单读这个，不再写死。"""
     _best_effort(clock.maybe_persist, time_flow.pump)   # 时间流逝 → 精力 / 跨日联动（失败不 500）
     data = state.snapshot()
+    data.pop("任务", None)   # 任务走 GET /quests（玩家投影，不含隐藏字段）
     data["移动"] = movement.config()   # 移动参数（轻功→步速 / 奔跑倍率）——非 游戏数据文件
     return jsonify(data)
 
@@ -473,6 +483,32 @@ def learn_skill_route():
     return jsonify(skill_tree.learn(name))
 
 
+# ------------------------------------------------------------
+# 任务（后端为主）
+# ------------------------------------------------------------
+@app.route("/quests", methods=["GET"])
+def get_quests_route():
+    """任务栏：进行中 + 已了结（玩家投影，不含失败后果等隐藏字段）。"""
+    return jsonify(quest.player_view())
+
+
+@app.route("/quest/add", methods=["POST"])
+def quest_add_route():
+    """玩家点「任务化」：旁路大模型读会话记录 → `add_quest` 建任务。
+
+    请求体可选 `{提示: ""}`。返回新增任务 + 任务栏全貌。
+    """
+    data = request.json or {}
+    hint = str(data.get("提示") or data.get("hint") or "").strip()
+    try:
+        created = quest_arbiter.arbitrate_add(runner.session.history, hint)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    return jsonify({"success": True, "新增": len(created),
+                    "新增任务": [quest.card(t) for t in created],
+                    "任务": quest.player_view()})
+
+
 @app.route("/action", methods=["POST"])
 def action():
     data = request.json or {}
@@ -535,7 +571,16 @@ def action():
         # 场外话（OOC）：用现代白话直答，不得入戏
         runner.session.pending_notes.append(OOC_NOTE)
     events = runner.run(text, mode, from_explore, allow_time=allow_time)
-    time_flow.pump()   # 回合结束后结算时间流逝（精力 / 跨日）
+    # 任务进度（小模型，仅对玩家追踪的任务）→ 追加 UI 事件；
+    # 里程碑全部完成的 → 旁路大模型裁定「补新里程碑 / 算真正完成」
+    try:
+        q_events, q_todo = quest_sim.run(events, data.get("追踪"))
+        events = events + q_events
+        for t in q_todo:
+            quest_arbiter.arbitrate_milestones_async(t)
+    except Exception as e:
+        print(f"[quest] quest_sim 失败：{type(e).__name__}: {e}")
+    time_flow.pump()   # 回合结束后结算时间流逝（精力 / 跨日；含任务 DDL）
     return jsonify(events)
 
 

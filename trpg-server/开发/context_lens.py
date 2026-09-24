@@ -22,7 +22,7 @@ import sys
 import time
 from pathlib import Path
 
-SERVER_DIR = Path(__file__).resolve().parent
+SERVER_DIR = Path(__file__).resolve().parent.parent
 DUMP_DIR = SERVER_DIR / "sessions" / "context_dump"
 DEFAULT_OUT = SERVER_DIR / "sessions" / "context_report.html"
 

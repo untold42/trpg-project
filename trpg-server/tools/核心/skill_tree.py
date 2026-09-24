@@ -5,8 +5,8 @@ skill_tree.py
 技能树子系统（养成）。
 
 真相源分工：
-    正典   = `trpg-server/技能树.json`（预制：全部可学招式 + 前置/要求/花费 + 数值）
-    运行表 = `trpg-server/招式表.json`（玩家当前可用招式；初始只有「普通攻击」）
+    正典   = `trpg-server/配置/技能树.json`（预制：全部可学招式 + 前置/要求/花费 + 数值）
+    运行表 = `trpg-server/配置/招式表.json`（玩家当前可用招式；初始只有「普通攻击」）
     角色卡 = `游戏数据/属性.json`（`技能点` + `五行.<行>.招式[]` = 已学招式名/描述）
 
 点亮 `learn(name)` 需同时满足：前置已点亮、熟练度/基础数值达标、技能点足够、未学过；
@@ -28,8 +28,8 @@ from pathlib import Path
 from tools.核心.state_manager import state
 
 _SERVER = Path(__file__).resolve().parent.parent.parent
-_TREE_PATH = _SERVER / "技能树.json"
-_TABLE_PATH = _SERVER / "招式表.json"
+_TREE_PATH = _SERVER / "配置" / "技能树.json"
+_TABLE_PATH = _SERVER / "配置" / "招式表.json"
 
 def _chance(key: str) -> float:
     """从 `成长.json` 读取概率；缺失或非法时明确报错，不使用第二套数值。"""
