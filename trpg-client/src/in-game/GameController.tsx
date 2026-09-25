@@ -17,8 +17,13 @@ import { MAP_ID } from "./mapId";
 import { API } from "../api";
 import { useEsc } from "../escStack";
 import FacilityPanel, { type FacilityDetail } from "./FacilityPanel";
-import SkillTree from "./SkillTree";
+import SkillTree, { prefetchSkillTree } from "./SkillTree";
 import ScenePicker from "./ScenePicker";
+import historyFrame from "../assets/ui/历史记录框.png";   // 打开历史前先 decode，文字与背景板同步
+import { ensureDecoded } from "./uiPreload";
+import uiDialogBox from "../assets/ui/对话框.png";     // 叙事对话框背景
+import uiInputBox from "../assets/ui/输入框.png";      // 主持人/行动/说话 输入框背景
+import uiMenuBg from "../assets/ui/面板背景.png";      // ☰ 菜单面板背景
 
 // 地图条目（GET /maps）：frame = [min_lon, min_lat, max_lon, max_lat]
 type MapEntry = { id: string; name: string; frame: number[] | null };
@@ -68,7 +73,13 @@ const images = import.meta.glob(
     [
         "../assets/**/*.{png,jpg,jpeg,webp}",
         // 画廊图较大（10 张约 20MB），不进预加载，打开画廊时按需加载
-        "!../assets/画廊/**"
+        "!../assets/画廊/**",
+        // 背景图（300+ 张 1080p，近 1GB）不进启动预加载：BackgroundTransition
+        // 会先 preload+decode 再淡入，按需加载即可；全量预加载既慢又会挤爆内存。
+        "!../assets/背景_重构/**",
+        // 立绘（281 张 / 233MB）同理：CharacterTransition 会先 preload+decode
+        // 再切换，不再阻塞启动；内存也不再被占满（UI 小图因此不会被驱逐）。
+        "!../assets/人物/**"
     ],
     {
         eager: true,
@@ -705,7 +716,7 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         load();
     }, []);
 
-    // 预加载所有美术资源
+    // 预加载剩余的美术资源（已排除 背景_重构 / 人物 / 画廊，现在只剩 ui/动画/神明 ≈6MB）
     useEffect(() => {
         const load = async () => {
             await preloadImages(
@@ -715,6 +726,16 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
             setLoaded(true);
         };
         load();
+    }, []);
+
+    // 预取技能树数据（体量极小）：打开技能树时无需等后端
+    useEffect(() => { prefetchSkillTree(); }, []);
+
+    // 预热核心界面图：首次打开对话框/输入框/菜单都不再等背景图解码
+    useEffect(() => {
+        ensureDecoded(uiDialogBox);
+        ensureDecoded(uiInputBox);
+        ensureDecoded(uiMenuBg);
     }, []);
 
     //默认历史记录滚到最底部
@@ -772,7 +793,8 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
             : null;
         // 时钟暂停条件：打字（输入框）/ 看历史·地图·数据·势力·详情 / 等 LLM 回复
         const clockPaused =
-            sending || showHistory || showMap || showData || showGallery || showSkillTree || showScenePicker ||
+            sending || showMenu || showHistory || showMap || showData || showGallery || showSkillTree || showScenePicker ||
+            showContinue || recallInfo !== null || facilityInfo !== null ||
             readingIndex !== null || showInputGM || showInputAct || showInputSay;
         const 状态 = playerState?.状态 ?? {};        const 基础 = playerState?.属性?.基础属性 ?? {};
         const 物品 = playerState?.背包?.物品 ?? {};
@@ -882,15 +904,24 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                         </button>
                     )}
 
-                    <button className="chat-button" onClick={() => { setshowInputGM(!showInputGM); setShowInputAct(false); setShowInputSay(false); }}>
+                    <button className="chat-button" onClick={async () => {
+                        if (!showInputGM) await ensureDecoded(uiInputBox);
+                        setshowInputGM(!showInputGM); setShowInputAct(false); setShowInputSay(false);
+                    }}>
                         主持人
                     </button>
 
-                    <button className="act-button" onClick={() => { setShowInputAct(!showInputAct); setshowInputGM(false); setShowInputSay(false); }}>
+                    <button className="act-button" onClick={async () => {
+                        if (!showInputAct) await ensureDecoded(uiInputBox);
+                        setShowInputAct(!showInputAct); setshowInputGM(false); setShowInputSay(false);
+                    }}>
                         行动
                     </button>
 
-                    <button className="say-button" onClick={() => { setShowInputSay(!showInputSay); setShowInputAct(false); setshowInputGM(false); }}>
+                    <button className="say-button" onClick={async () => {
+                        if (!showInputSay) await ensureDecoded(uiInputBox);
+                        setShowInputSay(!showInputSay); setShowInputAct(false); setshowInputGM(false);
+                    }}>
                         说话
                     </button>
 
@@ -899,11 +930,16 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                     </button>
 
                     <button className="history-button" onClick={async () => {
-                        if (!showHistory) {
-                            const h = await fetchHistory();
-                            if (h) setHistoryLines(h.lines);
-                        }
-                        setShowHistory(!showHistory);
+                        if (showHistory) { setShowHistory(false); return; }
+                        const h = await fetchHistory();
+                        if (h) setHistoryLines(h.lines);
+                        // 等「历史记录框」解码完再显示：否则文字先出、背景板后到
+                        try {
+                            const img = new Image();
+                            img.src = historyFrame;
+                            await img.decode();
+                        } catch { /* 解码失败也照常打开 */ }
+                        setShowHistory(true);
                     }}>
                         历史记录
                     </button>
@@ -912,7 +948,10 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                         数据
                     </button>
 
-                    <button className="menu-button" onClick={() => setShowMenu(!showMenu)} aria-expanded={showMenu}>
+                    <button className="menu-button" onClick={async () => {
+                        if (!showMenu) await ensureDecoded(uiMenuBg);
+                        setShowMenu(!showMenu);
+                    }} aria-expanded={showMenu}>
                         菜单
                     </button>
                 </div>

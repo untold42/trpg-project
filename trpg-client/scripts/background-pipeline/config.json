@@ -1,7 +1,7 @@
 {
   "_说明": "背景图 AI 重构工作流配置。本工作流只负责生成「参考图 + 提示词」文件夹包，由人手动喂给任意生图 AI，不调用生图 API。",
   "source_kinds": "trpg-map/draw_tiles/song_kinds.py",
-  "reference_root": "trpg-client/src/assets/背景",
+  "reference_root": "D:/trpg仓库/背景_参考图",
   "packs_root": "trpg-client/scripts/background-pipeline/packs",
   "periods": [
     "白天",

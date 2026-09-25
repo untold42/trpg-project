@@ -164,6 +164,19 @@ function useTreeScale(fit: { w: number; h: number }, wrapRef: React.RefObject<HT
 
 /* ======================================================================== */
 
+/* ---------------- /skilltree 预取（进游戏时就拉，开面板即用） ---------------- */
+let _viewPromise: Promise<SkillView | null> | null = null;
+/** 预取技能树数据；GameController 进游戏时调一次，打开面板就不必等后端。 */
+export function prefetchSkillTree(): Promise<SkillView | null> {
+    if (!_viewPromise) {
+        _viewPromise = fetch(`${API}/skilltree`)
+            .then((r) => r.json())
+            .then((d) => (d?.success ? (d as SkillView) : null))
+            .catch(() => null);
+    }
+    return _viewPromise;
+}
+
 export default function SkillTree({ onClose }: { onClose: () => void }) {
     const [view, setView] = useState<SkillView | null>(null);
     const [row, setRow] = useState<string | null>(null);   // null = 五神圆弧
@@ -171,11 +184,10 @@ export default function SkillTree({ onClose }: { onClose: () => void }) {
     const [busy, setBusy] = useState(false);
     const [msg, setMsg] = useState("");
 
-    const reload = useCallback(async () => {
-        try {
-            const d = await (await fetch(`${API}/skilltree`)).json();
-            if (d?.success) setView(d as SkillView);
-        } catch { /* 后端没起 */ }
+    const reload = useCallback(async (force = false) => {
+        if (force) _viewPromise = null;
+        const d = await prefetchSkillTree();
+        if (d) setView(d);
     }, []);
     useEffect(() => { reload(); }, [reload]);
 
@@ -209,7 +221,7 @@ export default function SkillTree({ onClose }: { onClose: () => void }) {
             const d = await res.json();
             if (d?.success) {
                 setMsg(`已点亮「${n.名称}」（余 ${d.剩余技能点} 点）`);
-                await reload();
+                await reload(true);   // 强制重拉，别用旧缓存
                 setSel(null);
             } else {
                 setMsg(d?.error || "点亮失败");
@@ -231,10 +243,11 @@ export default function SkillTree({ onClose }: { onClose: () => void }) {
                 {row && <button className="st-back" onClick={() => { setRow(null); setSel(null); }}>◀ 五神</button>}
             </div>
 
-            {!view && <div className="st-loading">…</div>}
+            {/* 五神圆弧不依赖 /skilltree：先画出来，别让用户等后端；只在进具体一行且数据未到时才 loading */}
+            {row && !view && <div className="st-loading">…</div>}
 
             {/* ---- 第一幕：五神圆弧（左下 → 右下） ---- */}
-            {view && !row && (
+            {!row && (
                 <svg className="st-arc" viewBox={`0 0 ${STAGE.w} ${STAGE.h}`}
                     onClick={(e) => e.stopPropagation()}>
                     {GODS.map((g, i) => {

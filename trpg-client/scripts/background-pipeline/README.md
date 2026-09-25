@@ -90,7 +90,7 @@ packs/
 
 | 段落 | 来源 |
 |---|---|
-| 场景 / 场景原型 / 画面核心 | 《背景场景重构清单》表格 + `song_kinds.py` |
+| 场景原型 / 画面核心 | `trpg-world/场景表.json` 的 `场景原型`（kind→原型/画面核心）+ `song_kinds.py` |
 | 历史功能 / 位置倾向 | `song_kinds.py` 的 `note` 与 `zone` |
 | 画面要求 | `config.json.固定要求` |
 | 美术风格 | `config.json.美术风格` |
@@ -103,10 +103,21 @@ packs/
 
 - `group_profiles`：按 `group`（风月 / 百工 / 官署…）给的默认参考池。
 - `kind_reference_overrides`：单个 kind 的覆盖，优先级最高。
-- 参考场景名必须与 `trpg-client/src/assets/背景/` 下的目录同名；同时间图缺失时按 白天 → 黑夜 → 黄昏 回退。
+- 参考场景名必须与 `config.reference_root`（现为 `D:\trpg仓库\背景_参考图`，原 `trpg-client/src/assets/背景/`）下的目录同名；同时间图缺失时按 白天 → 黑夜 → 黄昏 回退。
+
+## 扩展 kind（`extra_kinds`）
+
+`song_kinds.py` 之外的结构/内室/城外场景写在 `config.json.extra_kinds`（kind → 分组/zone/note/原型/画面核心，可选 `窄景`/`priority`）：
+
+- `窄景: true` → 提示词多一段「局部窄景」（近景/一角/元素从简），供 38 个内室用；
+- `priority: 0/1/2` → 清单分批（否则按原型查 `场景表.json.分批`）；
+- 参考图走 `kind_reference_overrides`。
+
+产出图放 **`trpg-client/src/assets/背景_重构/<城内|城外|室内>/<场景>/{白天,黑夜}.png`**（分类目录 = 唯一闸门，见 `README/09 §13.1`）。
 
 ## 文件说明
 
-- `config.json`：全部可调项。
-- `build_packs.py`：生成器。
-- `packs/`：产出（已 gitignore，可随时重跑）。根目录只有一份 `生成顺序.md`（生成顺序 + 勾选进度），其余全是 `<kind>/` 素材包。
+- `config.json`：全部可调项（`source_kinds` / `scene_table` / `reference_root` / `extra_kinds` / 预设 段）。
+- `build_packs.py`：生成器（读 `场景表.json` 的 `场景原型` / `分批`）。
+- `packs/`：产出（已 gitignore，可随时重跑；2026-09-25 清理时删过，重跑 `build_packs.py` 即恢复）。
+  根目录只有一份 `生成顺序.md`，其余全是 `<kind>/{白天,黑夜}/` 素材包。
