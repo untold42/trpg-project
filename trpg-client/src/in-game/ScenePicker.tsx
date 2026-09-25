@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import backgroundImages from "../assets/背景_重构";
-import { getBackgroundImage } from "./background";
+import { getBackgroundImage, sceneDir } from "./background";
 import "../styles/ScenePicker.css";
 
 // ------------------------------------------------------------
@@ -21,7 +21,7 @@ type Period = (typeof PERIODS)[number];
 function sceneNamesFromGlob(): string[] {
     const names = new Set<string>();
     for (const key of Object.keys(backgroundImages)) {
-        const m = /^\.\/([^/]+)\/(?:白天|黄昏|黑夜)\.png$/.exec(key);
+        const m = /^\.\/(?:城内|城外|室内)\/([^/]+)\/(?:白天|黄昏|黑夜)\.png$/.exec(key);
         if (m) names.add(m[1]);
     }
     return Array.from(names).sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
@@ -29,7 +29,7 @@ function sceneNamesFromGlob(): string[] {
 
 /** 该场景实际有哪些时段图（用于角标 / 提示）。 */
 function periodsOf(scene: string): Period[] {
-    return PERIODS.filter((p) => backgroundImages[`./${scene}/${p}.png`]);
+    return PERIODS.filter((p) => backgroundImages[`${sceneDir(scene)}${p}.png`]);
 }
 
 export type ScenePickerProps = {

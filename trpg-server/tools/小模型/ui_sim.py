@@ -18,7 +18,7 @@ ui_sim.py
 总开关：`TRPG_UI_SIM=0` 关闭。
 """
 
-import hashlib
+import json
 import os
 import re
 from pathlib import Path
@@ -29,12 +29,14 @@ from tools.核心.ui_events import bg_event, music_event
 
 _ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _SCENE_DIR = _ROOT / "trpg-client" / "src" / "assets" / "背景_重构"
+#: 背景三大分类 = 三个文件夹；`室内` 随处可用，`城内/城外` 严格按 `在城内` 互斥
+_SCENE_CATS = ("城内", "城外", "室内")
 _MUSIC_DIR = _ROOT / "trpg-client" / "src" / "assets" / "音乐"
 _MUSIC_DYNAMIC_DIR = _MUSIC_DIR / "动态"   # AI 选曲在 动态/；固定/ 是界面专用，不进候选
 _MUSIC_MANIFEST = _ROOT / "trpg-world" / "音乐表.md"   # 一份两节：叙事 + 战斗
 _MUSIC_SECTION = "叙事"
 _BATTLE_SECTION = "战斗"
-_SCENE_MANIFEST = _ROOT / "trpg-world" / "场景表.md"   # 一份两节：场景说明 + 地点类型映射
+_SCENE_TABLE = _ROOT / "trpg-world" / "场景表.json"   # 说明 + 地点候选 + 兜底组 + 场景原型 + 分批
 
 ENABLED = os.environ.get("TRPG_UI_SIM", "1") != "0"
 
@@ -45,12 +47,14 @@ DEFAULT_TRACK = "山中好岁月"
 
 SYSTEM = (
     "你是武侠世界（南宋）的「场景 / 音乐」标注器，只输出 JSON。"
-    "读一段叙事，判断**玩家此刻身处的环境**最适合的背景场景与背景音乐。"
-    "**以玩家此刻的站位为准**：叙事说「门前 / 街上 / 门外 / 墙外 / 楼下」→ 用**室外**场景；"
-    "「推门进了 / 屋里 / 雅间 / 房内 / 楼上」→ 用**室内**场景；分不清就用能涵盖两者的（如 街区 / 城市大街 / 坊）。"
-    "音乐要按叙事的**情境 / 情绪**选（用户会给出候选与说明）。"
-    "场景与音乐都**只能从给定枚举里选一个**；没有合适的、或与当前一致、或拿不准，就填「无」。"
-    "禁止叙述、禁止解释、禁止输出 JSON 以外的任何内容。\n/no_think"
+    "读**最近几轮叙事**，判断**玩家此刻身处的环境**最适合的场景与音乐。"
+    "【场景】只能从给定候选集合里选一个——这个集合就是该地点内部可能出现的空间"
+    "（例：青楼 → 青楼 / 厅堂 / 闺房 / 阁楼 / 灶房 / 后院 / 屋顶）。"
+    "玩家移步、被引路、被送上楼、进房、入席、登高、被带到后院……"
+    "只要叙事显示他换到了另一个空间，就选对应的；没换、或拿不准、或与当前一致，就填「无」保持当前。"
+    "**读整段语义判断，不要靠某个动词。**"
+    "【音乐】按叙事的情境 / 情绪选，带【本地点专属】的优先。"
+    "场景与音乐都只能从给定枚举里选一个；禁止叙述、禁止解释、禁止输出 JSON 以外的任何内容。\n/no_think"
 )
 
 
@@ -59,19 +63,24 @@ def _period_files() -> tuple[str, ...]:
     return tuple(f"{p}.png" for p in ("白天", "黑夜", "黄昏"))
 
 
-def scene_keys() -> list[str]:
-    """可选场景：扫 `assets/背景_重构/` 的子目录（单一真相源=美术资源）。
-
-    只收**确实有图**的目录：还没出图的 kind 不进候选，
-    否则小模型会选到一个前端拿不到图的场景（只能退回主页面）。
-    一张图都没有时返回 []——不发 bg 事件，前端保持主页面。
+def scene_categories() -> dict[str, str]:
+    """场景名 → 分类（城内 / 城外 / 室内）。分类就写在目录结构里：
+    `背景_重构/<分类>/<场景>/{白天,黑夜,黄昏}.png`。只收**确实有图**的场景。
     """
-    if not _SCENE_DIR.is_dir():
-        return []
-    return sorted(
-        d.name for d in _SCENE_DIR.iterdir()
-        if d.is_dir() and any((d / f).is_file() for f in _period_files())
-    )
+    out: dict[str, str] = {}
+    for cat in _SCENE_CATS:
+        cat_dir = _SCENE_DIR / cat
+        if not cat_dir.is_dir():
+            continue
+        for d in cat_dir.iterdir():
+            if d.is_dir() and any((d / f).is_file() for f in _period_files()):
+                out.setdefault(d.name, cat)
+    return out
+
+
+def scene_keys() -> list[str]:
+    """可选场景 = `背景_重构/<城内|城外|室内>/` 下**确实有图**的目录名。"""
+    return sorted(scene_categories())
 
 
 def music_tracks() -> list[str]:
@@ -97,19 +106,10 @@ def _parse_lines(lines) -> dict:
     return out
 
 
-def _parse_manifest(path: Path) -> dict:
-    """解析 `- 名称：说明` 形式的清单为 {名称: 说明}。"""
+def _manifest_section(title: str, path: Path) -> list:
+    """取 md 清单里 `## <title>` 到下一个 `## ` 之间的行（目前只有 `音乐表.md` 用）。"""
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError:
-        return {}
-    return _parse_lines(text.splitlines())
-
-
-def _manifest_section(title: str, path: Path = None) -> list:
-    """取清单文件里 `## <title>` 到下一个 `## ` 之间的行（默认 `场景表.md`）。"""
-    try:
-        text = (path or _SCENE_MANIFEST).read_text(encoding="utf-8")
     except OSError:
         return []
     out, on = [], False
@@ -131,35 +131,25 @@ def _split_bind(raw: str) -> tuple:
     return raw.strip(), ""
 
 
+def _scene_table() -> dict:
+    """读 `trpg-world/场景表.json`（场景说明 / 地点候选 / 兜底组 / 场景原型 / 分批）。"""
+    try:
+        return json.loads(_SCENE_TABLE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
 def scene_descriptions() -> dict:
-    """场景名 → 适用情境说明（`trpg-world/场景表.md` 的「场景说明」节）。"""
-    return _parse_lines(_manifest_section("场景说明"))
+    """场景名 → 适用情境说明（`场景表.json` 的「场景说明」）。"""
+    return dict(_scene_table().get("场景说明") or {})
 
 
 def scene_kind_map() -> dict:
-    """地点类型 → 允许的场景列表（`trpg-world/场景表.md` 的「地点类型映射」节）。"""
-    out = {}
-    for line in _manifest_section("地点类型映射"):
-        line = line.strip()
-        if not line.startswith("-"):
-            continue
-        body = line.lstrip("-").strip()
-        for sep in ("：", ":"):
-            if sep in body:
-                kind, rest = body.split(sep, 1)
-                scenes = [s.strip() for s in re.split(r"[,，、]", rest) if s.strip()]
-                if kind.strip() and scenes:
-                    out[kind.strip()] = scenes
-                break
+    """地点类型 → 候选场景列表（`场景表.json` 的「地点候选」+「兜底组」室内/室外）。"""
+    t = _scene_table()
+    out = dict(t.get("地点候选") or {})
+    out.update(t.get("兜底组") or {})
     return out
-
-
-#: 明显的「城外 / 荒野」场景（按 kind 命名）——玩家在城内时一律排除
-#: 防「人在城里被切到山里」（新素材一 kind 一图，这里只列非城市场所）
-_WILD_SCENES = {
-    "山", "林", "湖", "水域", "洲", "义冢", "坟地",
-    "盐场", "矿冶", "窑场", "造船场", "榷场",
-}
 
 
 def _player_inside_city():
@@ -213,42 +203,83 @@ def _kind_of(location: str) -> str:
     return ""
 
 
-def _scenes_for_kind(kind: str, indoor: bool = False) -> list[str]:
-    """按**已解析的地点类型**给背景候选（纯查表 + 城内安全网；不查库、不调模型）。
+def _eligible_scene(scene: str, cats: dict[str, str], inside: bool) -> bool:
+    """该场景此刻是否可选。
 
-    每个 kind 在 `场景表.md` 里有一条**优先级链**（自己的同名场景排第一，后面是同类的兜底），
-    这里取链里第一个**已经有图**的，作为唯一候选；
-    该类一张图都没有、或地点类型查不到时，才退回 `室内` / `室外` 兜底组
-    （那一组是并列候选，由叙事判断屋里/屋外来选）。
+    - **城内**：所有背景都可用（不设限）；
+    - **城外**：只允许 `背景_重构/城外/` 里的（= 唯一的「城外集合」）。
     """
-    all_scenes = set(scene_keys())
+    c = cats.get(scene)
+    if c is None:
+        return False
+    return True if inside else (c == "城外")
+
+
+def _scenes_for_kind(kind: str, indoor: bool = False) -> list[str]:
+    """按**已解析的地点类型**给背景候选（纯查表；不查库、不调模型）。
+
+      · **城内**：该 kind 的候选集合直接可用（不额外设限）；
+      · **城外**：候选集合 ∩ 「城外集合」（`背景_重构/城外/`）——严格只用城外背景；
+      · 过滤后为空才走兜底组 / 全量兜底。
+    """
+    cats = scene_categories()
+    inside = _player_inside_city() is True
     mapping = scene_kind_map()
     if kind and mapping.get(kind):
-        # 链是**优先级顺序**，只取第一个有图的；
-        # 不能把整条链当并列候选，否则人在青楼可能被切成画舫。
-        for s in mapping[kind]:
-            if s in all_scenes and not (_player_inside_city() is True and s in _WILD_SCENES):
-                return [s]
-    group = mapping.get("室内" if indoor else "室外")
-    if group:
-        allowed = [s for s in group if s in all_scenes]
+        cands = [s for s in mapping[kind] if _eligible_scene(s, cats, inside)]
+        if cands:
+            return cands
+    if not inside:
+        group = [s for s in (mapping.get("城外") or []) if _eligible_scene(s, cats, inside)]
+        return group[:12] or [s for s in scene_keys() if cats.get(s) == "城外"][:12]
+    for key in (("室内" if indoor else None), "城内"):
+        if not key:
+            continue
+        allowed = [s for s in (mapping.get(key) or []) if _eligible_scene(s, cats, inside)]
         if allowed:
-            return allowed[:6]
-    if _player_inside_city() is True:
-        urban = [s for s in scene_keys() if s not in _WILD_SCENES]
-        if urban:
-            return urban
-    return scene_keys()
+            return allowed[:8]
+    return [s for s in scene_keys() if _eligible_scene(s, cats, inside)][:12]
+
+
+def _nearby_candidates(indoor: bool = False, radius_km: float = 0.3, limit: int = 8) -> list[str]:
+    """**没有地点字段**时：取玩家附近 POI 的 kind 候选并集（按三分类过滤）。"""
+    cats = scene_categories()
+    inside = _player_inside_city() is True
+    mapping = scene_kind_map()
+    kinds: list[str] = []
+    try:
+        from tools.核心.map_query import query_nearby
+        pos = (state.load("基本信息", {}) or {}).get("位置", {}) or {}
+        lon, lat = pos.get("经度"), pos.get("纬度")
+        if isinstance(lon, (int, float)) and isinstance(lat, (int, float)):
+            rows = (query_nearby(lon, lat, radius_km=radius_km, limit=12) or {}).get("results") or []
+            for x in rows:
+                k = (x.get("kind") or "").strip()
+                if k and k not in kinds:
+                    kinds.append(k)
+    except Exception:
+        pass
+    out: list[str] = []
+    for k in kinds:
+        for s in mapping.get(k) or []:
+            if _eligible_scene(s, cats, inside) and s not in out:
+                out.append(s)
+    if out:
+        return out[:limit]
+    return _scenes_for_kind("", indoor)
 
 
 def scene_candidates(location: str = None, indoor: bool = False) -> list[str]:
-    """本地点允许的背景场景集合。
+    """本地点允许的背景场景**候选集合**。
 
-    - 地点类型能查到、且该类链上有图 → **只有一个候选**（链里第一个有图的）；
-    - 否则用 `室内` / `室外` 兜底组（并列候选，按叙事判断屋里/屋外选）；
+    - **有地点字段** → 该地点 kind 的候选集合（含内部子场景）；
+    - **没有地点字段** → 附近 POI 的 kind 候选并集；
     - 城内安全网：排除城外 / 荒野类场景。
     """
-    return _scenes_for_kind(_kind_of(location), indoor)
+    loc = (location or "").strip()
+    if loc:
+        return _scenes_for_kind(_kind_of(loc), indoor)
+    return _nearby_candidates(indoor)
 
 
 def scenes_for_kind(kind: str, indoor: bool = False) -> list[str]:
@@ -257,25 +288,14 @@ def scenes_for_kind(kind: str, indoor: bool = False) -> list[str]:
 
 
 def scene_for(kind: str, place: str = "", indoor: bool = False) -> str:
-    """**确定性**选一个背景场景（不调模型）。
+    """**确定性**取该 kind 的**主场景**（候选集合第一个 = 设施自己的场景；不调模型）。
 
-    在候选里按 `place`（地点名）做**稳定散列**取一个——同一地点每次相同，
-    不同地点可能不同；没有可用场景时返回 ""（调用方沿用当前背景）。
+    用于探索态「详细」页这类需要稳定结果的场合；叙事态不用它（交小模型在候选里选）。
+    没有可用场景时返回 ""（调用方沿用当前背景）。`place` 预留给「按地点覆盖」用。
     """
     cands = scenes_for_kind(kind, indoor)
-    if not cands:
-        return ""
-    seed = (place or kind or "").encode("utf-8")
-    idx = int(hashlib.md5(seed).hexdigest(), 16) % len(cands)
-    return cands[idx]
+    return cands[0] if cands else ""
 
-
-#: 叙事里表示「进/出/移动」的词——只有出现这些才允许换背景（场景状态机，见 engine）
-_SCENE_SWITCH_RE = re.compile(
-    r"推门|进门|进了|走入|走进|踏入|步入|迈入|跨进|入内|进屋|上楼|登上|拾级|进入|"
-    r"来到|走到|行至|前往|抵达|回到|返回|赶到|出了|出门|走出|离开|下楼|退出|"
-    r"跨出|迈出|转过|拐进|拐过|穿过|穿出|上到|下到|出了门|走出去|走进来|退到|移步"
-)
 
 #: 叙事里表示「在屋内」的词——用于未映射地点类型时的室内/室外兜底组
 _INDOOR_RE = re.compile(
@@ -287,11 +307,6 @@ _INDOOR_RE = re.compile(
 def looks_indoor(text: str) -> bool:
     """叙事看起来发生在室内（用于兜底分组）。"""
     return bool(_INDOOR_RE.search(text or ""))
-
-
-def scene_switch_signal(text: str) -> bool:
-    """叙事里有没有「进/出/移动」的动作——没有就不该换背景（防抖）。"""
-    return bool(_SCENE_SWITCH_RE.search(text or ""))
 
 
 def _parse_music(section: str) -> dict:
@@ -577,12 +592,13 @@ def _schema(scenes: list[str], tracks: list[str]) -> dict:
 
 def generate(narration: str, location: str = None,
              current_scene: str = None, current_music: str = None,
-             present=None) -> list[dict]:
+             present=None, recent=None) -> list[dict]:
     """根据叙事 + 当前状态生成 UI 事件（bg / music）。失败或「无」则不含该项。
 
     - `location`：玩家当前地点（给背景判断一个权威依据）。
     - `current_scene` / `current_music`：当前正在显示的背景 / 音乐，供其判断是否需变。
     - `present`：本轮**登场人物**（`chat` 说话者），用于专属曲绑定匹配（非仅提及）。
+    - `recent`：**最近几轮旁白**（由旧到新），供其判断「是不是刚上过楼 / 已经换过了」。
     """
     if not ENABLED or not narration.strip():
         return []
@@ -598,15 +614,17 @@ def generate(narration: str, location: str = None,
         f"- {t}：{music_desc.get(t, '（无说明）')}" + ("【本地点专属】" if t in loc_bound else "")
         for t in tracks
     ) or "（无）"
+    recent_lines = "\n".join(f"- {str(x)[:300]}" for x in (recent or [])[-3:]) or "（无）"
     user = (
-        f"可选场景（据玩家当前所处环境选）：\n{scene_lines}\n"
+        f"可选场景（本地点内可能出现的空间，选一个；没有变化就填「{NONE}」）：\n{scene_lines}\n"
         f"可选音乐（据叙事的情境 / 情绪选）：\n{music_lines}\n"
         f"（音乐：带【本地点专属】的是**当前地点的主题曲**，进入该地点应优先选它；"
         f"没有更贴合的就填「{NONE}」＝保持当前曲。）\n"
         f"当前地点：{location or '未知'}\n"
         f"当前背景：{current_scene or '无'} ｜ 当前音乐：{current_music or '无'}\n"
         f"当前时辰：{current_shichen() or '未知'}\n"
-        f"最近叙事：\n{narration[:800]}"
+        f"最近几轮（由旧到新）：\n{recent_lines}\n"
+        f"本轮叙事：\n{narration[:800]}"
     )
     r = small_model.ask_json(SYSTEM, user, _schema(scenes, tracks), max_tokens=128)
     if not isinstance(r, dict):

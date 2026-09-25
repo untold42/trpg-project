@@ -86,32 +86,19 @@ def load_kinds(path: Path) -> dict[str, dict[str, str]]:
     raise RuntimeError(f"没有在 {path} 找到 KINDS")
 
 
-def _split_table_row(line: str) -> list[str]:
-    body = line.strip().strip("|")
-    return [cell.strip() for cell in body.split("|")]
-
-
 def load_scene_manifest(path: Path) -> dict[str, dict[str, str]]:
-    """解析《背景场景重构清单》的表格 → {kind: {原型, 画面核心, 分组}}。
+    """读 `场景表.json` 的「场景原型」 → {kind: {原型, 画面核心}}。
 
-    清单是「场景原型 / 画面核心」的单一真相源，这里只做映射，不重复维护。
+    「场景原型 / 画面核心」的单一真相源 = `trpg-world/场景表.json`。
     """
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
     out: dict[str, dict[str, str]] = {}
-    section = ""
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.startswith("## "):
-            section = line[3:].strip()
-            continue
-        if not line.startswith("|"):
-            continue
-        cells = _split_table_row(line)
-        if len(cells) < 3 or cells[0] in ("场景目录名", "场景名") or set(cells[0]) <= {"-", " "}:
-            continue
-        scene, kinds_cell, core = cells[0], cells[1], cells[2]
-        for kind in kinds_cell.replace("、", ",").replace("，", ",").split(","):
-            kind = kind.strip()
-            if kind:
-                out.setdefault(kind, {"原型": scene, "画面核心": core, "章节": section})
+    for kind, info in (data.get("场景原型") or {}).items():
+        if isinstance(info, dict):
+            out[kind] = {"原型": info.get("原型", ""), "画面核心": info.get("画面核心", "")}
     return out
 
 
@@ -169,7 +156,6 @@ def build_prompt(
         lines.append("【构图 · 局部窄景（必须遵守）】")
         lines.append("- 近景 / 中近景：只取该空间的一角，视角收窄，不要大全景、不要多进纵深。")
         lines.append("- 元素从简：画面只保留 2~3 件核心物件，其余留白，不要堆满家具陈设。")
-        lines.append("- 可用门框、窗棂、纱帐、梁柱作前景遮挡，强化「站在门内 / 角落」的视角。")
     lines.append("")
     lines.append("【画面要求】")
     for item in config["固定要求"]:
@@ -291,27 +277,17 @@ def write_kind_pack(
 
 
 def load_priority(config: dict) -> dict[str, int]:
-    """从《背景场景重构清单》的「推荐分批制作」解析 P0 / P1 场景名单 → {场景原型: 优先级}。"""
-    lines = repo_path(config["scene_manifest"]).read_text(encoding="utf-8").splitlines()
-    out: dict[str, int] = {}
+    """读 `场景表.json` 的「分批」P0 / P1 → {场景原型: 优先级}。"""
     try:
-        start = next(i for i, line in enumerate(lines) if line.startswith("## 推荐分批制作"))
-    except StopIteration:
-        return out
-    current: int | None = None
-    for line in lines[start + 1:]:
-        if line.startswith("## "):
-            break
-        if line.startswith("### "):
-            title = line[4:].strip()
-            current = {"P0": 0, "P1": 1, "P2": 2}.get(title[:2])
-            continue
-        if current in (0, 1) and line.strip():
-            for name in line.replace("，", "、").replace(",", "、").split("、"):
-                # 名单末尾常带句号（「…、私家园林。」），不去掉就匹配不上场景名
-                name = name.strip().strip("。.．")
-                if name:
-                    out.setdefault(name, current)
+        data = json.loads(repo_path(config["scene_table"]).read_text(encoding="utf-8"))
+    except (OSError, ValueError, KeyError):
+        return {}
+    batch = data.get("分批") or {}
+    out: dict[str, int] = {}
+    for rank, key in ((0, "P0"), (1, "P1")):
+        for name in batch.get(key) or []:
+            if isinstance(name, str) and name.strip():
+                out.setdefault(name.strip().strip("。.．"), rank)
     return out
 
 
@@ -444,7 +420,7 @@ def main() -> int:
 
     config = load_config(args.config.resolve())
     kinds = load_kinds(repo_path(config["source_kinds"]))
-    manifest = load_scene_manifest(repo_path(config["scene_manifest"]))
+    manifest = load_scene_manifest(repo_path(config["scene_table"]))
     # `config.extra_kinds`：地图直接生成、但不在 song_kinds.py 里的结构/地形 kind
     # （坊 / 官道 / 城墙 / 村 / 镇 / 殿 / 楼 / 廊 / 院墙 / 宫门 / 果园）。
     # 不塞进 song_kinds.py（那是 POI 布点表），只作流水线的补充来源。
@@ -479,7 +455,7 @@ def main() -> int:
     print(f"\n素材包目录：{rel(packs_root)}")
     print(f"生成顺序：{rel(checkpoint)}")
     if unmapped:
-        print(f"警告：《{config['scene_manifest']}》里没有这些 kind 的场景原型：{'、'.join(unmapped)}", file=sys.stderr)
+        print(f"警告：《{config['scene_table']}》里没有这些 kind 的场景原型：{'、'.join(unmapped)}", file=sys.stderr)
     return 0
 
 

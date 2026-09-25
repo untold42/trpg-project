@@ -1,5 +1,20 @@
 import backgroundImages from "../assets/背景_重构";
 
+// 背景三大分类 = 三个文件夹：`背景_重构/<城内|城外|室内>/<场景>/{白天,黑夜,黄昏}.png`。
+// 后端只发场景名，前端靠下面这张表还原路径。
+/** 场景名 → 分类（城内 / 城外 / 室内） */
+export const SCENE_CATEGORY: Record<string, string> = {};
+for (const key of Object.keys(backgroundImages)) {
+  const m = /^\.\/(城内|城外|室内)\/([^/]+)\//.exec(key);
+  if (m && !SCENE_CATEGORY[m[2]]) SCENE_CATEGORY[m[2]] = m[1];
+}
+
+/** 场景名 → glob 前缀（含末尾 `/`）。找不到分类时退回旧扁平路径。 */
+export function sceneDir(scene: string): string {
+  const cat = SCENE_CATEGORY[scene];
+  return cat ? `./${cat}/${scene}/` : `./${scene}/`;
+}
+
 // 背景控制从大模型的 bg 指令转交给 UI 事件（kind:"bg"）。
 // 这里集中处理「地点 + 时辰 → 背景图」的映射，供 GameController 在收到 UI 事件时使用。
 
@@ -38,13 +53,13 @@ export const 默认背景 = (backgroundImages[`./主页面.png`] ??
  */
 export function getBackgroundImage(position: string, time: string): string {
   const period = convertTime(time);
-  const p_and_t = backgroundImages[`./${position}/${period}.png`] as string | undefined;
+  const prefix = sceneDir(position);
+  const p_and_t = backgroundImages[`${prefix}${period}.png`] as string | undefined;
   if (p_and_t) return p_and_t;
 
-  const just_p = backgroundImages[`./${position}/白天.png`] as string | undefined;
+  const just_p = backgroundImages[`${prefix}白天.png`] as string | undefined;
   if (just_p) return just_p;
 
-  const prefix = `./${position}/`;
   for (const name of ["黄昏", "黑夜"]) {
     const hit = backgroundImages[`${prefix}${name}.png`] as string | undefined;
     if (hit) return hit;

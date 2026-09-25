@@ -459,7 +459,7 @@ def enter_explore_route():
 def get_facility_route():
     """基础设施「详细」界面用：名称 + 选项 + 耗时 + **背景**（映射，不调模型）。
 
-    **秒返回**：选项查 `facilities.json`，背景查 `场景表.md` + 按地名稳定散列。
+    **秒返回**：选项查 `facilities.json`，背景查 `场景表.json`（取主场景）。
     参数：`?kind=棋馆&name=棋馆`（kind 优先；设施不在表里也能返回通用选项 + 背景）。
     """
     q = request.args.get("kind") or request.args.get("name") or ""

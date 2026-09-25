@@ -1305,6 +1305,22 @@ class TurnRunner:
                 print(f"[time] 叙述含时间流逝「{hit}」但未调用 advance_time")
             self.session.pending_time_note = self._TIME_NOTE.format(hit=hit)
 
+    def _recent_narrations(self, n: int = 3) -> list[str]:
+        """最近 n 轮的旁白（由旧到新），供小模型判断「场景是不是已经变过」。"""
+        out: list[str] = []
+        try:
+            for turn in read_turns(self.session.log_path)[-n:]:
+                txt = "".join(
+                    str(it.get("content", ""))
+                    for it in instructions.items_of(turn)
+                    if isinstance(it, dict) and it.get("type") == "narration"
+                ).strip()
+                if txt:
+                    out.append(txt)
+        except Exception:
+            pass
+        return out
+
     def _scene_ui_events(self, events, force: bool = False) -> list[dict]:
         """小模型判断本幕背景 / 音乐。
 
@@ -1322,21 +1338,9 @@ class TurnRunner:
         )
         if not text.strip():
             return []
-        # 场景状态机只用「旁白」判断（NPC 台词里的“我出门了”不算玩家移动）
-        narration_text = "".join(
-            str(it.get("content", ""))
-            for it in events
-            if isinstance(it, dict) and it.get("type") == "narration"
-        )
         loc = world_threads.current_location()
-        # D. 只有「强制 / 首次 / 地点变化 / 叙事出现进出门·移动」才允许换背景；否则保持当前
-        loc_changed = bool(loc) and loc != self.session.last_bg_location
-        allow_bg = (
-            force
-            or self.session.last_bg is None
-            or loc_changed
-            or ui_sim.scene_switch_signal(narration_text)
-        )
+        # 「换不换背景」交给小模型读最近几轮叙事判断（不再用动词表门禁）：
+        # 这里只保留**去重**（同场景不重发）与 force 兵底。
         prev_scene = (self.session.last_bg or (None, None))[0]
         # 本轮登场人物（chat 说话者）——专属曲绑定据此判定，非仅提及
         present = {
@@ -1351,6 +1355,7 @@ class TurnRunner:
                 current_scene=prev_scene,
                 current_music=self.session.last_music,
                 present=present,
+                recent=self._recent_narrations(),
             )
         except Exception:
             produced = []
@@ -1363,8 +1368,8 @@ class TurnRunner:
         if bg_ev:
             data = bg_ev.get("data") or {}
             key = (data.get("position"), data.get("time"))
-            # allow_bg=False 时不接受新背景（保持当前）；force 时连相同背景也重发
-            if force or (key != self.session.last_bg and allow_bg):
+            # 去重：与当前相同就不重发；force 时连相同背景也重发
+            if force or key != self.session.last_bg:
                 self.session.last_bg = key
                 self.session.last_bg_location = loc
                 scene_changed = True
