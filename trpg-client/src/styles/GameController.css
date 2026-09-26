@@ -67,6 +67,24 @@
     font-family: "Source Han Serif TC";
 }
 
+/* 任务按钮（底部按钮栏内）——与其它按钮同款 */
+.quest-button {
+    width: 120px;
+    height: 50px;
+
+    background-image: url("../assets/ui/未选中时按钮.png");
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    background-position: center;
+
+    border: none;
+    background-color: transparent;
+
+    cursor: pointer;
+    color: white;
+    font-family: "Source Han Serif TC";
+}
+
 .game-map {
     position: absolute;
     inset: 0;
@@ -743,26 +761,6 @@
     font-size: 20px;
 }
 
-/* 数据面板（金钱/背包/属性/状态） */
-.data-box {
-    position: absolute;
-    right: 140px;
-    bottom: 25px;
-    z-index: 400;
-
-    width: 320px;
-    max-height: 70vh;
-    overflow-y: auto;
-
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-
-    padding: 1rem;
-    border-radius: 10px;
-    background: rgba(20, 12, 8, 0.75);
-}
-
 /* 势力画廊覆盖层（全屏） */
 .gallery-overlay {
     position: fixed;
@@ -894,6 +892,7 @@
 
 /* ---------- 按钮悬停：正常=未选中时按钮.png，悬停=金红矩形按钮.png ---------- */
 .data-button:hover,
+.quest-button:hover,
 .map-close:hover,
 .menu-button:hover,
 .map-button:hover,

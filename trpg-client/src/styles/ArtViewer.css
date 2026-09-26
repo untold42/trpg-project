@@ -1,0 +1,63 @@
+/* ===== 画作浮层（对话框正上方；不挡对话框点击）===== */
+
+.art-overlay {
+    position: fixed;
+    inset: 0;
+    bottom: 25%;                 /* 对话框在 bottom:0 / height:25% → 画放它正上方 */
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    pointer-events: none;        /* 关键：不拦截点击，对话框照常可点 */
+    z-index: 300;
+}
+
+.art-card {
+    pointer-events: auto;        /* 只有画本身可交互 */
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px;
+    background: rgba(20, 12, 6, 0.85);
+    border: 1px solid rgba(216, 180, 90, 0.55);
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(2px);
+}
+
+.art-img {
+    display: block;
+    max-height: 58vh;
+    max-width: 40vw;
+    object-fit: contain;
+    border-radius: 4px;
+    background: #efe9d9;
+}
+
+.art-caption {
+    margin-top: 7px;
+    color: #f4e2a8;
+    font-family: "Source Han Serif TC", "思源宋体", serif;
+    font-size: 0.95rem;
+    letter-spacing: 0.1em;
+}
+
+.art-close {
+    position: absolute;
+    top: -13px;
+    right: -13px;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1px solid rgba(216, 180, 90, 0.75);
+    background: rgba(20, 12, 6, 0.92);
+    color: #f4e2a8;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.art-close:hover {
+    background: #c0392b;
+    color: #fff;
+}

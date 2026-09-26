@@ -1,0 +1,121 @@
+/* ============================================================
+   数据面板内容（外壳的宣纸背景 / 揭幕动画由 StaggeredMenu 提供）
+   3 列 = 属性 / 状态·基本信息 / 背包，各列内部可滚轮看 overflow
+   关掉只靠 Esc（前端约定：不放返回按钮）
+   ============================================================ */
+
+/* StaggeredMenu 的内容容器（contentClassName="sm-data-inner"）：铺满面板 */
+.sm-data-inner {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    font-family: "Source Han Serif TC", "Songti SC", "思源宋体", serif;
+    color: #3a2f26;
+}
+
+/* ---------- 3 列 ---------- */
+.data-cols {
+    flex: 1 1 0;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+}
+
+.data-col {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: rgba(255, 255, 255, 0.34);
+    border: 1px solid rgba(58, 47, 38, 0.18);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.data-col-title {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 9px 14px;
+    font-size: 1.2rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    color: #3a2f26;
+    background: rgba(255, 255, 255, 0.42);
+    border-bottom: 1px solid rgba(58, 47, 38, 0.15);
+}
+
+/* 列内容：滚轮看 overflow */
+.data-col-body {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 12px 14px 16px;
+}
+
+.data-col-body::-webkit-scrollbar { width: 8px; }
+.data-col-body::-webkit-scrollbar-thumb {
+    background: rgba(58, 47, 38, 0.28);
+    border-radius: 4px;
+}
+
+/* ---------- 雷达图（六维 / 五维） ---------- */
+.radar { margin-bottom: 12px; text-align: center; }
+.radar-title { font-size: 1rem; font-weight: 700; color: #5a4a38; margin-bottom: 4px; }
+/* 限宽居中：取第一版（4 列布局，列内容 ≈430px）的尺寸；别跟着列宽被放大 */
+.radar-svg { width: min(100%, 430px); height: auto; display: inline-block; }
+.radar-ring { fill: none; stroke: rgba(58, 47, 38, 0.22); stroke-width: 1; }
+.radar-axis { stroke: rgba(58, 47, 38, 0.18); stroke-width: 1; }
+.radar-area { fill: rgba(192, 57, 43, 0.22); stroke: var(--sm-accent, #c0392b); stroke-width: 1.5; }
+.radar-dot { fill: var(--sm-accent, #c0392b); }
+.radar-label { fill: #3a2f26; font-size: 12px; }
+
+/* ---------- 进度条 ---------- */
+.bar { margin: 9px 0; }
+.bar-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 1rem; color: #3a2f26; }
+.bar-label { font-weight: 700; }
+.bar-val { color: #7a5a2f; }
+.bar-track { height: 9px; margin-top: 4px; border-radius: 5px; background: rgba(58, 47, 38, 0.18); overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 5px; background: linear-gradient(90deg, #c0392b, #e0a15a); transition: width 0.45s ease; }
+
+.sub-title {
+    margin: 14px 0 6px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--sm-accent, #c0392b);
+    border-left: 3px solid currentColor;
+    padding-left: 7px;
+}
+
+/* ---------- 五行详情 ---------- */
+.wuxing { padding: 7px 0; border-bottom: 1px dashed rgba(58, 47, 38, 0.16); }
+.wuxing-head { display: flex; align-items: center; gap: 7px; font-size: 1rem; }
+.wuxing-name { font-weight: 700; font-size: 1.12rem; }
+.wuxing-lv { color: #7a5a2f; }
+.wuxing-pct { margin-left: auto; color: #8a6a3a; }
+.wuxing-main { font-size: 0.78rem; padding: 1px 7px; border-radius: 8px; background: rgba(192, 57, 43, 0.16); color: #8a2f24; }
+.wuxing-desc { font-size: 0.9rem; line-height: 1.6; color: #6a5a46; margin-top: 3px; }
+
+/* ---------- 基本信息分组 ---------- */
+.data-group { margin-bottom: 12px; }
+.data-group-title { font-size: 1.05rem; font-weight: 700; color: var(--sm-accent, #c0392b); border-left: 3px solid currentColor; padding-left: 7px; margin-bottom: 5px; }
+.data-group.is-weather { background: rgba(192, 57, 43, 0.08); border-radius: 8px; padding: 7px 10px; }
+.data-fields { margin: 0; }
+.data-field { display: flex; gap: 10px; padding: 2px 0; font-size: 1rem; }
+.data-field dt { flex: 0 0 5.2em; color: #8a7a62; }
+.data-field dd { margin: 0; color: #3a2f26; word-break: break-word; }
+
+/* ---------- 背包 ---------- */
+.money-line { font-size: 1.08rem; font-weight: 700; color: #7a5a2f; margin-bottom: 10px; }
+.bag-item { padding: 9px 0; border-bottom: 1px dashed rgba(58, 47, 38, 0.18); }
+.bag-head { display: flex; justify-content: space-between; align-items: baseline; }
+.bag-name { font-weight: 700; font-size: 1.1rem; color: #3a2f26; }
+.bag-qty { font-size: 0.98rem; color: #7a5a2f; }
+.bag-meta { display: flex; gap: 7px; margin: 4px 0; }
+.bag-tag { font-size: 0.82rem; padding: 2px 9px; border-radius: 10px; background: rgba(192, 57, 43, 0.14); color: #8a2f24; }
+.bag-desc { font-size: 0.98rem; line-height: 1.7; color: #5a4a38; white-space: pre-line; }
+
+.data-empty { color: #8a7a62; font-size: 1rem; }

@@ -1,8 +1,8 @@
 import musicFiles from "../assets/音乐";
 
 // 背景音乐控制：由 UI 事件 kind:"music" 触发（后端小模型选择曲目）。
-// 曲库 = assets/音乐/ 下两个子目录：动态/（AI 选曲，见 trpg-world/音乐表.md）+ 固定/（界面专用，不走 AI）。
-// 曲名 = 文件名去扩展名（不含子目录）；把 mp3 丢进去即自动进曲库。
+// 曲库 = assets/音乐/ 下子目录：叙事探索/（叙事 BGM，选曲见 trpg-world/音乐.json）+ 战斗/ + 固定/（界面专用）。
+// 曲名 = 文件名去扩展名（不含子目录）；把 mp3 丢进对应目录即自动进曲库。
 const 曲库: Record<string, string> = {};
 for (const [path, url] of Object.entries(musicFiles)) {
   const name = path.split("/").pop()!.replace(/\.[^.]+$/, "");
@@ -25,14 +25,20 @@ function 开始播放(track: string) {
   audio.loop = true; // 循环播放
   audio.volume = 0.5;
   当前 = audio;
+  // ⚠️ 立即置位，别等 play() 的 then：play 是异步的，若在它 resolve 前
+  //    又被切走（popUiMusic 恢复旧曲），去重判断会读到旧值而跳过恢复，
+  //    结果新曲在后面才响 → BGM 残留在界面上。
+  当前曲 = track;
   audio
     .play()
     .then(() => {
-      当前曲 = track;
-      待播 = null;
-      console.info("[music] ▶", track, "（循环）");
+      if (当前 === audio) {
+        待播 = null;
+        console.info("[music] ▶", track, "（循环）");
+      }
     })
     .catch((e) => {
+      if (当前 !== audio) return;   // 已被切走（切曲时 pause 会抛 AbortError）：忽略
       待播 = track;
       console.warn("[music] 播放被拦（需用户手势）:", track, e?.name);
     });

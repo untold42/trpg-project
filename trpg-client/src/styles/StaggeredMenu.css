@@ -2,16 +2,25 @@
    玩家状态菜单（由 react-bits StaggeredMenu 精简改造）
    结构：
      .staggered-menu-wrapper  全屏容器（不拦截点击，常驻）
-       .sm-prelayers          多层背景（滑入动画）
-         .sm-prelayer[-1|-2]
        .sm-toggle             左上角触发按钮
-       .staggered-menu-panel  左侧面板
-         .sm-panel-inner      内容容器
-           .sm-panel-content  内容块容器（直接子元素逐个 stagger 入场）
-             .sm-stat-block   ← 每个内容块（金钱/背包/属性/状态）
-               .sm-stat-title
-               .sm-stat-body
+       .staggered-menu-panel  宣纸面板
+         .sm-panel-inner      内容容器（居中）
+           .sm-panel-content  内容块容器
+             .sm-menu-item   正方形菜单按钮（图标 + 文字）
+               .sm-menu-icon
+               .sm-menu-label
+
+   开合动画 = 宣纸缓缓铺开：mask-image 渐变从左→右揭幕（0.6s，软边），关闭反向收回。
+   旧的多层背景滑入 / 面板左滑 / 内容 stagger 已废弃（不再用 gsap）。
    ============================================================ */
+
+/* 揭幕进度：注册成可动画的百分比，驱动下面 mask 渐变的位置。
+   0% = 全隐；115% 越过右边缘，保证完全打开时最右侧也是实心。 */
+@property --sm-wipe {
+    syntax: '<percentage>';
+    inherits: false;
+    initial-value: 0%;
+}
 
 /* 全屏容器：常驻，但 pointer-events:none 让点击穿透；
    只有 .sm-toggle 和 .staggered-menu-panel 恢复可点 */
@@ -28,40 +37,6 @@
     /* 16:9 区域：与游戏画布等高、垂直居中，上下留黑边 */
     --menu-top: calc((100vh - 56.25vw) / 2);
     --menu-height: 56.25vw;
-}
-
-/* ---------- 多层背景（先于面板滑入，营造层叠感） ---------- */
-.sm-prelayers {
-    position: absolute;
-    top: var(--menu-top);
-    left: 0;
-    width: 100vw;
-    height: var(--menu-height);
-    pointer-events: none;
-    z-index: 5;
-}
-
-[data-position='right'] .sm-prelayers {
-    left: auto;
-    right: 0;
-}
-
-.sm-prelayer {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    opacity: 0;
-}
-
-/* 两层背景色，视觉风格在这里改 */
-.sm-prelayer-1 {
-    background: #2b2118;
-}
-
-.sm-prelayer-2 {
-    background: #4a3626;
 }
 
 /* ---------- 右上角触发按钮 ---------- */
@@ -104,74 +79,125 @@
     /* 面板底色 */
     display: flex;
     flex-direction: column;
-    padding: 5em 1.5em 1.5em 1.5em;
+    align-items: center;
+    justify-content: center;
+    padding: 2em 1.5em;
     box-sizing: border-box;
     overflow-y: auto;
 
     z-index: 10;
-    pointer-events: auto;
+    pointer-events: none;
+
+    /* 宣纸缓缓铺开：mask 渐变揭幕（带 10% 软边，不再是硬切线）+ 整版淡入。
+       缓动 cubic-bezier(0.5,0,0.1,1) = 起步有加速度、收尾带惯性。 */
+    --sm-wipe: 0%;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(var(--sm-wipe) - 10%), transparent var(--sm-wipe));
+            mask-image: linear-gradient(to right, #000 calc(var(--sm-wipe) - 10%), transparent var(--sm-wipe));
+    -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
     opacity: 0;
+    transition:
+        --sm-wipe 0.6s cubic-bezier(0.5, 0, 0.1, 1),
+        opacity   0.55s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+[data-open] .staggered-menu-panel {
+    --sm-wipe: 115%;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* 从右侧出：镜像，渐变方向反过来（右→左揭幕） */
 [data-position='right'] .staggered-menu-panel {
     left: auto;
     right: 0;
+    -webkit-mask-image: linear-gradient(to left, #000 calc(var(--sm-wipe) - 10%), transparent var(--sm-wipe));
+            mask-image: linear-gradient(to left, #000 calc(var(--sm-wipe) - 10%), transparent var(--sm-wipe));
 }
 
 /* ---------- 内容区 ---------- */
+/* 通用容器：铺满面板宽度（菜单 / 数据面板共用；具体布局交给各自的类） */
 .sm-panel-inner {
+    width: 100%;
+}
+
+/* 菜单 6 宫格：3 列，稀疏铺开 */
+.sm-panel-content {
+    display: grid;
+    grid-template-columns: repeat(3, auto);
+    justify-content: center;
+    justify-items: center;
+    align-items: center;
+    column-gap: clamp(40px, 6vw, 120px);
+    row-gap: clamp(36px, 5.5vw, 96px);
+}
+
+/* 内容：打开时逐条淡入（用 animation 而不是 transition——否则 transition-delay
+   会连悬停的 background/transform 一起延迟）。关闭时不动，交给面板揭幕收回。 */
+@keyframes smItemFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+[data-open] .sm-panel-content>* {
+    animation: smItemFadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* 逐条错峰：后面比前面晚一点点 */
+[data-open] .sm-panel-content>*:nth-child(1) { animation-delay: 0.06s; }
+[data-open] .sm-panel-content>*:nth-child(2) { animation-delay: 0.11s; }
+[data-open] .sm-panel-content>*:nth-child(3) { animation-delay: 0.16s; }
+[data-open] .sm-panel-content>*:nth-child(4) { animation-delay: 0.21s; }
+[data-open] .sm-panel-content>*:nth-child(5) { animation-delay: 0.26s; }
+[data-open] .sm-panel-content>*:nth-child(6) { animation-delay: 0.31s; }
+[data-open] .sm-panel-content>*:nth-child(7) { animation-delay: 0.36s; }
+[data-open] .sm-panel-content>*:nth-child(8) { animation-delay: 0.41s; }
+
+/* 菜单：6 个独立正方形按钮（图标 + 文字），稀疏铺开 */
+.sm-menu-item {
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
-}
-
-/* 内容块：直接子元素会在打开时逐个上浮入场 */
-.sm-panel-content>* {
-    will-change: transform, opacity;
-}
-
-/* 单个内容块（金钱/背包/属性/状态） */
-.sm-stat-block {
-    background: rgba(255, 255, 255, 0.6);
-    border-radius: 8px;
-    padding: 0.75rem 1rem;
-}
-
-.sm-stat-title {
-    margin: 0 0 0.4rem;
-    font-size: 1rem;
-    font-weight: 700;
-    color: var(--sm-accent, #c0392b);
-    font-family: "Source Han Serif TC", "思源宋体", serif;
-}
-
-.sm-stat-body {
-    font-size: 0.95rem;
-    color: #3a2f26;
-    line-height: 1.7;
-    white-space: pre-line;
-    font-family: "Source Han Serif TC", "思源宋体", serif;
-}
-/* 菜单项按钮（存档 / 放弃 / 地图 / 势力 / 返回） */
-.sm-menu-item {
-    display: block;
-    width: 100%;
-    padding: 0.7rem 1rem;
-    background: rgba(255, 255, 255, 0.6);
-    border: none;
-    border-radius: 8px;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    box-sizing: border-box;
+    width: clamp(96px, 8vw, 132px);
+    aspect-ratio: 1 / 1;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(58, 47, 38, 0.18);
+    border-radius: 14px;
     cursor: pointer;
-    text-align: left;
-    font-size: 1rem;
-    font-weight: 700;
     color: #3a2f26;
     font-family: "Source Han Serif TC", "思源宋体", serif;
-    transition: background 0.2s, color 0.2s;
+    transition: background 0.2s, color 0.2s, transform 0.25s, box-shadow 0.25s;
 }
 
 .sm-menu-item:hover {
-    background: rgba(255, 255, 255, 0.92);
+    background: rgba(255, 255, 255, 0.95);
     color: var(--sm-accent, #c0392b);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 18px rgba(58, 47, 38, 0.18);
+}
+
+/* 图标（内联 SVG）：跟按钮字色 */
+.sm-menu-icon {
+    width: 42%;
+    height: 42%;
+    color: #5a4a38;
+    transition: color 0.2s, transform 0.25s;
+}
+
+.sm-menu-item:hover .sm-menu-icon {
+    color: var(--sm-accent, #c0392b);
+    transform: scale(1.08);
+}
+
+.sm-menu-label {
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.04em;
 }
 
 /* ---------- 悬停：正常=未选中时按钮.png，悬停=金红矩形按钮.png ---------- */

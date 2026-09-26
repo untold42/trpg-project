@@ -1,0 +1,80 @@
+/* ===== 追踪任务 HUD（右上角，与古钟平行）===== */
+/* 古钟在左上（top:70px / left:25px）；这里对齐同一个 top，放右上。 */
+
+.quest-tracker {
+    pointer-events: auto;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 46vh;
+    overflow-y: auto;
+    font-family: "Source Han Serif TC", "Songti SC", "思源宋体", serif;
+    color: #f5efe0;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.qt-task {
+    background: rgba(20, 12, 6, 0.6);
+    border: 1px solid rgba(216, 180, 90, 0.4);
+    border-radius: 10px;
+    padding: 9px 12px 10px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(2px);
+}
+
+.qt-name {
+    font-size: 1.22rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: #f4e2a8;
+    line-height: 1.3;
+    word-break: break-word;
+}
+
+.qt-ms {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+}
+
+.qt-ms li {
+    position: relative;
+    padding-left: 1.05em;
+    font-size: 0.94rem;
+    line-height: 1.6;
+    color: rgba(245, 239, 224, 0.85);
+}
+
+.qt-ms li::before {
+    content: "○";
+    position: absolute;
+    left: 0;
+    color: rgba(216, 180, 90, 0.7);
+    font-size: 0.82em;
+}
+
+.qt-ms li.is-done {
+    color: rgba(245, 239, 224, 0.42);
+    text-decoration: line-through;
+}
+
+.qt-ms li.is-done::before {
+    content: "✓";
+    color: #9ec27a;
+    text-decoration: none;
+}
+
+/* hover 时轻微提亮，表示可点 */
+.quest-tracker:hover .qt-task {
+    border-color: rgba(244, 226, 168, 0.7);
+}
+
+/* 里程碑超过 3 条时的提示（避免让人以为只有这么几条） */
+.qt-more {
+    margin-top: 5px;
+    font-size: 0.78rem;
+    color: rgba(245, 239, 224, 0.5);
+    letter-spacing: 0.04em;
+}

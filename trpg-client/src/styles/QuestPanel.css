@@ -1,0 +1,234 @@
+/* ============================================================
+   任务页面内容（外壳的宣纸背景 / 揭幕动画由 StaggeredMenu 提供，与数据页面同款）
+   进行中：卡片 + 右上角「追踪」正方形勾选框（最多 3 个）
+   已了结：只读回望
+   关掉只靠 Esc（前端约定：不放返回按钮）
+   ============================================================ */
+
+.quest-panel {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    font-family: "Source Han Serif TC", "Songti SC", "思源宋体", serif;
+    color: #3a2f26;
+}
+
+/* ---------- 头部 ---------- */
+.quest-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 2px 6px 12px;
+}
+
+.quest-title {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    color: #3a2f26;
+}
+
+.quest-head-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.quest-track-count {
+    font-size: 0.98rem;
+    color: #7a5a2f;
+    letter-spacing: 0.08em;
+}
+
+.quest-taskify {
+    font-family: inherit;
+    font-size: 0.98rem;
+    letter-spacing: 0.06em;
+    color: #8a2f24;
+    background: rgba(192, 57, 43, 0.12);
+    border: 1px solid rgba(192, 57, 43, 0.45);
+    border-radius: 9px;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease, opacity 0.2s ease;
+}
+
+.quest-taskify:hover:not(:disabled) {
+    background: rgba(192, 57, 43, 0.22);
+}
+
+.quest-taskify:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+/* ---------- 卡片区（滚轮看 overflow） ---------- */
+.quest-body {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 2px 6px 16px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 14px;
+    align-content: start;
+}
+
+.quest-body::-webkit-scrollbar { width: 8px; }
+.quest-body::-webkit-scrollbar-thumb {
+    background: rgba(58, 47, 38, 0.28);
+    border-radius: 4px;
+}
+
+.quest-section-title {
+    grid-column: 1 / -1;
+    margin: 4px 0 2px;
+    font-size: 1.12rem;
+    font-weight: 700;
+    color: var(--sm-accent, #c0392b);
+    border-left: 3px solid currentColor;
+    padding-left: 8px;
+}
+
+/* ---------- 卡片 ---------- */
+.quest-card {
+    position: relative;
+    background: rgba(255, 255, 255, 0.36);
+    border: 1px solid rgba(58, 47, 38, 0.18);
+    border-radius: 12px;
+    padding: 12px 14px 12px;
+    min-width: 0;
+}
+
+.quest-card.done { opacity: 0.72; }
+.quest-card.expired { opacity: 0.72; border-color: rgba(58, 47, 38, 0.28); }
+
+.quest-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.quest-card-name {
+    font-size: 1.18rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: #3a2f26;
+    word-break: break-word;
+}
+
+.quest-badge {
+    flex: 0 0 auto;
+    font-size: 0.8rem;
+    padding: 2px 9px;
+    border-radius: 10px;
+    background: rgba(58, 47, 38, 0.14);
+    color: #5a4a38;
+}
+
+.quest-desc {
+    margin-top: 6px;
+    font-size: 0.98rem;
+    line-height: 1.7;
+    color: #5a4a38;
+}
+
+.quest-ddl {
+    margin-top: 6px;
+    font-size: 0.9rem;
+    color: #8a6a3a;
+    letter-spacing: 0.04em;
+}
+
+/* ---------- 里程碑列表 ---------- */
+.quest-ms {
+    list-style: none;
+    margin: 9px 0 0;
+    padding: 0;
+}
+
+.quest-ms li {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    font-size: 0.98rem;
+    line-height: 1.7;
+    color: #3a2f26;
+    padding: 1px 0;
+}
+
+.quest-ms .ms-mark {
+    flex: 0 0 auto;
+    width: 1em;
+    color: rgba(58, 47, 38, 0.45);
+    font-size: 0.9em;
+}
+
+.quest-ms li.is-done { color: #8a7a62; text-decoration: line-through; }
+.quest-ms li.is-done .ms-mark { color: #4f7d3a; text-decoration: none; }
+
+/* ---------- 追踪：正方形勾选框 ---------- */
+.quest-track {
+    flex: 0 0 auto;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    cursor: pointer;
+}
+
+.quest-track input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    margin: 0;
+    cursor: pointer;
+}
+
+.quest-box {
+    width: 22px;
+    height: 22px;
+    border: 2px solid rgba(58, 47, 38, 0.55);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.5);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.quest-box::after {
+    content: "✓";
+    font-size: 15px;
+    line-height: 1;
+    color: #fff;
+    opacity: 0;
+    transform: scale(0.6);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.quest-track.on .quest-box {
+    background: var(--sm-accent, #c0392b);
+    border-color: var(--sm-accent, #c0392b);
+}
+
+.quest-track.on .quest-box::after { opacity: 1; transform: scale(1); }
+
+.quest-track.locked { cursor: not-allowed; }
+.quest-track.locked .quest-box { opacity: 0.42; }
+.quest-track.locked input { cursor: not-allowed; }
+
+.quest-empty {
+    grid-column: 1 / -1;
+    color: #8a7a62;
+    font-size: 1rem;
+    padding: 6px 2px;
+}

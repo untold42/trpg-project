@@ -18,7 +18,12 @@ import { API } from "../api";
 import { useEsc } from "../escStack";
 import FacilityPanel, { type FacilityDetail } from "./FacilityPanel";
 import SkillTree, { prefetchSkillTree } from "./SkillTree";
-import ScenePicker from "./ScenePicker";
+import DataPanel from "./DataPanel";
+import QuestPanel, { type QuestsView } from "./QuestPanel";
+import QuestTracker from "./QuestTracker";
+import ToolLogPanel, { type ToolLogEntry } from "./ToolLogPanel";
+import ArtViewer, { type ArtInfo } from "./ArtViewer";
+import { IconSave, IconAbandon, IconReject, IconFaction, IconSkill, IconHome, IconQuest, IconUnstick } from "./MenuIcons";
 import historyFrame from "../assets/ui/历史记录框.png";   // 打开历史前先 decode，文字与背景板同步
 import { ensureDecoded } from "./uiPreload";
 import uiDialogBox from "../assets/ui/对话框.png";     // 叙事对话框背景
@@ -123,6 +128,22 @@ for (const [path, url] of Object.entries(galleryWebImages)) {
 // 每行放几个帮派
 const GALLERY_ROW_SIZE = 5;
 
+// ---- 任务追踪偏好（localStorage；最多 3）----
+const TRACK_KEY = "trpg.tracked.quests";
+const TRACK_MAX = 3;
+function readTracked(): string[] {
+    try {
+        const raw = localStorage.getItem(TRACK_KEY);
+        if (!raw) return [];
+        return (JSON.parse(raw) as unknown[])
+            .filter((x): x is string => typeof x === "string")
+            .slice(0, TRACK_MAX);
+    } catch { return []; }
+}
+function writeTracked(ids: string[]) {
+    try { localStorage.setItem(TRACK_KEY, JSON.stringify(ids)); } catch { /* 忽略 */ }
+}
+
 // 画廊条目 = 组件需要的字段 + 全屏阅读用的 detail
 type 画廊条目 = AccordionGalleryItem & { detail: string };
 
@@ -141,14 +162,20 @@ async function fetchFactions(): Promise<FactionEntry[]> {
 }
 
 // ---- 玩家状态（GET /state）----
-type PlayerState = {
+export type PlayerState = {
     金钱?: { 金钱?: number };
     状态?: Record<string, unknown>;
-    背包?: { 物品?: Record<string, { 类型?: string; 数量?: number }> };
-    属性?: { 基础属性?: Record<string, unknown> };
+    背包?: { 物品?: Record<string, { 类型?: string; 数量?: number; 描述?: string; 随身携带?: boolean }> };
+    属性?: {
+        基础属性?: Record<string, unknown>;
+        五行?: Record<string, unknown>;
+        学识?: Record<string, unknown>;
+    };
     基本信息?: Record<string, unknown>;
     // 移动参数（后端 移动.json 下发）：轻功→步速 / 奔跑倍率
     移动?: { 基础步速?: number; 轻功每点步速?: number; 奔跑倍率?: number };
+    // 后端顺带携回的异步 UI 事件（旁路裁定：任务 完成/续接/过期）
+    _ui_events?: UiEvent[];
 };
 
 type UiEvent = Extract<instruction, { type: "ui" }>;
@@ -158,13 +185,6 @@ type NarrativeLine = Extract<instruction, { type: "chat" } | { type: "narration"
     place: string;
     memories: { content: string; time?: string }[];
 };
-
-// 把 unknown 安全地转成可显示文本
-function show(v: unknown): string | number {
-    if (v === null || v === undefined || v === "") return "—";
-    if (typeof v === "string" || typeof v === "number") return v;
-    return String(v);
-}
 
 // 读取玩家状态（GET /state）；后端没起时返回 null
 async function getState(): Promise<PlayerState | null> {
@@ -211,12 +231,15 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     const [showMap, setShowMap] = useState(false);//展示地图
     const [showGallery, setShowGallery] = useState(false);//展示势力画廊
     const [showData, setShowData] = useState(false); // 数据面板（金钱/背包/属性/状态）
+    const [showQuests, setShowQuests] = useState(false); // 任务页面
+    const [quests, setQuests] = useState<QuestsView | null>(null);
+    const [tracked, setTracked] = useState<string[]>(readTracked);
+    const [questBusy, setQuestBusy] = useState(false);
+    const [artView, setArtView] = useState<ArtInfo | null>(null); // 画作浮层（后端推送）
+    const [toolLog, setToolLog] = useState<ToolLogEntry[]>([]);   // 工具GM 执行日志（右栏）
+    const [toolPending, setToolPending] = useState(0);            // 工具GM 待落地批数
     const [showMenu, setShowMenu] = useState(false); // 状态菜单（左侧滑出面板）；触发按钮在底部按钮栏里
     const [showSkillTree, setShowSkillTree] = useState(false); // 技能树（银河 + 五星圆弧，零大模型）
-    // 场景选择器（预览 / 手动选景）：URL ?scenes=1 可直接打开
-    const [showScenePicker, setShowScenePicker] = useState(
-        () => new URLSearchParams(window.location.search).get("scenes") === "1"
-    );
     const [readingIndex, setReadingIndex] = useState<number | null>(null);
     const [playerState, setPlayerState] = useState<PlayerState | null>(null); // 玩家真实状态
     const [background, setBackground] = useState<string>(
@@ -268,12 +291,105 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     const [clockRate, setClockRate] = useState(10);                           // 时钟倍率（移动速度随它缩放）
     const [sending, setSending] = useState(false);                            // LLM 请求进行中（时钟冻结）
     const [saving, setSaving] = useState(false);                              // 存档进行中（蒸馏可能 1~3 分钟）
+    const sendingRef = useRef(false);                                        // 供轮询回调读到最新值
+    sendingRef.current = sending;
     const { isNight, shichen } = useWorldTime();                            // 昼夜 + 时辰：地图夜色 + 打烊不亮灯
 
     // 统一处理 /state 返回：更新状态
+    // ---- 任务：追踪（localStorage，最多 3）+ 拉取 ----
+    const reloadQuests = async () => {
+        try {
+            const r = await fetch(`${API}/quests`);
+            if (!r.ok) return;
+            const view = (await r.json()) as QuestsView;
+            setQuests(view);
+            // 追踪的 id 只保留仍在进行中的（任务了结后自动从 HUD 消失）
+            setTracked((prev) => {
+                const alive = new Set(view.进行中.map((q) => q.id));
+                const pruned = prev.filter((id) => alive.has(id));
+                if (pruned.length !== prev.length) { writeTracked(pruned); return pruned; }
+                return prev;
+            });
+        } catch { /* 后端没起：忽略 */ }
+    };
+    // 工具GM 执行日志（右栏面板）：拉最近 20 条
+    const reloadToolLog = async () => {
+        try {
+            const r = await fetch(`${API}/toollog?n=20`);
+            if (!r.ok) return;
+            const d = (await r.json()) as { 日志?: ToolLogEntry[]; 待落地?: number };
+            setToolLog(d?.日志 ?? []);
+            setToolPending(d?.待落地 ?? 0);
+        } catch { /* 后端没起：忽略 */ }
+    };
+    const toggleTrack = (id: string) => {
+        setTracked((prev) => {
+            let next: string[];
+            if (prev.includes(id)) next = prev.filter((x) => x !== id);
+            else if (prev.length < TRACK_MAX) next = [...prev, id];
+            else return prev;                       // 已达上限：忽略
+            writeTracked(next);
+            return next;
+        });
+    };
+    const taskify = async () => {
+        if (questBusy) return;
+        setQuestBusy(true);
+        try {
+            const r = await fetch(`${API}/quest/add`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({}),
+            });
+            if (r.ok) {
+                const d = (await r.json()) as { 任务?: QuestsView };
+                if (d?.任务) setQuests(d.任务); else await reloadQuests();
+            }
+        } catch { /* 忽略 */ } finally { setQuestBusy(false); }
+    };
+    // 开局拉一次任务（追踪偏好由 useState 懒初始化读回）
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    useEffect(() => { void reloadQuests(); void reloadToolLog(); }, []);
+    // 打开任务页面时再强制拉一次：异步裁定的事件要等下一次 /state 或 /action 才送到，
+    // 这里保证「点开就是最新」，不依赖事件先到。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    useEffect(() => { if (showQuests) void reloadQuests(); }, [showQuests]);
+    // 后端主动发起的 GM 回合（server→GM push，如画作完成）：轮询取回，按与 /action 同一套渲染。
+    // 每 3s 一次；玩家回合进行中（sending）时跳过，避免与回合交错（后端本来就串行化了回合）。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        const timer = window.setInterval(async () => {
+            if (sendingRef.current) return;
+            void reloadToolLog();   // 工具GM 日志/待落地：每 3s 顺带刷新
+            try {
+                const r = await fetch(`${API}/pending`);
+                if (!r.ok) return;
+                const d = (await r.json()) as { events?: instruction[] };
+                const events = d?.events ?? [];
+                if (!events.length) return;
+                const narrative = events.filter(
+                    (it): it is NarrativeLine => it.type === "chat" || it.type === "narration"
+                );
+                const uiEvents = events.filter((it): it is UiEvent => it.type === "ui");
+                const uiMode = handleUiEvents(uiEvents);
+                if (narrative.length) {
+                    const base = historyRef.current.length;
+                    setHistory((prev) => [...prev, ...narrative]);
+                    setSceneStart(base);
+                    if (uiMode) setGameMode(uiMode);
+                }
+            } catch { /* 后端没起：忽略 */ }
+        }, 3000);
+        return () => window.clearInterval(timer);
+    }, []);
+
     function applyState(s: PlayerState | null) {
         if (!s) return;
         setPlayerState(s);
+        // GET /state 会顺带 `drain()` 异步裁定攒下的 UI 事件（任务 完成/续接/过期）。
+        // 这里必须消费掉：否则事件被 drain 出队列又被丢弃，前端再也不会重新拉任务栏
+        // ——「旁路裁决补了里程碑但界面不刷新」就是漏了这一步。
+        if (s._ui_events?.length) handleUiEvents(s._ui_events);
     }
 
     // 探索奔跑结算：把「超出步行的距离（米）」交给后端扣精力（返回新状态）
@@ -314,7 +430,24 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                     mode = m;
                     setGameMode(m);
                 }
+            } else if (ev.kind === "toollog") {
+                // 工具GM 执行完毕 → 刷新右栏日志 + 刷新钱/背包面板
+                void reloadToolLog();
+                void getState().then(applyState);
+            } else if (ev.kind === "art") {
+                // 画作：完成后浮层展示（对话框正上方，可关，不挡对话）
+                const st = String(ev.data.状态 ?? "");
+                const img = String(ev.data.图片 ?? "");
+                if ((st === "已完成" || st === "完成") && img) {
+                    setArtView({
+                        图片: img.startsWith("http") ? img : API + img,
+                        题: String(ev.data.题 ?? ""),
+                        作者: String(ev.data.作者 ?? ""),
+                    });
+                }
             } else {
+                // 任务：完成 / 续接 / 过期等异步事件 → 刷新任务栏
+                if (ev.kind === "quest") void reloadQuests();
                 console.debug("[ui]", ev.kind, ev.data);
             }
         }
@@ -434,6 +567,31 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         }
     }
 
+    // 脱离卡死：把玩家从走不出去的位置挪到附近**最近的可行走点**（后端吸附到最近的路）。
+    // 纯机械修正，不经过主持人、不写叙事、不推时间；成功后把地图光标一起挪过去。
+    async function handleUnstick() {
+        try {
+            const res = await fetch(`${API}/unstick`, { method: "POST" });
+            const d = await res.json();
+            if (!d?.success) {
+                window.alert(d?.error || "脱离失败：附近找不到可行走的路。");
+                return;
+            }
+            const p = d.位置 || {};
+            if (typeof p.经度 === "number" && typeof p.纬度 === "number") {
+                const pt = { lon: p.经度, lat: p.纬度 };
+                cursorRef.current = pt;
+                prevCursorRef.current = pt;
+                setCursor(pt);
+            }
+            applyState(await getState());
+            const 米 = d?.脱离?.到?.距离_m;
+            window.alert(`已脱离卡死：挪到「${p.地点 || "附近的路"}」` + (米 ? `（约 ${米} 米外）` : ""));
+        } catch {
+            window.alert("后端没起，脱离失败。");
+        }
+    }
+
     // WASD 移动停下 → 同步快照 + 记轨迹
     // （**不能用点击瞬移**：玩家只能一步步走；点地图仍可看 POI 信息，但不移动玩家）
     function handleExploreStop(p: { lon: number; lat: number }) {
@@ -458,6 +616,8 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         const wasExplore = gameMode === "explore";
         const body: Record<string, unknown> =
             ke === undefined ? { input: content, mode } : { input: content, mode, ke };
+        // 追踪的任务：后端据此注入「事件真相」并跑任务进度判定
+        body.追踪 = tracked;
         // 探索模式：带上光标坐标（当前 + 上一次）→ 后端更新位置并告知主持人「从哪到哪」
         const cur = cursorRef.current;
         if (wasExplore && cur) {
@@ -752,11 +912,13 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
     useEsc(() => setShowMap(false), showMap);
     useEsc(() => setShowGallery(false), showGallery);
     useEsc(() => setShowData(false), showData);
-    useEsc(() => setShowScenePicker(false), showScenePicker);
     useEsc(() => setShowInputSay(false), showInputSay);
     useEsc(() => setShowContinue(false), showContinue);
     useEsc(() => setRecallInfo(null), recallInfo !== null);
     useEsc(() => setReadingIndex(null), readingIndex !== null);
+    // 根层 Esc：没有别的浮层时按 Esc 开/关左侧菜单。其它浮层入栈比它晚 → 永远先退栈，
+    // 只有栈底轮到它时才会响（战斗 / 存档中 / 前情 / 加载中不接管：这些状态下「菜单」按钮本就点不到）。
+    useEsc(() => setShowMenu((o) => !o), loaded && !recap && !battleState && !saving);
 
     //判断是否预加载完成
     if (!loaded) {
@@ -793,12 +955,10 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
             : null;
         // 时钟暂停条件：打字（输入框）/ 看历史·地图·数据·势力·详情 / 等 LLM 回复
         const clockPaused =
-            sending || showMenu || showHistory || showMap || showData || showGallery || showSkillTree || showScenePicker ||
+            sending || showMenu || showHistory || showMap || showData || showQuests || showGallery || showSkillTree ||
             showContinue || recallInfo !== null || facilityInfo !== null ||
             readingIndex !== null || showInputGM || showInputAct || showInputSay;
-        const 状态 = playerState?.状态 ?? {};        const 基础 = playerState?.属性?.基础属性 ?? {};
-        const 物品 = playerState?.背包?.物品 ?? {};
-        const 金钱 = playerState?.金钱?.金钱;
+        const 基础 = playerState?.属性?.基础属性 ?? {};
         // 天气（探索层动效用）：基本信息.天气.状况
         const 天气状况 = (((playerState?.基本信息 ?? {}) as Record<string, unknown>)["天气"] as { 状况?: string } | undefined)?.状况 ?? "";
         // 移动：轻功→步速、奔跑倍率（参数由后端 移动.json 下发）
@@ -813,15 +973,6 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
         // 未取得后端 `移动.json` 配置前暂缓移动，不在前端维护第二套策划数值。
         const 步速 = 移动配置就绪 ? 基础步速 * (1 + 轻功 * 轻功步速系数) : 0;
         const 奔跑倍率 = 移动配置就绪 ? 配置奔跑倍率 : 1;
-
-        const 金钱文本 = 金钱 == null ? "—" : `${金钱} 文`;
-        const 背包文本 = Object.keys(物品).length
-            ? Object.entries(物品)
-                  .map(([名, item]) => `${名} ×${show(item.数量 ?? 1)}${item.类型 ? `（${item.类型}）` : ""}`)
-                  .join(" · ")
-            : "空";
-        const 属性文本 = `体力 ${show(基础.体力)} · 内力 ${show(基础.内力)} · 剑法 ${show(基础.剑法)} · 轻功 ${show(基础.轻功)}`;
-        const 状态文本 = `生命 ${show(状态.生命值)}/${show(状态.生命上限)} · 精力 ${show(状态.精力值)}/${show(状态.精力上限)} · 饥饿 ${show(状态.饥饿)}/100（${show(状态.饥饿挡位)}）`;
 
         return (
             <div className="background">
@@ -859,6 +1010,10 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                 )}
 
                 <Clock paused={clockPaused} />
+                <div className="right-hud">
+                    <QuestTracker quests={quests} tracked={tracked} onOpen={() => setShowQuests(true)} />
+                    <ToolLogPanel entries={toolLog} pending={toolPending} />
+                </div>
 
                 {/* 探索模式的叙事浮层（#3）：GM 在「切回探索」时说的话也看得见 */}
                 {enLine && (
@@ -942,6 +1097,10 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                         setShowHistory(true);
                     }}>
                         历史记录
+                    </button>
+
+                    <button className="quest-button" onClick={() => setShowQuests(!showQuests)}>
+                        任务
                     </button>
 
                     <button className="data-button" onClick={() => setShowData(!showData)}>
@@ -1043,15 +1202,6 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
 
                 {showSkillTree && <SkillTree onClose={() => setShowSkillTree(false)} />}
 
-                {showScenePicker && (
-                    <ScenePicker
-                        current={bgPosition}
-                        period={period}
-                        onPick={(s) => setBgPosition(s)}
-                        onClose={() => setShowScenePicker(false)}
-                    />
-                )}
-
                 {
                 readingIndex !== null && (
                     <div className="gallery-reader">
@@ -1075,27 +1225,18 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                 )
                 }
 
-                {
-                showData && (
-                    <div className="data-box">                        <section className="sm-stat-block">
-                            <h3 className="sm-stat-title">金钱</h3>
-                            <div className="sm-stat-body">{金钱文本}</div>
-                        </section>
-                        <section className="sm-stat-block">
-                            <h3 className="sm-stat-title">背包</h3>
-                            <div className="sm-stat-body">{背包文本}</div>
-                        </section>
-                        <section className="sm-stat-block">
-                            <h3 className="sm-stat-title">属性</h3>
-                            <div className="sm-stat-body">{属性文本}</div>
-                        </section>
-                        <section className="sm-stat-block">
-                            <h3 className="sm-stat-title">状态</h3>
-                            <div className="sm-stat-body">{状态文本}</div>
-                        </section>
-                    </div>
-                )
-                }
+                {/* 任务页面：同样复用菜单的宣纸 + 揭幕动画 */}
+                <StaggeredMenu position="left" hideToggle open={showQuests} onOpenChange={setShowQuests}
+                    contentClassName="sm-data-inner">
+                    <QuestPanel quests={quests} tracked={tracked} maxTracked={3}
+                        onToggleTrack={toggleTrack} onTaskify={taskify} busy={questBusy} />
+                </StaggeredMenu>
+
+                {/* 数据面板：复用菜单的宣纸 + 揭幕动画，全屏 4 列（属性 / 状态 / 基本信息 / 背包） */}
+                <StaggeredMenu position="left" hideToggle open={showData} onOpenChange={setShowData}
+                    contentClassName="sm-data-inner">
+                    <DataPanel state={playerState} />
+                </StaggeredMenu>
 
                 {recallInfo && (
                     <div className="recall-panel">
@@ -1154,15 +1295,45 @@ function Gaming({ onBackMenu, initialBg, initialMusic, initialRecap }: GamingPro
                     </div>
                 )}
 
-                <StaggeredMenu position="left" menuLabel="菜单" accentColor="#c0392b" closeOnContentClick
+                {/* 画作浮层：后端主动推送（server→GM push）呈现的画，放对话框正上方 */}
+                <ArtViewer art={artView} onClose={() => setArtView(null)} />
+
+                {/* 菜单不做 closeOnContentClick：**势力 / 技能树要留在菜单上面**，
+                    Esc 关掉它们后回到菜单（层级递进）；只对“离开菜单”的动作手动关。 */}
+                <StaggeredMenu position="left" menuLabel="菜单" accentColor="#c0392b"
                     hideToggle open={showMenu} onOpenChange={setShowMenu}>
-                    <button className="sm-menu-item" onClick={triggerSave}>存档游戏</button>
-                    <button className="sm-menu-item" onClick={handleAbandon}>放弃本轮</button>
-                    <button className="sm-menu-item" onClick={handleReject}>驳回上轮</button>
-                    <button className="sm-menu-item" onClick={() => setShowGallery(true)}>势力</button>
-                    <button className="sm-menu-item" onClick={() => setShowSkillTree(true)}>技能树</button>
-                    <button className="sm-menu-item" onClick={() => setShowScenePicker(true)}>场景选择</button>
-                    <button className="sm-menu-item" onClick={onBackMenu}>返回主菜单</button>
+                    <button className="sm-menu-item" onClick={() => { setShowMenu(false); triggerSave(); }}>
+                        <IconSave className="sm-menu-icon" />
+                        <span className="sm-menu-label">存档游戏</span>
+                    </button>
+                    <button className="sm-menu-item" onClick={() => { setShowMenu(false); handleAbandon(); }}>
+                        <IconAbandon className="sm-menu-icon" />
+                        <span className="sm-menu-label">放弃本轮</span>
+                    </button>
+                    <button className="sm-menu-item" onClick={() => { setShowMenu(false); handleReject(); }}>
+                        <IconReject className="sm-menu-icon" />
+                        <span className="sm-menu-label">驳回本轮</span>
+                    </button>
+                    <button className="sm-menu-item" onClick={() => { setShowMenu(false); setShowQuests(true); }}>
+                        <IconQuest className="sm-menu-icon" />
+                        <span className="sm-menu-label">任务</span>
+                    </button>
+                    <button className="sm-menu-item" onClick={() => setShowGallery(true)}>
+                        <IconFaction className="sm-menu-icon" />
+                        <span className="sm-menu-label">势力</span>
+                    </button>
+                    <button className="sm-menu-item" onClick={() => setShowSkillTree(true)}>
+                        <IconSkill className="sm-menu-icon" />
+                        <span className="sm-menu-label">技能树</span>
+                    </button>
+                    <button className="sm-menu-item" onClick={() => { setShowMenu(false); void handleUnstick(); }}>
+                        <IconUnstick className="sm-menu-icon" />
+                        <span className="sm-menu-label">脱离卡死</span>
+                    </button>
+                    <button className="sm-menu-item" onClick={onBackMenu}>
+                        <IconHome className="sm-menu-icon" />
+                        <span className="sm-menu-label">返回主菜单</span>
+                    </button>
                 </StaggeredMenu>
 
                 {
