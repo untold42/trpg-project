@@ -33,12 +33,14 @@ export_walkable.py
 
 import argparse
 import json
+import math
 import os
 import sqlite3
 import sys
 
 import shapely.geometry as sg
 from shapely.geometry import mapping
+from shapely.ops import unary_union
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -54,6 +56,9 @@ FRONTEND_PUBLIC = os.path.abspath(os.path.join(
     os.path.dirname(os.path.dirname(BASE_DIR)), "trpg-client", "public"))
 # 一城市一个目录：public/data/<map_id>/walkable.geojson
 DEFAULT_OUT = os.path.join(FRONTEND_PUBLIC, "data", MAP_ID, "walkable.geojson")
+
+M_PER_DEG_LAT = 111132.0
+M_PER_DEG_LON0 = 111320.0   # 赤道；用时乘 cos(lat)
 
 
 # ------------------------------------------------------------
@@ -103,6 +108,30 @@ def round_coords(x, nd=5):
     return x
 
 
+def _flatten_coords(coords, out):
+    """把任意层级坐标里的 [lon, lat] 点收进 out（供算城心用）。"""
+    if isinstance(coords, (list, tuple)):
+        if coords and isinstance(coords[0], (int, float)):
+            out.append([float(coords[0]), float(coords[1])])
+        else:
+            for c in coords:
+                _flatten_coords(c, out)
+
+
+def _iter_lines(g):
+    """迭代几何里的所有 LineString（含 Multi/GeometryCollection）。"""
+    if g is None or g.is_empty:
+        return
+    gt = g.geom_type
+    if gt == "LineString":
+        yield g
+    elif gt == "MultiLineString":
+        yield from g.geoms
+    elif gt == "GeometryCollection":
+        for sub in g.geoms:
+            yield from _iter_lines(sub)
+
+
 def n_vertices(coords):
     n = 0
 
@@ -138,6 +167,7 @@ def main():
 
     # ---- 水域（简化）----
     raw_v = simp_v = 0
+    water_geoms = []
     for name, gt, ct in conn.execute(
             "SELECT name, geometry_type, coords FROM features "
             "WHERE category='water' AND geometry_type IN ('Polygon','MultiPolygon')"):
@@ -152,18 +182,23 @@ def main():
         if m["type"] not in ("Polygon", "MultiPolygon"):
             continue
         simp_v += n_vertices(m["coordinates"])
+        water_geoms.append(s)
         add("water", {"type": m["type"], "coordinates": round_coords(m["coordinates"])},
             name=name)
 
     # ---- 城墙 ----
+    wall_pts = []
     for gt, ct in conn.execute(
             "SELECT geometry_type, coords FROM features WHERE ancient_kind='城墙'"):
-        add("wall", {"type": gt, "coordinates": round_coords(json.loads(ct))})
+        coords = json.loads(ct)
+        add("wall", {"type": gt, "coordinates": round_coords(coords)})
+        _flatten_coords(coords, wall_pts)
 
     # ---- 城门（按坐标去重：custom/historic 各存了一份）----
     _cols = [r[1] for r in conn.execute("PRAGMA table_info(features)")]
     _hours = "hours" if "hours" in _cols else "NULL"
     seen = set()
+    gate_pts = []
     for name, gt, ct, hours in conn.execute(
             f"SELECT name, geometry_type, coords, {_hours} "
             "FROM features WHERE ancient_kind='城门'"):
@@ -172,8 +207,27 @@ def main():
         if key in seen:
             continue
         seen.add(key)
+        gate_pts.append(co)
         add("gate", {"type": gt, "coordinates": round_coords(co)},
             name=name, hours=(hours or ""))
+
+    # ---- 城门外的「护城河桥」----
+    # 护城河一圈没有桥 → 玩家走不到城门。每个城门沿「城心 → 城门」方向往外放 2 个桥点
+    # （≈40m / 85m），让城门外的护城河可走（前端：桥 100m 半径内可走）。
+    if gate_pts:
+        ref = wall_pts or gate_pts
+        cx = sum(p[0] for p in ref) / len(ref)
+        cy = sum(p[1] for p in ref) / len(ref)
+        mlon = M_PER_DEG_LON0 * math.cos(math.radians(cy))
+        for gx, gy in gate_pts:
+            dx, dy = (gx - cx) * mlon, (gy - cy) * M_PER_DEG_LAT
+            n = math.hypot(dx, dy) or 1.0
+            ux, uy = dx / n, dy / n
+            for step in (40.0, 85.0):
+                add("bridge", {"type": "Point", "coordinates": [
+                    round(gx + ux * step / mlon, 5),
+                    round(gy + uy * step / M_PER_DEG_LAT, 5)]},
+                    name="城门桥", kind="护城河")
 
     # ---- 桥 / 浮桥 ----
     for name, gt, ct in conn.execute(
@@ -190,12 +244,56 @@ def main():
             name=name, kind=akind)
 
     # ---- 道路（不含城墙）----
+    road_geoms = []
     for name, gt, ct, akind in conn.execute(
             "SELECT name, geometry_type, coords, ancient_kind FROM features "
             "WHERE category='road' AND (ancient_kind IS NULL OR ancient_kind<>'城墙')"):
-        add("road", {"type": gt, "coordinates": round_coords(json.loads(ct))},
+        coords = json.loads(ct)
+        road_geoms.append(sg.shape({"type": gt, "coordinates": coords}))
+        add("road", {"type": gt, "coordinates": round_coords(coords)},
             name=name, kind=akind,
             mult=ROAD_MULT.get(akind, DEFAULT_ROAD_MULT))
+
+    # ---- 路 ∩ 水域：自动补「路桥」----
+    # 窄路廊道（ROAD_HALF=6m）在宽水面上几乎走不过去（看起来就像“河上没桥”）。
+    # 在每条路与水面的相交段上，沿顶点（长段补中点）补桥点
+    # → 前端“桥 100m 半径内可走”，形成宽而明确的过河通道。
+    if water_geoms and road_geoms:
+        try:
+            wu = unary_union(water_geoms)
+        except Exception as e:
+            wu = None
+            print(f"  !! 水域合并失败，跳过路桥：{e}")
+        seen_br = set()
+        n_rb = 0
+        if wu is not None:
+            def _emit(lon, lat):
+                nonlocal n_rb
+                key = (round(lon, 5), round(lat, 5))
+                if key in seen_br:
+                    return
+                seen_br.add(key)
+                add("bridge", {"type": "Point", "coordinates": [key[0], key[1]]},
+                    name="路桥", kind="涉水")
+                n_rb += 1
+            for rg in road_geoms:
+                try:
+                    inter = rg.intersection(wu)
+                except Exception:
+                    continue
+                for line in _iter_lines(inter):
+                    cs = list(line.coords)
+                    for k in range(len(cs)):
+                        x1, y1 = cs[k]
+                        _emit(x1, y1)
+                        if k + 1 < len(cs):
+                            x2, y2 = cs[k + 1]
+                            d = math.hypot(
+                                (x2 - x1) * M_PER_DEG_LON0 * math.cos(math.radians(y1)),
+                                (y2 - y1) * M_PER_DEG_LAT)
+                            if d > 60:
+                                _emit((x1 + x2) / 2, (y1 + y2) / 2)
+            print(f"  路桥（路∩水）补点 {n_rb}")
 
     # ---- 地形步速区（可选：老库无 tags 列则跳过）----
     if "tags" in _cols:
