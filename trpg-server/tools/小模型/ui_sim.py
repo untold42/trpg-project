@@ -11,7 +11,8 @@ ui_sim.py
 
 小模型只做**从固定枚举里选一个**（离散、无幻觉面）：
     场景 ∈ 前端 `assets/背景_重构/` 下**已经有图**的场景目录 + 「无」
-    音乐 ∈ `音乐表.md`「叙事」节里的曲目 + 「无」；战斗曲在同文件的「战斗」节，叙事候选看不到
+    音乐 = **条件判定（代码决定，不问小模型）**：清单 `trpg-world/音乐.json`「叙事」节，
+        按地点/时辰/追踪/人物/天气/日期/农历/节日/好感度判定命中，取「条件最多」者；全不中 → 兜底曲。
 「无」= 保持当前不变。
 
 降级：小模型不可用 / 输出非法 → 返回空列表，前端保持原样。
@@ -32,8 +33,10 @@ _SCENE_DIR = _ROOT / "trpg-client" / "src" / "assets" / "背景_重构"
 #: 背景三大分类 = 三个文件夹；`室内` 随处可用，`城内/城外` 严格按 `在城内` 互斥
 _SCENE_CATS = ("城内", "城外", "室内")
 _MUSIC_DIR = _ROOT / "trpg-client" / "src" / "assets" / "音乐"
-_MUSIC_DYNAMIC_DIR = _MUSIC_DIR / "动态"   # AI 选曲在 动态/；固定/ 是界面专用，不进候选
-_MUSIC_MANIFEST = _ROOT / "trpg-world" / "音乐表.md"   # 一份两节：叙事 + 战斗
+_MUSIC_NARRATIVE_DIR = _MUSIC_DIR / "叙事探索"   # 叙事 / 探索 BGM
+_MUSIC_BATTLE_DIR = _MUSIC_DIR / "战斗"            # 战斗 BGM
+_MUSIC_FIXED_DIR = _MUSIC_DIR / "固定"             # 界面专用，不进候选
+_MUSIC_MANIFEST = _ROOT / "trpg-world" / "音乐.json"   # 条件表：叙事 + 战斗
 _MUSIC_SECTION = "叙事"
 _BATTLE_SECTION = "战斗"
 _SCENE_TABLE = _ROOT / "trpg-world" / "场景表.json"   # 说明 + 地点候选 + 兜底组 + 场景原型 + 分批
@@ -46,15 +49,14 @@ NONE = "无"
 DEFAULT_TRACK = "山中好岁月"
 
 SYSTEM = (
-    "你是武侠世界（南宋）的「场景 / 音乐」标注器，只输出 JSON。"
-    "读**最近几轮叙事**，判断**玩家此刻身处的环境**最适合的场景与音乐。"
+    "你是武侠世界（南宋）的「场景标注器」，只输出 JSON。"
+    "读**最近几轮叙事**，判断**玩家此刻身处的环境**最适合的场景。"
     "【场景】只能从给定候选集合里选一个——这个集合就是该地点内部可能出现的空间"
     "（例：青楼 → 青楼 / 厅堂 / 闺房 / 阁楼 / 灶房 / 后院 / 屋顶）。"
     "玩家移步、被引路、被送上楼、进房、入席、登高、被带到后院……"
     "只要叙事显示他换到了另一个空间，就选对应的；没换、或拿不准、或与当前一致，就填「无」保持当前。"
     "**读整段语义判断，不要靠某个动词。**"
-    "【音乐】按叙事的情境 / 情绪选，带【本地点专属】的优先。"
-    "场景与音乐都只能从给定枚举里选一个；禁止叙述、禁止解释、禁止输出 JSON 以外的任何内容。\n/no_think"
+    "场景只能从给定枚举里选一个；禁止叙述、禁止解释、禁止输出 JSON 以外的任何内容。\n/no_think"
 )
 
 
@@ -83,11 +85,47 @@ def scene_keys() -> list[str]:
     return sorted(scene_categories())
 
 
+def _mp3_stems(d: Path) -> list[str]:
+    return sorted(p.stem for p in d.glob("*.mp3")) if d.is_dir() else []
+
+
 def music_tracks() -> list[str]:
-    """可选音乐：扫前端 `assets/音乐/动态/` 的 mp3 曲名（`固定/` 是界面专用，不走 AI）。"""
-    if _MUSIC_DYNAMIC_DIR.is_dir():
-        return sorted(p.stem for p in _MUSIC_DYNAMIC_DIR.glob("*.mp3"))
-    return []
+    """叙事/探索可选曲 = `assets/音乐/叙事探索/` 下的 mp3（`固定/` 界面专用、`战斗/` 另算）。"""
+    return _mp3_stems(_MUSIC_NARRATIVE_DIR)
+
+
+def _battle_stems() -> list[str]:
+    return _mp3_stems(_MUSIC_BATTLE_DIR)
+
+
+_MUSIC_JSON_CACHE: dict = {}
+
+
+def _music_json() -> dict:
+    """读 `trpg-world/音乐.json`（按 mtime 缓存）。热改免重启。"""
+    try:
+        m = _MUSIC_MANIFEST.stat().st_mtime
+    except OSError:
+        return {}
+    if _MUSIC_JSON_CACHE.get("m") == m:
+        return _MUSIC_JSON_CACHE["v"]
+    try:
+        v = json.loads(_MUSIC_MANIFEST.read_text(encoding="utf-8"))
+        if not isinstance(v, dict):
+            v = {}
+    except (OSError, json.JSONDecodeError):
+        v = {}
+    _MUSIC_JSON_CACHE["m"], _MUSIC_JSON_CACHE["v"] = m, v
+    return v
+
+
+def default_track(tracked=None) -> str:
+    """没有条件命中时的**兜底曲**。`默认` 可为字符串，或 `{"有": 曲, "无": 曲}`（按追踪任务）。"""
+    d = _music_json().get("默认")
+    if isinstance(d, dict):
+        key = "有" if tracked else "无"
+        return str(d.get(key) or d.get("无") or d.get("有") or DEFAULT_TRACK)
+    return str(d or DEFAULT_TRACK)
 
 
 def _parse_lines(lines) -> dict:
@@ -207,26 +245,31 @@ def _eligible_scene(scene: str, cats: dict[str, str], inside: bool) -> bool:
     """该场景此刻是否可选。
 
     - **城内**：所有背景都可用（不设限）；
-    - **城外**：只允许 `背景_重构/城外/` 里的（= 唯一的「城外集合」）。
+    - **城外**：允许 `背景_重构/城外/` 的，**也允许「室内」**——
+      室内是“人所在的内部”，城内城外都成立（船舱 / 画舫 / 帐篷 / 轿内 / 破庙内…）。
     """
     c = cats.get(scene)
     if c is None:
         return False
-    return True if inside else (c == "城外")
+    return True if inside else (c in ("城外", "室内"))
 
 
-def _scenes_for_kind(kind: str, indoor: bool = False) -> list[str]:
+def _scenes_for_kind(kind: str, indoor: bool = False, strict: bool = True) -> list[str]:
     """按**已解析的地点类型**给背景候选（纯查表；不查库、不调模型）。
 
-      · **城内**：该 kind 的候选集合直接可用（不额外设限）；
-      · **城外**：候选集合 ∩ 「城外集合」（`背景_重构/城外/`）——严格只用城外背景；
+      · **strict=True**（默认，叙事用）：城内→该 kind 候选直接可用；城外→候选 ∩ 「城外集合」。
+      · **strict=False**（设施「详细」用）：**不按玩家位置过滤**，直接用该 kind 自己的候选
+        （否则「画舫」这种室内类场景，在玩家于城外时会被滤掉、兜底成码头）。
       · 过滤后为空才走兜底组 / 全量兜底。
     """
     cats = scene_categories()
     inside = _player_inside_city() is True
     mapping = scene_kind_map()
     if kind and mapping.get(kind):
-        cands = [s for s in mapping[kind] if _eligible_scene(s, cats, inside)]
+        if strict:
+            cands = [s for s in mapping[kind] if _eligible_scene(s, cats, inside)]
+        else:
+            cands = [s for s in mapping[kind] if cats.get(s) is not None]   # 只要图存在
         if cands:
             return cands
     if not inside:
@@ -282,18 +325,18 @@ def scene_candidates(location: str = None, indoor: bool = False) -> list[str]:
     return _nearby_candidates(indoor)
 
 
-def scenes_for_kind(kind: str, indoor: bool = False) -> list[str]:
+def scenes_for_kind(kind: str, indoor: bool = False, strict: bool = True) -> list[str]:
     """按地点类型（kind）直接给候选——不查库（调用方已知 kind 时用）。"""
-    return _scenes_for_kind((kind or "").strip(), indoor)
+    return _scenes_for_kind((kind or "").strip(), indoor, strict)
 
 
-def scene_for(kind: str, place: str = "", indoor: bool = False) -> str:
+def scene_for(kind: str, place: str = "", indoor: bool = False, strict: bool = True) -> str:
     """**确定性**取该 kind 的**主场景**（候选集合第一个 = 设施自己的场景；不调模型）。
 
-    用于探索态「详细」页这类需要稳定结果的场合；叙事态不用它（交小模型在候选里选）。
-    没有可用场景时返回 ""（调用方沿用当前背景）。`place` 预留给「按地点覆盖」用。
+    用于探索态「详细」页这类需要稳定结果的场合（此时传 `strict=False`，不受玩家位置影响）；
+    叙事态不用它（交小模型在候选里选）。没有可用场景时返回 ""（调用方沿用当前背景）。
     """
-    cands = scenes_for_kind(kind, indoor)
+    cands = scenes_for_kind(kind, indoor, strict)
     return cands[0] if cands else ""
 
 
@@ -309,12 +352,24 @@ def looks_indoor(text: str) -> bool:
     return bool(_INDOOR_RE.search(text or ""))
 
 
+def _cond_to_bind(cond: dict) -> str:
+    """把条件里的地点/人物拍平成一个逗号串（兼容旧接口 `music_bindings`）。"""
+    toks = []
+    for k in ("地点", "人物"):
+        for x in (cond.get(k) or []):
+            toks.append(str(x))
+    return ",".join(toks)
+
+
 def _parse_music(section: str) -> dict:
-    """{曲名: {"desc": 说明, "bind": 绑定对象}}（按节读 `音乐表.md`）。"""
+    """{曲名: {desc, cond, bind}}（按节读 `音乐.json`）。`bind` 为条件拍平（兼容旧调用）。"""
+    sec = _music_json().get(section) or {}
     out = {}
-    for raw, desc in _parse_lines(_manifest_section(section, _MUSIC_MANIFEST)).items():
-        name, bind = _split_bind(raw)
-        out[name] = {"desc": desc, "bind": bind}
+    for name, v in sec.items():
+        if not isinstance(v, dict):
+            continue
+        cond = v.get("条件") if isinstance(v.get("条件"), dict) else {}
+        out[name] = {"desc": str(v.get("说明") or ""), "cond": cond, "bind": _cond_to_bind(cond)}
     return out
 
 
@@ -346,29 +401,190 @@ def _binding_matches(binding: str, location: str, present, kind: str = "") -> bo
     return False
 
 
-def _listed(path: Path) -> list[str]:
-    """清单里、且 mp3 实际存在的曲目（按曲库顺序）。"""
-    meta = _parse_music(path)
-    existing = set(music_tracks())
-    order = {t: i for i, t in enumerate(music_tracks())}
+def _listed(section: str) -> list[str]:
+    """清单里、且 mp3 **实际存在**（在对应目录）的曲目（按曲库顺序）。"""
+    meta = _parse_music(section)
+    stems = _battle_stems() if section == _BATTLE_SECTION else music_tracks()
+    existing = set(stems)
+    order = {t: i for i, t in enumerate(stems)}
     return sorted([n for n in meta if n in existing], key=lambda t: order.get(t, 0))
 
 
-def narrative_tracks(location: str = None, present=None) -> list[str]:
-    """叙事背景可用曲 = `音乐表.md`「叙事」节中、且绑定命中的曲目。
+# ------------------------------------------------------------
+# 叙事选曲：**条件判定（代码决定，不问小模型）**
+# ------------------------------------------------------------
+_ORDER = "子丑寅卯辰巳午未申酉戌亥"
 
-    - 无绑定 → 始终可用；
-    - 有绑定 → 仅当绑定对象在场（地点名 / 地点类型 / 登场人物）时可用。
-    - 战斗曲在「战斗」节，天然不在此列。
+#: 条件键的**分值**（默认 1）：小游戏是「一次性特殊场景」，权重压倒常态条件（10）。
+_COND_WEIGHT = {"小游戏": 10}
+
+
+def _shichen_in(value, cur: str) -> bool:
+    """时辰是否命中：支持单值「酉」与范围「酉-亥」。"""
+    v = str(value).strip()
+    if not cur:
+        return False
+    if "-" in v or "~" in v:
+        a, b = re.split(r"[-~]", v, 1)
+        a, b = a.strip(), b.strip()
+        if a in _ORDER and b in _ORDER and cur in _ORDER:
+            i, j, k = _ORDER.index(a), _ORDER.index(b), _ORDER.index(cur)
+            return i <= k <= j if i <= j else (k >= i or k <= j)
+        return False
+    return v == cur
+
+
+def _affinity_ok(items, ctx) -> bool:
+    aff = ctx.get("好感度") or {}
+    for it in (items if isinstance(items, list) else [items]):
+        if not isinstance(it, dict):
+            continue
+        who = str(it.get("人物") or "").strip()
+        if not who or who not in aff:
+            continue
+        ok = True
+        try:
+            if "至少" in it:
+                ok = ok and aff[who] >= int(it["至少"])
+            if "至多" in it:
+                ok = ok and aff[who] <= int(it["至多"])
+        except (TypeError, ValueError):
+            ok = False
+        if ok:
+            return True
+    return False
+
+
+def _cond_match(cond: dict, ctx: dict) -> bool:
+    """条件是否满足：各键 AND；同一键数组 OR。空条件 → True；**未知键 → False**（防写错就误播）。"""
+    if not cond:
+        return True
+    loc = str(ctx.get("地点") or "")
+    kind = str(ctx.get("kind") or "")
+    for key, val in cond.items():
+        vals = val if isinstance(val, list) else [val]
+        if key == "地点":
+            # token 命中：`=名` → **精确地点名**；否则 名字含它(宽松) 或 等于/含于地点类型(kind)
+            hit = False
+            for t in vals:
+                ts = str(t).strip()
+                if ts.startswith("="):
+                    if ts[1:] and loc == ts[1:]:
+                        hit = True
+                        break
+                elif ts and ((ts in loc) or (kind and (ts == kind or ts in kind))):
+                    hit = True
+                    break
+            if not hit:
+                return False
+        elif key == "时辰":
+            if not any(_shichen_in(t, str(ctx.get("时辰") or "")) for t in vals):
+                return False
+        elif key == "追踪":
+            if not any(str(t).strip() == (ctx.get("追踪") or "") for t in vals):
+                return False
+        elif key == "人物":
+            present = ctx.get("人物") or set()
+            if not any(str(t) in present for t in vals):
+                return False
+        elif key == "天气":
+            if not any(str(t) in str(ctx.get("天气") or "") for t in vals):
+                return False
+        elif key == "日期":
+            # 公历具体日子 `1220-01-01`；也支持范围 `1220-01-01~1220-01-05`（ISO 串可字典序比较）
+            cur = str(ctx.get("日期") or "")
+            hit = False
+            for t in vals:
+                ts = str(t).strip()
+                if "~" in ts:
+                    a, _, b = ts.partition("~")
+                    if cur and a.strip() <= cur <= b.strip():
+                        hit = True
+                        break
+                elif cur and ts == cur:
+                    hit = True
+                    break
+            if not hit:
+                return False
+        elif key == "农历":
+            # 农历日子 `正月初三`；只写 `正月` 也能匹配整月（子串）
+            cur = str(ctx.get("农历") or "")
+            if not any(cur and (str(t).strip() == cur or str(t).strip() in cur) for t in vals):
+                return False
+        elif key == "节日":
+            fest = ctx.get("节日") or set()
+            if not any(str(t) in fest for t in vals):
+                return False
+        elif key == "小游戏":
+            # 当前进行中的小游戏（如 围棋/投壶/斗蟋蟀）；需小游戏系统写入 基本信息.小游戏
+            cur = str(ctx.get("小游戏") or "")
+            if not any(cur and (str(t).strip() == cur or str(t).strip() in cur) for t in vals):
+                return False
+        elif key == "好感度":
+            if not _affinity_ok(val, ctx):
+                return False
+        else:
+            return False
+    return True
+
+
+def build_context(location=None, present=None, tracked=None) -> dict:
+    """现拼条件判定上下文（地点/类型/时辰/追踪/在场/天气/日期/农历/节日/好感度）。"""
+    basic = state.load("基本信息", {}) or {}
+    t = basic.get("时间") or {}
+    w = basic.get("天气") or {}
+    aff = {}
+    for name in (present or ()):
+        try:
+            from tools.大模型.character_archive import read_affinity
+            v = read_affinity(name)
+            if v is not None:
+                aff[str(name)] = v
+        except Exception:
+            pass
+    return {
+        "地点": location or "",
+        "kind": _kind_of(location) if location else "",
+        "时辰": str(t.get("时辰") or ""),
+        "追踪": "有" if tracked else "无",
+        "人物": {str(x) for x in (present or ()) if x},
+        "天气": str(w.get("状况") or ""),
+        "日期": str(t.get("日期") or ""),          # 公历 1220-01-17
+        "农历": str(t.get("农历") or ""),          # 农历（需日历系统写入 基本信息.时间.农历）
+        "小游戏": str(basic.get("小游戏") or ""),   # 当前小游戏（需小游戏系统写入 基本信息.小游戏）
+        "节日": set(),          # 日历系统接入后填这里
+        "好感度": aff,
+    }
+
+
+def select_narrative_track(ctx: dict) -> str:
+    """按条件选叙事曲：命中的曲子里取**加权分最高**者（小游戏=10，其余每键=1），
+
+    并列按**清单出现顺序**；全不中（或只有「无条件」曲子）→ **兜底曲**（`音乐.json.默认`）。
     """
-    kind = _kind_of(location)
-    binds = music_bindings()
-    out = []
-    for name in _listed(_MUSIC_SECTION):
-        b = binds.get(name, "")
-        if not b or _binding_matches(b, location, present, kind):
-            out.append(name)
-    return out
+    sec = _music_json().get(_MUSIC_SECTION) or {}
+    existing = set(music_tracks())
+    best, best_score = "", -1
+    for name, v in sec.items():
+        if name not in existing:
+            continue
+        cond = (v or {}).get("条件") if isinstance(v, dict) else None
+        cond = cond if isinstance(cond, dict) else {}
+        if not cond:                       # 无条件的曲子不进「自动选」
+            continue
+        if not _cond_match(cond, ctx):
+            continue
+        score = sum(_COND_WEIGHT.get(k, 1) for k in cond)
+        if score > best_score:
+            best, best_score = name, score
+    return best or default_track(ctx.get("追踪") == "有")
+
+
+def narrative_tracks(location: str = None, present=None, tracked=None) -> list[str]:
+    """当前条件下**命中**的叙事曲（确定性，不问小模型）。"""
+    ctx = build_context(location, present, tracked)
+    meta = _parse_music(_MUSIC_SECTION)
+    return [n for n in music_tracks() if n in meta and _cond_match(meta[n].get("cond") or {}, ctx)]
 
 
 def location_bound_tracks(location: str, kind: str = None) -> list[str]:
@@ -390,7 +606,7 @@ def location_bound_tracks(location: str, kind: str = None) -> list[str]:
 
 
 def general_tracks() -> list[str]:
-    """通用曲：`音乐表.md`「叙事」节里无绑定的曲目（不依附任何地点/人物）。
+    """通用曲：`音乐.json`「叙事」节里**无绑定/无条件**的曲目（不依附任何地点/人物）。
 
     探索大地图用它们，避免从青楼/酒楼等地出来还搂着场所专属曲。
     """
@@ -413,87 +629,26 @@ _ENTRY_SYSTEM = (
 )
 
 
-def pick_entry_track(location: str = None, present=None) -> str:
-    """**进游戏 / 载入时**重新选一次背景乐（小模型）。
+def pick_entry_track(location: str = None, present=None, tracked=None) -> str:
+    """**进游戏 / 载入时**选背景乐：**条件判定（确定性，不问小模型）**。"""
+    return select_narrative_track(build_context(location, present, tracked))
 
-    与 `explore_track` 的区别：那个只从「通用曲」里挑（走回大地图用），
-    这个连「本地点专属曲」一起给候选，用于每次载入游戏都要有曲子的场景。
-    地点恰好只绑一首 → 硬选它，不劳模型。失败退回确定性兜底。
-    """
-    bound = location_bound_tracks(location) if location else []
-    if len(bound) == 1:
-        return bound[0]
-    tracks = narrative_tracks(location, present) or general_tracks()
-    if not tracks:
+
+def default_explore_track(current: str = "", tracked=None) -> str:
+    """确定性的日常探索曲（**不调小模型**）。当前已在放它 → 返回 ""（无需切换）。"""
+    t = default_track(tracked)
+    if current and current == t:
         return ""
-    if len(tracks) == 1:
-        return tracks[0]
-    desc = music_descriptions()
-    lines = "\n".join(
-        f"- {t}：{desc.get(t, '')}" + ("【本地点专属】" if t in bound else "")
-        for t in tracks
-    )
-    user = (
-        f"可选音乐：\n{lines}\n"
-        f"当前地点：{location or '未知'}\n"
-        f"（带【本地点专属】的是当前地点的主题曲，有的话优先选它。）"
-    )
-    schema = {
-        "type": "object",
-        "properties": {"音乐": {"type": "string", "enum": tracks}},
-        "required": ["音乐"],
-    }
-    r = small_model.ask_json(_ENTRY_SYSTEM, user, schema)
-    track = r.get("音乐") if isinstance(r, dict) else None
-    if track not in tracks:
-        track = DEFAULT_TRACK if DEFAULT_TRACK in tracks else tracks[0]
-    return track
-
-
-def default_explore_track(current: str = "") -> str:
-    """确定性的通用探索曲（**不调小模型**，瞬时返回）。
-
-    优先 `DEFAULT_TRACK`，否则取通用曲第一首；当前已在放通用曲则返回 ""（无需切换）。
-    供 `engine.enter_explore()`（玩家自主切探索）使用。
-    """
-    tracks = general_tracks()
-    if not tracks:
-        return ""
-    if current and current in tracks:
-        return ""
-    return DEFAULT_TRACK if DEFAULT_TRACK in tracks else tracks[0]
-
-
-def explore_track(current: str = "") -> str:
-    """叙事 → 探索时用的**通用背景乐**。叫小模型从通用曲里挑；失败/无候选返回 ""。
-
-    （调用方：`engine.TurnRunner` 检测到 `resume_exploration` 时。）
-    """
-    tracks = general_tracks()
-    if not tracks:
-        return ""
-    if len(tracks) == 1:
-        return tracks[0]
-    desc = music_descriptions()
-    lines = "\n".join(f"- {t}：{desc.get(t, '')}" for t in tracks)
-    user = (
-        f"可选通用曲：\n{lines}\n"
-        f"当前曲目：{current or '无'}（它是场所/剧情专属，在探索地图上继续放不合适）"
-    )
-    schema = {
-        "type": "object",
-        "properties": {"音乐": {"type": "string", "enum": tracks}},
-        "required": ["音乐"],
-    }
-    r = small_model.ask_json(_EXPLORE_SYSTEM, user, schema)
-    t = r.get("音乐") if isinstance(r, dict) else None
-    if t not in tracks:
-        t = DEFAULT_TRACK if DEFAULT_TRACK in tracks else tracks[0]
     return t
 
 
+def explore_track(current: str = "", tracked=None) -> str:
+    """叙事 → 探索时的背景乐：回到**兜底曲**（确定性，不问小模型）。"""
+    return default_explore_track(current, tracked)
+
+
 def battle_tracks() -> list[str]:
-    """战斗系统可用曲 = `音乐表.md`「战斗」节中、且 mp3 存在的曲目（叙事候选看不到）。
+    """战斗系统可用曲 = `音乐.json`「战斗」节中、且 mp3 存在于 `assets/音乐/战斗/` 的曲目。
 
     供战斗系统（第⑨节）选曲：无绑定=通用战斗曲；有绑定（如 `温夫人`）=boss 专属。
     """
@@ -579,69 +734,48 @@ def current_shichen() -> str:
     return t.get("时辰", "") or ""
 
 
-def _schema(scenes: list[str], tracks: list[str]) -> dict:
-    return {
-        "type": "object",
-        "properties": {
-            "场景": {"type": "string", "enum": scenes + [NONE]},
-            "音乐": {"type": "string", "enum": (tracks or []) + [NONE]},
-        },
-        "required": ["场景", "音乐"],
-    }
+def _schema(scenes: list[str], tracks: list[str] | None = None) -> dict:
+    props = {"场景": {"type": "string", "enum": scenes + [NONE]}}
+    req = ["场景"]
+    if tracks:
+        props["音乐"] = {"type": "string", "enum": tracks + [NONE]}
+        req.append("音乐")
+    return {"type": "object", "properties": props, "required": req}
 
 
 def generate(narration: str, location: str = None,
              current_scene: str = None, current_music: str = None,
-             present=None, recent=None) -> list[dict]:
-    """根据叙事 + 当前状态生成 UI 事件（bg / music）。失败或「无」则不含该项。
+             present=None, recent=None, tracked=None) -> list[dict]:
+    """根据叙事 + 当前状态生成 UI 事件（bg / music）。
 
-    - `location`：玩家当前地点（给背景判断一个权威依据）。
-    - `current_scene` / `current_music`：当前正在显示的背景 / 音乐，供其判断是否需变。
-    - `present`：本轮**登场人物**（`chat` 说话者），用于专属曲绑定匹配（非仅提及）。
-    - `recent`：**最近几轮旁白**（由旧到新），供其判断「是不是刚上过楼 / 已经换过了」。
+    - 背景 `bg`：**小模型**从本地点候选场景里选（读整轮语义）；
+    - 音乐 `music`：**条件判定（确定性，不问小模型）**——见 `select_narrative_track`。
     """
     if not ENABLED or not narration.strip():
         return []
     scenes = scene_candidates(location, indoor=looks_indoor(narration))
-    tracks = narrative_tracks(location, present)
-    loc_bound = location_bound_tracks(location)
     scene_desc = scene_descriptions()
-    music_desc = music_descriptions()
     scene_lines = "\n".join(
         f"- {s}：{scene_desc.get(s, '（无说明）')}" for s in scenes
-    ) or "（无）"
-    music_lines = "\n".join(
-        f"- {t}：{music_desc.get(t, '（无说明）')}" + ("【本地点专属】" if t in loc_bound else "")
-        for t in tracks
     ) or "（无）"
     recent_lines = "\n".join(f"- {str(x)[:300]}" for x in (recent or [])[-3:]) or "（无）"
     user = (
         f"可选场景（本地点内可能出现的空间，选一个；没有变化就填「{NONE}」）：\n{scene_lines}\n"
-        f"可选音乐（据叙事的情境 / 情绪选）：\n{music_lines}\n"
-        f"（音乐：带【本地点专属】的是**当前地点的主题曲**，进入该地点应优先选它；"
-        f"没有更贴合的就填「{NONE}」＝保持当前曲。）\n"
         f"当前地点：{location or '未知'}\n"
-        f"当前背景：{current_scene or '无'} ｜ 当前音乐：{current_music or '无'}\n"
+        f"当前背景：{current_scene or '无'}\n"
         f"当前时辰：{current_shichen() or '未知'}\n"
         f"最近几轮（由旧到新）：\n{recent_lines}\n"
         f"本轮叙事：\n{narration[:800]}"
     )
-    r = small_model.ask_json(SYSTEM, user, _schema(scenes, tracks), max_tokens=128)
-    if not isinstance(r, dict):
-        return []
+    r = small_model.ask_json(SYSTEM, user, _schema(scenes), max_tokens=64)
 
     out = []
-    pos = r.get("场景")
-    if pos in scenes:
-        out.append(bg_event(pos, current_shichen()))
-    # 地点主题曲：当前地点 / 类型恰好只绑一首 → 硬选它（不劳模型）；
-    # 多首（如书坊的两首）才交模型按情境挑。
-    if len(loc_bound) == 1:
-        track = loc_bound[0]
-    else:
-        track = r.get("音乐")
-        if track == NONE or track not in tracks:
-            track = None          # 「无」= 保持当前曲，不再兵底到默认曲
-    if track:
+    if isinstance(r, dict):
+        pos = r.get("场景")
+        if pos in scenes:
+            out.append(bg_event(pos, current_shichen()))
+    # 音乐：条件判定（确定性；命中更具体的优先，全不中 → 日常曲）
+    track = select_narrative_track(build_context(location, present, tracked))
+    if track and track != current_music:
         out.append(music_event(track))
     return out

@@ -637,6 +637,63 @@ def city_context(lon, lat) -> dict:
     return out
 
 
+def _wall_distance_m(lon, lat, poly):
+    """点到城墙（米）；无城墙返回 None。"""
+    if poly is None:
+        return None
+    try:
+        ring = poly.exterior
+        pt = sg.Point(lon, lat)
+        near = ring.interpolate(ring.project(pt))
+        return math.hypot((near.x - lon) * M_PER_DEG_LON0 * math.cos(math.radians(lat)),
+                          (near.y - lat) * M_PER_DEG_LAT)
+    except Exception:
+        return None
+
+
+def nearest_walkable_point(lon, lat, radius_km: float = 2.0):
+    """「脱离卡死」：找一个附近**可走**的落脚点。
+
+    几何上取**最近的道路**（前端把路当可走廊道）；但避开前端会挡的点：
+    落在城墙 ±12m 内、且不在城门 25m 内的路点会被墙挡住 → 跳过试下一条。
+    半径由近及远逐步放宽，避免一上来就瞬移几百米。
+    返回 `{lon, lat, 地点, 距离_m}` 或 None。数值与前端 `walkable.ts` 对齐。
+    """
+    try:
+        lon, lat = float(lon), float(lat)
+    except (TypeError, ValueError):
+        return None
+    roads = []
+    for rk in (0.6, 1.5, radius_km):
+        res = query_nearby(lon, lat, radius_km=rk, category="road", limit=10)
+        roads = [r for r in res.get("results", [])
+                 if r.get("lon") is not None and r.get("kind") != "城墙"]
+        if roads:
+            break
+    if not roads:
+        return None
+    poly = _wall_polygon()
+    gates = query_nearby(lon, lat, radius_km=radius_km, kind="城门", limit=10).get("results", [])
+    for r in roads:
+        rlon, rlat = r["lon"], r["lat"]
+        d_wall = _wall_distance_m(rlon, rlat, poly)
+        if d_wall is not None and d_wall <= 12:      # 会被城墙挡
+            near_gate = any(
+                math.hypot((rlon - g["lon"]) * M_PER_DEG_LON0 * math.cos(math.radians(rlat)),
+                           (rlat - g["lat"]) * M_PER_DEG_LAT) <= 25
+                for g in gates if g.get("lon") is not None
+            )
+            if not near_gate:
+                continue
+        return {
+            "lon": rlon,
+            "lat": rlat,
+            "地点": r.get("name") or "",
+            "距离_m": round(distance_m(lon, lat, rlon, rlat)),
+        }
+    return None
+
+
 def _shichen_index(s: str) -> int:
     SH = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"]
     s = (s or "").strip().replace("时", "")

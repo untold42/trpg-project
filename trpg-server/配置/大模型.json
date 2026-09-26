@@ -1,0 +1,11 @@
+{
+  "provider": "deepseek",
+  "base_url": "https://api.deepseek.com",
+  "api_key": "",
+  "api_key_env": "LLM_API_KEY",
+  "model": "deepseek-v4-flash",
+  "reasoning_effort": "",
+  "timeout": 180,
+  "max_retries": 1,
+  "说明": "大模型客户端（GM 叙事 / 存档蒸馏 / 旁路裁定 / 战斗思路 / 前情 共用 llm.py）。当前=DeepSeek。改本文件免重启（客户端按 url/key/timeout/retries 缓存重建）。想切 gpt-6-luna（本机 Codex 网关）：provider=remote, base_url=http://127.0.0.1:8317/v1, api_key=sk-liangfengshidashuaibi, model=gpt-6-luna, max_retries=0。速度实测见 开发/verify_gm_speed.py（luna 约慢 2.8 倍）。"
+}

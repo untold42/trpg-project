@@ -21,7 +21,10 @@ quest.py
 
 from __future__ import annotations
 
+import functools
 import json
+import re
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -34,7 +37,6 @@ from tools.核心.game_clock import (
 STATE_KEY = "任务"
 
 SERVER_DIR = Path(__file__).resolve().parent.parent.parent
-SEED_DIR = SERVER_DIR / "任务"
 CONFIG_FILE = SERVER_DIR / "配置" / "任务.json"
 
 DEFAULT_CONFIG = {"奖励": {"技能点": 1}, "里程碑扩展上限": 3}
@@ -44,6 +46,19 @@ STATUS_DONE = "已完成"
 STATUS_EXPIRED = "已过期"
 
 _config_cache: dict = {}
+
+# 读-改-写整体串行化：`quest_sim`（后台 worker）与 `quest_arbiter`（后台裁定）
+# 会在不同线程同时改 任务.json；`state.load/save` 只各自加锁，中间会丢更新。
+_lock = threading.RLock()
+
+
+def _locked(fn):
+    """让整个「读 → 改 → 写」持有同一把锁（RLock，可重入）。"""
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with _lock:
+            return fn(*args, **kwargs)
+    return wrapper
 
 
 # ------------------------------------------------------------
@@ -101,47 +116,27 @@ def archived() -> list[dict]:
 # ------------------------------------------------------------
 # 种子
 # ------------------------------------------------------------
-def ensure_seeded() -> int:
-    """把 `trpg-server/任务/*.json` 里的种子并入（按 id 幂等）。返回新增数。"""
-    if not SEED_DIR.is_dir():
-        return 0
-    seeds = []
-    for f in sorted(SEED_DIR.glob("*.json")):
-        try:
-            raw = json.loads(f.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        items = raw.get("任务") if isinstance(raw, dict) else raw
-        if isinstance(items, list):
-            seeds.extend(x for x in items if isinstance(x, dict))
-    if not seeds:
-        return 0
+@_locked
+def materialize_deadlines() -> int:
+    """给**手写在 `任务.json`** 里的任务补绝对时限：
+    有 `时限时辰`（相对）而无 `时限.游戏秒`（绝对）→ 按当前时钟换算。
+
+    幂等（换算过就不再变）；开局由 main 调一次。返回补了几条。
+    """
     d = _load()
-    have = {t.get("id") for t in _all(d)}
-    added = 0
-    for s in seeds:
-        sid = str(s.get("id") or "").strip() or _new_id()
-        if sid in have:
+    n = 0
+    for t in _all(d):
+        dl = t.get("时限") if isinstance(t.get("时限"), dict) else {}
+        if isinstance(dl.get("游戏秒"), int):
             continue
-        s = dict(s)
-        s["id"] = sid
-        s.setdefault("状态", STATUS_ACTIVE)
-        s.setdefault("可见", True)
-        s.setdefault("来源", "种子")
-        for ms in s.get("里程碑") or []:
-            ms.setdefault("状态", "未完成")
-        # 种子可用「时限时辰」（相对分钟）→ 开局时换算成绝对游戏秒
-        if not isinstance((s.get("时限") or {}).get("游戏秒"), int):
-            s["时限"] = _deadline(s.get("时限时辰", 24))
-            if s.get("时限文本"):
-                s["时限"]["文本"] = s["时限文本"]
-        s.setdefault("创建于", _now_str())
-        have.add(sid)
-        d["任务"].append(s)
-        added += 1
-    if added:
+        hours = t.get("时限时辰") or dl.get("剩余时辰") or 24
+        t["时限"] = _deadline(hours)
+        if t.get("时限文本"):
+            t["时限"]["文本"] = t["时限文本"]
+        n += 1
+    if n:
         _save(d)
-    return added
+    return n
 
 
 # ------------------------------------------------------------
@@ -163,10 +158,17 @@ def _deadline(时限时辰: int) -> dict:
             "剩余时辰": hours}
 
 
+@_locked
 def add(标题: str, 描述: str = "", 委托人: str = "",
         里程碑: list | None = None, 时限文本: str = "", 时限时辰: int = 1,
-        类型: str = "支线", 来源: str = "任务裁定", 失败后果: str = "") -> dict:
-    """新建一个任务（由 add 裁定 / 种子调用）。返回任务 dict。"""
+        来源: str = "任务裁定", 失败后果: str = "",
+        真相: str = "", 结局: str = "", 知情者: list | None = None,
+        揭示节奏: str = "") -> dict:
+    """新建一个任务（由 add 裁定 / 手写调用）。**不分主线支线**；大目标用里程碑。
+
+    `真相` / `结局` / `知情者` / `揭示节奏`：**仅 GM 可见**的客观事实（在 add 那一刻定死），
+    不进玩家视图。`结局` = 预定走向；`失败后果` = 未完成时世界怎么变（DDL 用）。
+    """
     标题 = (标题 or "").strip()
     if not 标题:
         return {}
@@ -180,7 +182,6 @@ def add(标题: str, 描述: str = "", 委托人: str = "",
     t = {
         "id": _new_id(),
         "标题": 标题,
-        "类型": 类型 or "支线",
         "状态": STATUS_ACTIVE,
         "可见": True,
         "描述": (描述 or "").strip(),
@@ -188,6 +189,10 @@ def add(标题: str, 描述: str = "", 委托人: str = "",
         "里程碑": tasks,
         "时限": _deadline(时限时辰),
         "失败后果": (失败后果 or "").strip(),
+        "真相": (真相 or "").strip(),
+        "结局": (结局 or "").strip(),
+        "知情者": [str(x).strip() for x in (知情者 or []) if str(x).strip()],
+        "揭示节奏": (揭示节奏 or "").strip(),
         "来源": 来源,
         "创建于": _now_str(),
         "更新于": _now_str(),
@@ -202,6 +207,7 @@ def add(标题: str, 描述: str = "", 委托人: str = "",
     return t
 
 
+@_locked
 def update(task_id: str, 里程碑="") -> dict:
     """把匹配到的里程碑标为已完成（**可传一条或多条**；幂等）。
 
@@ -237,6 +243,7 @@ def all_done(t: dict) -> bool:
     return bool(ms) and all(m.get("状态") == "已完成" for m in ms)
 
 
+@_locked
 def add_milestones(task_id: str, 列表) -> dict:
     """给任务**补新里程碑**（由旁路大模型裁定后调用）。去重；计扩展次数。"""
     d = _load()
@@ -260,25 +267,74 @@ def add_milestones(task_id: str, 列表) -> dict:
 
 
 def _match_milestone(t: dict, text: str) -> str:
-    """把模型给的里程碑文字匹配到任务里的里程碑（剥序号、取包含）。"""
-    want = _clean_ms(text)
+    """把模型给的里程碑匹配到任务里的里程碑。
+
+    模型常只回**序号**（"4" / "第 4 条" / "4."），也常回带序号的原文（"4.再访崔家…"）
+    或纯原文——三种都要能接上（否则真做到了的里程碑会因格式不匹配而被丢掉）。
+    """
+    ms_list = t.get("里程碑") or []
+    raw = str(text or "").strip()
+    if not raw:
+        return ""
+    idx = _milestone_index(raw)
+    if idx and 1 <= idx <= len(ms_list):
+        return ms_list[idx - 1].get("项")
+    want = _clean_ms(raw)
     if not want:
         return ""
-    for ms in t.get("里程碑") or []:
+    for ms in ms_list:
         if ms.get("项") == want:
             return want
-    for ms in t.get("里程碑") or []:
+    for ms in ms_list:
         a = _clean_ms(ms.get("项", ""))
         if a and (a in want or want in a):
             return ms.get("项")
     return ""
 
 
+_CN_DIGITS = {"零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4,
+              "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+
+
+def _cn_num(s: str) -> int:
+    """中文数字（一~九十九）→ int；解析失败返回 0。"""
+    if not s:
+        return 0
+    if "十" in s:
+        a, _, b = s.partition("十")
+        tens = _CN_DIGITS.get(a, 1) if a else 1
+        ones = _CN_DIGITS.get(b, 0) if b else 0
+        return tens * 10 + ones
+    total = 0
+    for ch in s:
+        if ch not in _CN_DIGITS:
+            return 0
+        total = total * 10 + _CN_DIGITS[ch]
+    return total
+
+
+def _milestone_index(s: str) -> int:
+    """字符串**整体**就是一个序号时（"4"/"第 4 条"/"4."/"④"）返回该序号，否则 0。"""
+    s = str(s or "").strip()
+    if len(s) == 1 and "\u2460" <= s <= "\u2473":   # ①~⑳
+        return ord(s) - 0x2460 + 1
+    m = re.fullmatch(
+        r"(?:第\s*)?([0-9０-９]+|[一二三四五六七八九十两]+)\s*(?:条|项|个|、|\.|。|\)|）)?", s)
+    if not m:
+        return 0
+    tok = m.group(1)
+    if tok.isdigit():
+        return int(tok)
+    if all("０" <= c <= "９" for c in tok):
+        return int("".join(str(ord(c) - ord("０")) for c in tok))
+    return _cn_num(tok)
+
+
 def _clean_ms(s: str) -> str:
-    import re
     return re.sub(r"^\s*[\d一二三四五六七八九十]+[.、）)]\s*", "", str(s or "")).strip()
 
 
+@_locked
 def complete(task_id: str, 结果: str = "") -> dict:
     """完成任务：静默发技能点（GM 不知道）+ 归档。"""
     d = _load()
@@ -298,6 +354,7 @@ def complete(task_id: str, 结果: str = "") -> dict:
     return {"success": True, "任务": _player_card(t), "奖励": reward}
 
 
+@_locked
 def expire(task_id: str, 结果: str = "", 世界推进: str = "") -> dict:
     """过期归档（由 DDL 裁定调用）。"""
     d = _load()
@@ -357,7 +414,6 @@ def _player_card(t: dict) -> dict:
     return {
         "id": t.get("id"),
         "标题": t.get("标题"),
-        "类型": t.get("类型"),
         "状态": t.get("状态"),
         "描述": t.get("描述"),
         "委托人": t.get("委托人"),
@@ -406,19 +462,49 @@ def card(t: dict) -> dict:
     return _player_card(t)
 
 
+def truth_view(ids=None) -> list[dict]:
+    """给 GM 的**事件真相块**：仅**进行中**任务；传 `ids` 时只取这些（= 玩家追踪的）。
+
+    **永不发玩家**。字段：标题 / 真相 / 结局 / 知情者 / 揭示节奏。
+    """
+    tasks = by_ids(ids) if ids is not None else active()
+    out = []
+    for t in tasks:
+        if not any(t.get(k) for k in ("真相", "结局", "知情者", "揭示节奏")):
+            continue
+        out.append({
+            "标题": t.get("标题"),
+            "真相": t.get("真相"),
+            "结局": t.get("结局"),
+            "知情者": t.get("知情者") or [],
+            "揭示节奏": t.get("揭示节奏"),
+        })
+    return out
+
+
 # ------------------------------------------------------------
 # 过期提醒（给 GM 的下一轮叙事）
 # ------------------------------------------------------------
 def pending_notes() -> list[tuple]:
-    """新过期、尚未告知 GM 的任务 → [(id, 文本)]。"""
+    """新了结（已完成 / 已过期）、尚未告知 GM 的任务 → [(id, 文本)]。
+
+    文本写成**世界事实**（不暴露任务系统）——GM 只需知道世界变了 / 这事了了。
+    """
     out = []
     for t in _all():
-        if t.get("状态") == STATUS_EXPIRED and not t.get("已告知"):
-            out.append((t.get("id"),
-                        f"【任务过期】《{t.get('标题')}》：{t.get('结果') or '（已了结）'}"))
+        st = t.get("状态")
+        if st == STATUS_ACTIVE or t.get("已告知"):
+            continue
+        res = (t.get("结果") or "").strip()
+        if st == STATUS_DONE:
+            txt = f"【事情了结】《{t.get('标题')}》" + (f"：{res}" if res else "已了结。")
+        else:
+            txt = "【世界变动】" + (res or "有件事已无转机，不了了之。")
+        out.append((t.get("id"), txt))
     return out
 
 
+@_locked
 def mark_told(ids) -> None:
     """标记这些过期任务已注入给 GM（下一轮不再重复）。"""
     idset = {str(i) for i in (ids or [])}

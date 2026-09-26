@@ -1,0 +1,12 @@
+{
+  "quest": {
+    "provider": "remote",
+    "base_url": "http://127.0.0.1:8317/v1",
+    "api_key": "sk-liangfengshidashuaibi",
+    "model": "gpt-6-luna",
+    "timeout": 30,
+    "max_tokens": 400,
+    "失败回退本地": true
+  },
+  "说明": "quest 段=任务里程碑判定模型。provider=remote 走 OpenAI 兼容远端（本机 Codex 网关）；provider=local 或缺失则用 LM Studio 的 4B。失败回退本地=true：远端调用失败/超时才退回 4B（4B 语义弱、可能误判，但保证判定不断）。本文件全部字段热改免重启。"
+}

@@ -186,7 +186,12 @@ def update_location(place_name=None, lon=None, lat=None, move_mode=None):
             size = x.get("size_m")
             size = size if isinstance(size, (int, float)) else 0
             broad = size > 800 or (x.get("kind") in _BROAD)
-            return (broad, x.get("distance_km") or 0.0, size)
+            dist = x.get("distance_km") or 0.0
+            # **先按距离**（10m 粒度，防浮点抖动），再让「具体地点」优先于大区域。
+            # ⚠️ 旧实现把 `broad` 当第一键 → 任何小 POI 都压过最近的区域：
+            #    站在蜀冈中峰（20m）上也会被标成 192m 外的喰行。
+            #    距离相近（同为 ~0）时才用 broad/size 分高下（治「锦香宫院里被标君山岛」）。
+            return (round(dist, 2), broad, size)
 
         cands.sort(key=_rank)
         if cands:

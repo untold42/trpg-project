@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from llm import send_messages
 
@@ -20,6 +20,9 @@ from tools.大模型 import turn_context as turn_context_mod
 from tools.核心.map_settings import get_settings as get_map_settings, set_map
 from tools.核心 import movement
 from tools.核心 import quest
+from tools.核心 import ui_events
+from tools.核心 import art as art_mod
+from tools.核心 import push as push_mod
 from tools.大模型 import quest_arbiter
 from tools.小模型 import quest_sim
 
@@ -43,11 +46,16 @@ CORS(app)
 session = GameSession(rules_dir="../trpg-world/主持人")
 runner = TurnRunner(session, send_messages, TOOLS_MAP)
 
-# 任务种子：开局并入任务栏（按 id 幂等）
+# 画作子系统接线：画成后**后端主动发起 GM 回合**（run_push），事件走 push 队列给前端轮询
+art_mod.DIR.mkdir(parents=True, exist_ok=True)
+art_mod.set_push_runner(lambda text: runner.run_push(text))
+art_mod.set_push_sink(push_mod.push)
+
+# 任务：给**手写在 任务.json** 里的任务补绝对时限（相对时辰 → 游戏秒）
 try:
-    quest.ensure_seeded()
-except Exception as _e:   # 种子失败不影响启动
-    print(f"[quest] 种子并入失败：{type(_e).__name__}: {_e}")
+    quest.materialize_deadlines()
+except Exception as _e:   # 失败不影响启动
+    print(f"[quest] 补时限失败：{type(_e).__name__}: {_e}")
 
 # chroma 记忆库由 tools/mem_store.py 懒加载（首次读写记忆时才连）
 
@@ -95,6 +103,7 @@ def get_player_state():
     data = state.snapshot()
     data.pop("任务", None)   # 任务走 GET /quests（玩家投影，不含隐藏字段）
     data["移动"] = movement.config()   # 移动参数（轻功→步速 / 奔跑倍率）——非 游戏数据文件
+    data["_ui_events"] = ui_events.drain()   # 异步裁定（完成/续接/过期）攒下的事件
     return jsonify(data)
 
 
@@ -113,6 +122,63 @@ def settle_run():
     snapshot = state.snapshot()
     snapshot["移动"] = movement.config()
     return jsonify(snapshot)
+
+
+@app.route("/unstick", methods=["POST"])
+def unstick_route():
+    """脱离卡死：把玩家从走不出去的位置挪到附近**最近的可行走点**（最近的路）。
+
+    无参时用玩家当前坐标；可传 `{经度, 纬度}` 指定卡死点。
+    返回 `update_location` 的结果（含新位置），前端据此把地图光标一起挪过去。
+    """
+    from tools.核心.map_query import nearest_walkable_point, player_position
+
+    data = request.get_json(silent=True) or {}   # 允许无正文 POST
+    lon, lat = data.get("经度"), data.get("纬度")
+    if lon is None or lat is None:
+        lon, lat = player_position()
+    if lon is None or lat is None:
+        return jsonify({"success": False, "error": "拿不到当前坐标"}), 400
+    p = nearest_walkable_point(lon, lat)
+    if not p:
+        return jsonify({"success": False,
+                        "error": "附近 2 公里内找不到可行走的路"}), 404
+    res = update_location(lon=p["lon"], lat=p["lat"])
+    res["脱离"] = {"从": {"经度": round(float(lon), 6), "纬度": round(float(lat), 6)},
+                   "到": p}
+    return jsonify(res)
+
+
+@app.route("/pending", methods=["GET"])
+def pending_route():
+    """前端**轮询**：取走后端主动发起的 GM 回合事件流（如画作完成），并附「作画中」清单。
+
+    events 与 `/action` 返回同构：chat / narration / ui。前端按同一套渲染。
+    """
+    return jsonify({"events": push_mod.drain(), "作画中": art_mod.pending_view()})
+
+
+@app.route("/art/<pid>.png", methods=["GET"])
+def art_image(pid):
+    """画作图片（存 trpg-server/画作/<id>.png）。"""
+    return send_from_directory(str(art_mod.DIR), f"{pid}.png")
+
+
+@app.route("/arts", methods=["GET"])
+def arts_route():
+    """已完成的画作列表（玩家投影，不含寓意）。"""
+    return jsonify({"画作": art_mod.all_view()})
+
+
+@app.route("/toollog", methods=["GET"])
+def toollog_route():
+    """工具GM 执行日志（供游戏内日志面板）。`?n=20`"""
+    from tools.核心 import tool_gm
+    try:
+        n = max(1, min(60, int(request.args.get("n", 20))))
+    except (TypeError, ValueError):
+        n = 20
+    return jsonify({"日志": tool_gm.recent(n), "待落地": tool_gm.pending_count()})
 
 
 @app.route("/clock", methods=["GET"])
@@ -570,17 +636,15 @@ def action():
         text = "玩家的对主持人说的话：" + raw
         # 场外话（OOC）：用现代白话直答，不得入戏
         runner.session.pending_notes.append(OOC_NOTE)
+    runner.session.tracked_ids = data.get("追踪") or []   # 决定注入哪些「事件真相」
     events = runner.run(text, mode, from_explore, allow_time=allow_time)
-    # 任务进度（小模型，仅对玩家追踪的任务）→ 追加 UI 事件；
-    # 里程碑全部完成的 → 旁路大模型裁定「补新里程碑 / 算真正完成」
-    try:
-        q_events, q_todo = quest_sim.run(events, data.get("追踪"))
-        events = events + q_events
-        for t in q_todo:
-            quest_arbiter.arbitrate_milestones_async(t)
-    except Exception as e:
-        print(f"[quest] quest_sim 失败：{type(e).__name__}: {e}")
+    # 任务进度判定改为**异步**（远端判定模型 2~7s，不能拖慢回合）：
+    # 结果标完成 + 推 ui_events，由下一次 /action 或 /state 顺带携回前端；
+    # 里程碑全完成则在后台线程触发旁路大模型裁定（quest_arbiter）。
+    quest_sim.run_async(events, data.get("追踪"))
     time_flow.pump()   # 回合结束后结算时间流逝（精力 / 跨日；含任务 DDL）
+    # 异步裁定攒下的 UI 事件（完成/续接/过期）→ 携回前端
+    events = ui_events.drain() + events
     return jsonify(events)
 
 

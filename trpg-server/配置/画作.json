@@ -1,0 +1,11 @@
+{
+  "启用": true,
+  "base_url": "http://127.0.0.1:8317/v1",
+  "api_key": "sk-liangfengshidashuaibi",
+  "model": "gpt-image-2.5",
+  "size": "1024x1536",
+  "timeout": 300,
+  "风格后缀": "中国水墨写意画，宣纸质感，墨色清雅，大片留白，无文字、无印章、无边框。",
+  "同时在画上限": 3,
+  "说明": "画作子系统：GM 调 commission_painting（异步）→ 本配置的图像模型生成 → 存 trpg-server/画作/<id>.png → 后端主动发起一个 GM 回合呈现。改本文件免重启。"
+}

@@ -153,6 +153,20 @@ def normalize(items) -> list[dict]:
         item = dict(item)
 
         raw_type = str(item.get("type") or "").strip().lower()
+        # 「工具意图」（双GM 拆分用）：内容是**自然语言动作列表**（不是叙事，不渲染给玩家）。
+        # 字符串 → 按行拆；数组 → 逐项取字符串。空则丢。
+        if raw_type == "tool":
+            content = item.get("content")
+            if isinstance(content, str):
+                lines = [ln.strip() for ln in content.splitlines() if ln.strip()]
+            elif isinstance(content, list):
+                lines = [str(x).strip() for x in content if str(x).strip()]
+            else:
+                lines = []
+            if lines:
+                out.append({"type": "tool", "content": lines})
+            continue
+
         kind = _TYPE_ALIASES.get(raw_type) if raw_type else None
         speaker = str(item.get("speaker") or "").strip()
         if kind is None:
@@ -211,11 +225,13 @@ def parse(raw) -> list[dict]:
 def to_text(items) -> str:
     """把指令数组写回文本（喂给模型下一轮）。
 
-    `expression` 是后端小模型事后补的（不是模型自己写的），回喂前去掉，
-    免得它以为那是自己该输出的字段。列表为空则原样返回（无法序列化时也原样返回）。
+    `expression` 是后端小模型事后补的（不是模型自己写的），回喂前去掉；
+    `tool`（工具意图）也不回喂——它不给玩家、也不进叙事历史（状态块已反映落地结果）。
+    列表为空则原样返回（无法序列化时也原样返回）。
     """
     clean = [{k: v for k, v in it.items() if k != "expression"}
-             for it in (items or []) if isinstance(it, dict)]
+             for it in (items or [])
+             if isinstance(it, dict) and it.get("type") != "tool"]
     if not clean:
         return ""
     try:

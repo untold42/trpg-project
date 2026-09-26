@@ -31,16 +31,22 @@ def modify_hunger(hunger: int):
                     "饥饿度只在玩家真的进食时才增加——等玩家发出「吃 / 喝」的行动再调本工具。")
     new = H.clamp(H.coerce(data.get("饥饿", 50)) + delta)
     data["饥饿"] = H._store(new)
-    data["饥饿挡位"] = H.level_of(new)
+    data.pop("饥饿挡位", None)
     state.save("状态", data)
-    return f"成功修改饥饿度：{data['饥饿']}/100（{data['饥饿挡位']}）"
+    return f"成功修改饥饿度：{data['饥饿']}/100"
 
 
-def modify_health(health: str):
+def modify_health(health):
+    """修改健康度（**0~100 数值**，100 = 康健，越低越差）。直接给新值。"""
     data = _load_state()
-    data["健康"] = health
+    try:
+        v = float(health)
+    except (TypeError, ValueError):
+        return "健康度必须是 0~100 的数值。"
+    v = max(0.0, min(100.0, v))
+    data["健康"] = int(v) if float(v).is_integer() else round(v, 1)
     state.save("状态", data)
-    return f"成功将健康度修改为{health}"
+    return f"成功将健康度修改为 {data['健康']}/100"
 
 
 def modify_hp(hp: int):

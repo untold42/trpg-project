@@ -31,12 +31,17 @@ kind 清单（协议）：
     mode      data: {mode: "explore"|"narrative"}     切换游戏模式（探索 / 叙事）
     minigame  data: {game, sessionId, ...}           开小游戏（可阻塞叙事，预留）
     quest     data: {动作: "新增"|"推进"|"完成"|"过期", 任务: {...}, ...}  任务栏刷新
+    art       data: {状态: "作画中"|"完成", id, 作者, 题, 图片?}      画作（图上浮层展示）
+    toollog   data: {状态, 条数}                                    工具GM 执行完毕（刷新日志面板）
 """
+
+import threading
+from collections import deque
 
 UI_EVENTS_KEY = "_ui_events"
 
 #: 已定义的 UI 事件 kind（新增 kind 请同时改前端 types/gametype.ts）
-KINDS = ("bg", "music", "battle", "mode", "minigame", "quest")
+KINDS = ("bg", "music", "battle", "mode", "minigame", "quest", "art", "toollog")
 
 
 def ui_event(kind: str, **data) -> dict:
@@ -60,3 +65,25 @@ def mode_event(mode: str) -> dict:
     战斗不用本事件（走 `kind:"battle"`）。
     """
     return ui_event("mode", mode=mode)
+
+
+# ------------------------------------------------------------
+# 异步事件队列：旁路裁定（在别的线程里跑）产出的 UI 事件，
+# 下一次 /action 或 /state 顺带携回前端。
+# ------------------------------------------------------------
+_pending: deque = deque(maxlen=128)
+_pending_lock = threading.Lock()
+
+
+def push(event: dict) -> None:
+    """把事件压入待携回队列（线程安全）。"""
+    with _pending_lock:
+        _pending.append(event)
+
+
+def drain() -> list:
+    """取走并清空待携回事件。"""
+    with _pending_lock:
+        out = list(_pending)
+        _pending.clear()
+    return out

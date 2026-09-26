@@ -8,7 +8,7 @@ hunger.py
 
     >=80 饱足 ｜ >=60 正常 ｜ >=40 空腹 ｜ >=20 饥饿 ｜ <20 濒饿
 
-- `饥饿`（数值）是**真相源**；`饥饿挡位`（字符串）是投影，由 `sync()` 回写 `状态.json`。
+- `饥饿`（数值，0~100）是 `状态.json` 字段；挡位阈值（80/60/40/20）仅用于文案 / 策划表，**不再落盘**。
 - 随时间扣减：`time_flow.pump()` / `sleep` 里按跨过的时辰调 `drain()`。
 - 进食：工具 `modify_hunger`（正数增加）。
 - 每时辰扣多少：以 `trpg-server/配置/时间影响.json` 的 `每时辰饥饿` 为准（当前为 5；改文件即时生效）。
@@ -69,13 +69,13 @@ def _store(v) -> float:
 
 
 def sync() -> dict:
-    """把 `状态.json` 的饥饿归一化为 0~100 数值，并写回派生的 `饥饿挡位`。"""
+    """把 `状态.json` 的饥饿归一化为 0~100 数值（并清掉已废弃的 `饥饿挡位` 字段）。"""
     data = state.load("状态", {}) or {}
     val = _store(coerce(data.get("饥饿", 50)))
-    level = level_of(val)
-    if data.get("饥饿") != val or data.get("饥饿挡位") != level:
-        data["饥饿"] = val
-        data["饥饿挡位"] = level
+    changed = data.get("饥饿") != val or "饥饿挡位" in data
+    data["饥饿"] = val
+    data.pop("饥饿挡位", None)
+    if changed:
         try:
             state.save("状态", data)
         except OSError as e:      # 文件被占用：不抛，下次再试
@@ -99,7 +99,7 @@ def drain(indices: list) -> float:
     new = max(0.0, cur - per * len(indices))
     if new != cur:
         data["饥饿"] = _store(new)
-        data["饥饿挡位"] = level_of(new)
+        data.pop("饥饿挡位", None)
         try:
             state.save("状态", data)
         except OSError as e:

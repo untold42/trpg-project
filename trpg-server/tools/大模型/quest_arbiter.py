@@ -19,6 +19,7 @@ import json
 import threading
 
 from tools.核心 import quest
+from tools.核心 import ui_events
 from tools.核心.state_manager import state
 
 
@@ -42,6 +43,14 @@ ADD_TOOL = {
                 "时限时辰": {"type": "integer", "description": "折算成时辰（1 日 = 12 时辰）"},
                 "失败后果": {"type": "string",
                              "description": "若梁峰没做到，世界会怎样（隐藏字段，不给玩家看）"},
+                "真相": {"type": "string",
+                         "description": "这件事**客观到底是怎么回事**（谁在骗、人在哪、真因）。仅 GM 可见，玩家不知道。"},
+                "结局": {"type": "string",
+                         "description": "预定的走向/落点（成功时大致如何收束）。仅 GM 可见。"},
+                "知情者": {"type": "array", "items": {"type": "string"},
+                           "description": "知道真相的人（正式姓名）。仅 GM 可见，用于信息边界。"},
+                "揭示节奏": {"type": "string",
+                             "description": "如何逐步让玩家接触到真相（先露什么、何时松口、不得直说）。仅 GM 可见。"},
             },
             "required": ["标题", "里程碑", "时限时辰"],
         },
@@ -57,6 +66,14 @@ ADD_SYSTEM = """\
 - 时限按这件事本身给：`时限文本`（如「三日内」「今夜子时前」）＋ `时限时辰`（1 日 = 12 时辰）。
 - `失败后果`：若梁峰没做到，世界会变成什么样（一两句，隐藏字段）。
 - 只认「答应 / 承诺 / 受托 / 已实际动手」；闲聊、买卖、问路、吃喝**不要建**。
+- **不分主线 / 支线**——世上没有这种分别，一律就叫任务。
+- **不要拆子任务**：一个大目标就是**一条任务 + 若干里程碑**，别拆成一串小任务。
+- **建任务那刻就要把「真相 + 结局」定死**（仅 GM 可见）：
+  - `真相`：这件事客观到底是怎么回事（谁在骗、人在哪、真实因果与动机）。
+  - `结局`：预定走向/落点（成功时大致如何收束）。
+  - `知情者`：知道真相的人（正式姓名）——供信息边界用。
+  - `揭示节奏`：如何逐步让玩家接近真相（先露什么、何时松口、**不得一见面说破**）。
+  - 这些**只给 GM 看**，玩家永远看不到；不能写进 `描述`。
 - 若对话里没有可任务化的事，**不要调用工具**。
 - 现在时间与地点见状态块；不要生造地图上没有的地名。
 """
@@ -96,6 +113,8 @@ def arbitrate_add(history_messages: list[dict], hint: str = "") -> list[dict]:
             标题=a.get("标题", ""), 描述=a.get("描述", ""), 委托人=a.get("委托人", ""),
             里程碑=a.get("里程碑") or [], 时限文本=a.get("时限文本", ""),
             时限时辰=a.get("时限时辰", 12), 来源="任务裁定", 失败后果=a.get("失败后果", ""),
+            真相=a.get("真相", ""), 结局=a.get("结局", ""), 知情者=a.get("知情者") or [],
+            揭示节奏=a.get("揭示节奏", ""),
         )
         if t:
             created.append(t)
@@ -132,11 +151,15 @@ _lock = threading.Lock()
 def _work(t: dict):
     try:
         txt = _expire_text(t)
-        quest.expire(t.get("id", ""), 结果=txt)
+        res = quest.expire(t.get("id", ""), 结果=txt)
+        if res.get("success") and not res.get("noop"):
+            ui_events.push(ui_events.ui_event("quest", 动作="过期", 任务=res.get("任务")))
     except Exception as e:
         # 裁定失败：也要了结，避免任务永远挂着（降级为机械过期）
         try:
-            quest.expire(t.get("id", ""), 结果="（任务已过期。）")
+            res = quest.expire(t.get("id", ""), 结果="（任务已过期。）")
+            if res.get("success") and not res.get("noop"):
+                ui_events.push(ui_events.ui_event("quest", 动作="过期", 任务=res.get("任务")))
         except Exception:
             pass
         print(f"[quest] DDL 裁定失败（{type(e).__name__}: {e}），已机械过期")
@@ -162,11 +185,12 @@ def arbitrate_expiry_async(t: dict) -> bool:
 # 里程碑裁定（里程碑全部完成时）
 # ------------------------------------------------------------
 MILESTONE_SYSTEM = (
-    "你是南宋武侠游戏的「任务裁定」。一个任务列出的里程碑都已完成。"
-    "请判断这件事是否**真的了结了**："
-    "若还没有（事情还有下文、对方还会有求、或承诺尚未兑现）→ 「需要补充」=「是」，"
-    "并给 1-3 条**新的、可验证的**里程碑；若确实了结 → 「需要补充」=「否」，不要给里程碑。"
-    '只输出 JSON：{"需要补充":"是"或"否","里程碑":["…"],"理由":"一句话"}'
+    "你是南宋武侠游戏的「任务裁定」。一个任务列出的里程碑都已完成。\n"
+    "结合它的**事件真相**与**预定结局**判断：这件事是否真的了结了？\n"
+    "若还没到预定结局、或事情还有下文 → 「需要补充」=「是」，给 1-3 条**新的、可验证的**里程碑。\n"
+    "若预定结局已达成 → 「需要补充」=「否」。\n"
+    "无论哪种，都再给一句**玩家可见**的 `结果`（一句话：这件事眼下进展到哪/如何了结，**不得剧透真相**）。\n"
+    '只输出 JSON：{"需要补充":"是"或"否","里程碑":["…"],"结果":"…","理由":"一句话"}'
 )
 
 
@@ -176,6 +200,8 @@ def _milestone_check(t: dict) -> dict:
     tm = basic.get("时间") or {}
     payload = {
         "任务": {k: t.get(k) for k in ("标题", "描述", "委托人")},
+        "真相": t.get("真相") or "",
+        "预定结局": t.get("结局") or "",
         "已完成里程碑": [m.get("项") for m in (t.get("里程碑") or [])],
         "时间": tm.get("纪年") or tm.get("日期"),
         "当前地点": (basic.get("位置") or {}).get("地点"),
@@ -195,24 +221,35 @@ _m_inflight: set = set()
 _mlock = threading.Lock()
 
 
+def _finish(tid: str, r: dict):
+    """了结任务：写状态 + 静默技能点，并向 UI 队列推一条事件。"""
+    res = quest.complete(tid, 结果=(r.get("结果") or r.get("理由") or "任务了结。"))
+    if res.get("success") and not res.get("noop"):
+        ui_events.push(ui_events.ui_event("quest", 动作="完成",
+                                        任务=res.get("任务"), 奖励=res.get("奖励") or {}))
+
+
 def _milestone_work(t: dict):
     tid = t.get("id", "")
     try:
         cap = int(quest.config().get("里程碑扩展上限", 3) or 0)
         if int(t.get("扩展次数", 0) or 0) >= cap:
-            quest.complete(tid, 结果="里程碑已了结，任务收束。")
+            _finish(tid, {"结果": "里程碑已了结，任务收束。"})
             return
         r = _milestone_check(t)
         if str(r.get("需要补充")) == "是" and r.get("里程碑"):
             res = quest.add_milestones(tid, r["里程碑"])
-            if not res.get("新增"):                 # 补的与旧的重复 → 视为了结
-                quest.complete(tid, 结果=r.get("理由") or "任务了结。")
+            if res.get("新增"):
+                ui_events.push(ui_events.ui_event("quest", 动作="续接",
+                                                任务=res.get("任务"), 新增=res["新增"]))
+            else:                                   # 补的与旧的重复 → 视为了结
+                _finish(tid, r)
         else:
-            quest.complete(tid, 结果=r.get("理由") or "任务了结。")
+            _finish(tid, r)
     except Exception as e:
         print(f"[quest] 里程碑裁定失败（{type(e).__name__}: {e}），已机械了结")
         try:
-            quest.complete(tid, 结果="（任务了结。）")
+            _finish(tid, {"结果": "（任务了结。）"})
         except Exception:
             pass
     finally:

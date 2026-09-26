@@ -300,7 +300,7 @@ def _scene_for(kind: str, place: str) -> str:
     """确定性背景：查 `场景表.json`，取该 kind 的主场景（不调模型、不查库）。"""
     try:
         from tools.小模型 import ui_sim
-        return ui_sim.scene_for(kind, place)
+        return ui_sim.scene_for(kind, place, strict=False)
     except Exception as e:
         print(f"[facility] 背景映射失败：{e}")
         return "城市大街"

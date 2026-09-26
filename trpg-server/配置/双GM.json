@@ -1,0 +1,12 @@
+{
+  "启用": true,
+  "记录工具意图": true,
+  "重试": 3,
+  "工具GM": {
+    "base_url": "http://127.0.0.1:8317/v1",
+    "api_key": "sk-liangfengshidashuaibi",
+    "model": "gpt-6-luna",
+    "reasoning_effort": "high"
+  },
+  "说明": "双GM 拆分（设计见 文档/设计-双GM拆分.md）。启用=false：维持现状（单GM、全 26 工具、照常落地）——默认。记录工具意图=true 且 启用=false：叙事GM 额外产出 tool 意图并落日志（**不改状态**，影子模式，用来评估 DS 写意图的质量）。启用=true：叙事GM 只用 6 个只读工具（需配合阶段2的工具GM，否则状态不落地）。改本文件免重启。"
+}

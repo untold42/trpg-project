@@ -47,6 +47,7 @@ from tools.核心.time_flow import rest as sleep_time
 from tools.大模型.modes import resume_exploration
 from tools.大模型.event_dice import daily_event_dice, travel_event_dice
 from tools.战斗.battle_session import start_battle
+from tools.核心.art import commission as commission_painting
 
 _ENTRIES = [
     (
@@ -198,13 +199,13 @@ _ENTRIES = [
             "type": "function",
             "function": {
                 "name": "modify_health",
-                "description": "用于修改玩家的健康度(康健,微恙,抱病,沉疴,垂危)",
+                "description": "修改玩家健康度（0~100 数值，100=康健，数值越低越差；直接给新值）",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "health": {
-                            "type": "string",
-                            "enum": ["康健", "微恙", "抱病", "沉疴", "垂危"],
+                            "type": "integer",
+                            "description": "健康度 0~100（新值，不是变化量）",
                         }
                     },
                     "required": ["health"],
@@ -975,6 +976,32 @@ _ENTRIES = [
         },
         start_battle,
     ),
+    (
+        "commission_painting",
+        {
+            "type": "function",
+            "function": {
+                "name": "commission_painting",
+                "description": "委托某人作画（**异步**）：立刻返回「作画中」，画作画好后系统会另行呈现给梁峰；"
+                "你不用等，也不要在本轮描述画的内容。玩家请人作画、或剧情需要一幅画时调用。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "作者": {"type": "string", "description": "作画者姓名（在场某人）"},
+                        "题": {"type": "string", "description": "画题，2-6 字，如「桂花」「寒江独钓」"},
+                        "画面": {"type": "string",
+                                "description": "画面内容的客观描述（给画师的提示），如「一枝桂花，墨叶，点点淡黄，疏影横斜」"},
+                        "寓意": {"type": "string",
+                                "description": "若画者借画寄意，这里写其**真正想表达的**（可含蓄、可暗藏、可与画面表象相反）；"
+                                "**可留空**——画画未必有言外之意，也可能只是享受艺术。仅你与系统可见。"},
+                        "风格": {"type": "string", "description": "画风补充，如「工笔」「泼墨」「淡彩」；可留空"},
+                    },
+                    "required": ["作者", "题", "画面"],
+                },
+            },
+        },
+        commission_painting,
+    ),
 ]
 
 
@@ -1024,6 +1051,33 @@ ALL_TOOL_NAMES = {name for name, _s, _f in _ENTRIES
                   if name not in _SAVE_ONLY and name not in _DISABLED}
 SAVE_TOOL_NAMES = {name for name, _s, _f in _ENTRIES
                    if name in _SAVE_NAMES and name not in _DISABLED}
+
+# ------------------------------------------------------------
+# 双GM 拆分（方案 B，见 `文档/设计-双GM拆分.md`）
+#   叙事GM（DeepSeek）= **只读 6 个**（读归叙事）；工具GM（luna）= **其余 20 个**（写归工具）。
+#   状态读（get_money/get_inventory/get_state）归工具GM 校验用，不给叙事GM（已在状态块里）。
+# ------------------------------------------------------------
+#: 叙事GM 的**只读**工具。2026-09-26 精简：去掉 `query_place` / `list_map_kinds`
+#: （实测 DS 会反复用它们查地点、每轮多跑 1~3 次 DeepSeek；而本地地名引擎已每轮注入
+#: 「附近实名地点」块）——目标：**减少叙事GM 的往返轮数**。
+_NARRATIVE_READ = {
+    "query_nearby",       # 查附近（一次就够）
+    "get_character",      # NPC 档案（新面孔登场用）
+    "get_ability",        # 属性不在状态块里
+    "DB_query_tool",      # 长期记忆（get_character 的提示也依赖它）
+}
+NARRATIVE_TOOLS = [schema for name, schema, _fn in _ENTRIES if name in _NARRATIVE_READ]
+NARRATIVE_TOOL_NAMES = {name for name, _s, _f in _ENTRIES if name in _NARRATIVE_READ}
+#: 状态读工具 + 空间查询：**两边都不给**（数据已在注入块里；工具GM 只干「改状态」，
+#: 查询类一概不给——实测给了它会没活干时乱调）
+_STATE_READS = {"get_money", "get_inventory", "get_state"}
+_TOOL_GM_SKIP = _STATE_READS | {"query_place", "list_map_kinds"}
+TOOL_GM_TOOLS = [schema for name, schema, _fn in _ENTRIES
+                 if name not in _NARRATIVE_READ and name not in _SAVE_ONLY and name not in _DISABLED
+                 and name not in _TOOL_GM_SKIP]
+TOOL_GM_TOOL_NAMES = {name for name, _s, _f in _ENTRIES
+                      if name not in _NARRATIVE_READ and name not in _SAVE_ONLY and name not in _DISABLED
+                      and name not in _TOOL_GM_SKIP}
 
 #: 名称 -> 实现（只排除已禁用）。
 #: ⚠️ 必须保留 _SAVE_ONLY：存档回合要靠它执行存档工具。

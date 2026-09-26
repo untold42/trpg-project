@@ -8,7 +8,7 @@ context_lens.py
 用法：
     python context_lens.py            # 生成 sessions/context_report.html
     python context_lens.py --open     # 生成并用浏览器打开
-    python context_lens.py --last 3   # 只看最近 3 轮
+    python context_lens.py --last 3    # 只看最近 3 轮
 
 独立于游戏：只读 dump 文件，不 import 游戏状态、不起服务器、不连数据库。
 """
@@ -70,15 +70,18 @@ def text_of(message: dict) -> str:
 def load_dumps(last: int = 0) -> list[dict]:
     if not DUMP_DIR.is_dir():
         return []
-    files = sorted(DUMP_DIR.glob("*.json"))
-    if last > 0:
-        files = files[-last:]
     out = []
-    for path in files:
+    for path in DUMP_DIR.glob("*.json"):
         try:
             out.append(json.loads(path.read_text(encoding="utf-8")))
         except (OSError, json.JSONDecodeError):
             continue
+    # 按记录里的「时间」（完整 年-月-日 时:分:秒）排——**别按文件名排**：
+    # 文件名是 `<序号>-<月日-时分秒>`，序号每局从头数（0001/0002…），
+    # 跨局时按文件名排会把 Sep 23 的 0006 排到 Sep 25 的 0002 后面 → --last / “最新一轮”取错。
+    out.sort(key=lambda r: (str(r.get("时间") or ""), r.get("序号") or 0))
+    if last > 0:
+        out = out[-last:]
     return out
 
 

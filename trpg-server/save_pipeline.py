@@ -60,6 +60,8 @@ def _render_user(turn: dict) -> str:
     - 场外（OOC）→ `梁峰（场外）：…`（标了「场外」的行**不参与记忆蒸馏**）
     """
     s = (turn.get("user") or "").strip()
+    if turn.get("mode") == "push":
+        return ""      # 后端主动发起的回合（server→GM push）：事件由系统注入，不是玩家发言，不誊写
     if turn.get("mode") == "continue":
         return "梁峰：（静观其变，时间流逝）"
     if turn.get("mode") == "observe":
@@ -308,7 +310,9 @@ def build_transcript(turns: list[dict]) -> str:
         if gtime and gtime != cur_time:
             out.append(f"\n## {gtime}")
             cur_time = gtime
-        out.append(_render_user(turn))
+        u = _render_user(turn)
+        if u:
+            out.append(u)
         # 同一份取法：优先落盘的 instructions，老存档回落到 parse(raw)。
         # （这里以前是裸 json.loads，零容错——同一字段在同一个文件里两种读法。）
         for it in instructions.items_of(turn):
